@@ -3,6 +3,7 @@ from uuid import uuid4
 
 import httpx
 from fastapi import FastAPI, File, HTTPException, UploadFile
+from pydantic import BaseModel
 
 app = FastAPI(title="API Gateway")
 
@@ -115,4 +116,49 @@ async def clarification_questions(budget_id: str) -> Dict[str, Any]:
         "needs_clarification": clarification_data.get("needs_clarification"),
         "questions": clarification_data.get("questions", []),
         "partial_model": partial_model,
+    }
+
+
+class SubmitAnswersPayload(BaseModel):
+    budget_id: str
+    answers: Dict[str, Any]
+
+
+@app.post("/submit-answers")
+async def submit_answers(payload: SubmitAnswersPayload) -> Dict[str, Any]:
+    """
+    Applies user answers to the partial model to finalize the unified budget representation.
+    """
+    budget_session = budgets.get(payload.budget_id)
+    if not budget_session:
+        raise HTTPException(status_code=404, detail="Budget session not found.")
+
+    partial_model = budget_session.get("partial")
+    if partial_model is None:
+        raise HTTPException(status_code=400, detail="Clarification has not been completed for this budget.")
+
+    request_body = {
+        "partial_model": partial_model,
+        "answers": payload.answers,
+    }
+
+    # TODO: validate answers schema and provide better downstream error handling/logging.
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            clarification_response = await client.post(
+                f"{CLARIFICATION_BASE}/apply-answers", json=request_body
+            )
+            clarification_response.raise_for_status()
+    except httpx.HTTPError as exc:
+        raise HTTPException(status_code=502, detail="Clarification service is unavailable.") from exc
+
+    apply_data: Dict[str, Any] = clarification_response.json()
+
+    updated_model = apply_data.get("updated_model")
+    budget_session["final"] = updated_model
+
+    # TODO: surface ready_for_summary flag to the client once downstream contract is finalized.
+    return {
+        "budget_id": payload.budget_id,
+        "status": "ready_for_summary",
     }
