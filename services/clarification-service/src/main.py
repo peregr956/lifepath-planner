@@ -11,6 +11,7 @@ from typing import Any, Dict, List, Optional, Sequence
 import sys
 
 from fastapi import FastAPI
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 from typing_extensions import Literal
 
@@ -337,6 +338,8 @@ def clarify_budget(payload: DraftBudgetPayload) -> ClarifyResponseModel:
     """
 
     draft_model = payload.to_dataclass()
+    if not draft_model.lines:
+        return JSONResponse(status_code=400, content={"error": "empty_budget"})
     unified_model = draft_to_initial_unified(draft_model)
     questions = generate_clarification_questions(unified_model)
     question_models = _serialize_question_specs(questions)
