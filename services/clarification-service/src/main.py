@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import date
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Sequence
 import sys
 
 from fastapi import FastAPI
@@ -34,7 +34,7 @@ from budget_model import (  # noqa: E402
 )
 
 from normalization import draft_to_initial_unified
-from question_generator import generate_clarification_questions
+from question_generator import QuestionSpec, generate_clarification_questions
 from ui_schema_builder import build_initial_ui_schema
 
 app = FastAPI(title="Clarification Service")
@@ -44,7 +44,7 @@ app = FastAPI(title="Clarification Service")
 
 class RawBudgetLinePayload(BaseModel):
     source_row_index: int
-    date: Optional[date]
+    date: Optional[date] = None
     category_label: str
     description: Optional[str]
     amount: float
@@ -251,15 +251,29 @@ class UnifiedBudgetResponseModel(BaseModel):
         )
 
 
+class QuestionSpecModel(BaseModel):
+    question_id: str
+    prompt: str
+    components: List[Dict[str, Any]]
+
+    @classmethod
+    def from_dataclass(cls, spec: QuestionSpec) -> "QuestionSpecModel":
+        return cls(
+            question_id=spec.question_id,
+            prompt=spec.prompt,
+            components=[component.copy() for component in spec.components],
+        )
+
+
 class NormalizationResponseModel(BaseModel):
     unified_model: UnifiedBudgetResponseModel
-    clarification_questions: List[str]
+    clarification_questions: List[QuestionSpecModel] = Field(default_factory=list)
     ui_schema: Dict[str, Any]
 
 
 class ClarifyResponseModel(BaseModel):
     needs_clarification: bool
-    questions: List[str]
+    questions: List[QuestionSpecModel] = Field(default_factory=list)
     partial_model: UnifiedBudgetResponseModel
 
 
@@ -293,11 +307,12 @@ def normalize_budget(payload: DraftBudgetPayload) -> NormalizationResponseModel:
     draft_model = payload.to_dataclass()
     unified_model = draft_to_initial_unified(draft_model)
     questions = generate_clarification_questions(unified_model)
+    question_models = _serialize_question_specs(questions)
     ui_schema = build_initial_ui_schema(unified_model)
 
     return NormalizationResponseModel(
         unified_model=UnifiedBudgetResponseModel.from_dataclass(unified_model),
-        clarification_questions=questions,
+        clarification_questions=question_models,
         ui_schema=ui_schema,
     )
 
@@ -309,16 +324,18 @@ def normalize_budget(payload: DraftBudgetPayload) -> NormalizationResponseModel:
 )
 def clarify_budget(payload: DraftBudgetPayload) -> ClarifyResponseModel:
     """
-    Produce a placeholder clarification response with the deterministic partial
-    model. Follow-up AI logic will eventually populate real questions.
+    Generate deterministic clarification questions and return the partial unified
+    budget model so the frontend can render follow-ups immediately.
     """
 
     draft_model = payload.to_dataclass()
     unified_model = draft_to_initial_unified(draft_model)
+    questions = generate_clarification_questions(unified_model)
+    question_models = _serialize_question_specs(questions)
 
     return ClarifyResponseModel(
-        needs_clarification=True,
-        questions=[],  # TODO(ai-questioning): Populate deterministic or LLM-driven questions.
+        needs_clarification=bool(question_models),
+        questions=question_models,
         partial_model=UnifiedBudgetResponseModel.from_dataclass(unified_model),
     )
 
@@ -331,8 +348,19 @@ def clarify_budget(payload: DraftBudgetPayload) -> ClarifyResponseModel:
 def apply_answers(payload: ApplyAnswersPayload) -> ApplyAnswersResponseModel:
     """
     Apply user-provided answers to the partial model. Placeholder implementation
-    returns the model unchanged until transformation rules are defined.
+    returns the model unchanged until deterministic transformation rules are defined.
     """
 
-    # TODO(ai-answer-application): Merge answers into the UnifiedBudgetModel (e.g., mark essentials, add debts).
+    # TODO(ai-answer-application): Map field_ids back into the UnifiedBudgetModel structure.
+    # TODO(ai-answer-application): Update expense essential flags and other category-level data.
+    # TODO(ai-answer-application): Update preferences (e.g., optimization_focus) and other metadata.
     return ApplyAnswersResponseModel(partial_model=payload.partial_model)
+
+
+def _serialize_question_specs(question_specs: Sequence[QuestionSpec]) -> List[QuestionSpecModel]:
+    """
+    Convert internal QuestionSpec dataclasses into response models that FastAPI
+    can serialize.
+    """
+
+    return [QuestionSpecModel.from_dataclass(spec) for spec in question_specs]
