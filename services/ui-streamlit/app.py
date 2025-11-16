@@ -6,6 +6,19 @@ from typing import Optional, List, Dict, Any
 API_BASE = "http://localhost:8080"
 
 
+def show_backend_error(response: requests.Response) -> None:
+    try:
+        payload = response.json()
+    except ValueError:
+        payload = None
+
+    error_message = payload.get("error") if isinstance(payload, dict) else None
+    if error_message:
+        st.error(error_message)
+    else:
+        st.error(f"Backend error ({response.status_code}): {response.text}")
+
+
 def init_session_state() -> None:
     defaults = {
         "step": 1,
@@ -27,47 +40,6 @@ def init_session_state() -> None:
 
 def render_step1() -> None:
     st.header("Step 1: Upload Budget")
-    file = st.file_uploader(
-        "Upload your budget (CSV or XLSX)",
-        type=["csv", "xlsx"],
-    )
-
-    if file is not None:
-        if st.button("Upload Budget"):
-            files = {
-                "file": (
-                    file.name,
-                    file.getvalue(),
-                    file.type or "application/octet-stream",
-                )
-            }
-            try:
-                response = requests.post(f"{API_BASE}/upload-budget", files=files)
-                response.raise_for_status()
-            except requests.RequestException as exc:
-                st.error(f"Upload failed: {exc}")
-            else:
-                data = response.json()
-                budget_id = data.get("budget_id")
-                detected_format = data.get("detected_format")
-                summary_preview = data.get("summary_preview")
-
-                if budget_id:
-                    st.session_state["budget_id"] = budget_id
-                    st.session_state["questions"] = []
-                    st.session_state["partial_model"] = None
-                    st.session_state["summary"] = None
-                    st.session_state["summary_loaded_for"] = None
-                    st.session_state["category_shares"] = None
-                    st.session_state["suggestions"] = []
-                    st.session_state["needs_clarification"] = True
-                    st.session_state["questions_loaded_for"] = None
-                    st.write(f"Detected format: {detected_format}")
-                    st.write("Summary preview:")
-                    st.write(summary_preview)
-                else:
-                    st.error("Upload response missing budget_id.")
-
     budget_id = st.session_state.get("budget_id")
     if budget_id:
         st.success(f"Budget uploaded: {budget_id}")
@@ -77,6 +49,56 @@ def render_step1() -> None:
         disabled=budget_id is None,
     ):
         st.session_state["step"] = 2
+        return
+
+    file = st.file_uploader(
+        "Upload your budget (CSV or XLSX)",
+        type=["csv", "xlsx"],
+    )
+
+    if file is not None and st.button("Upload Budget"):
+        files = {
+            "file": (
+                file.name,
+                file.getvalue(),
+                file.type or "application/octet-stream",
+            )
+        }
+        try:
+            response = requests.post(f"{API_BASE}/upload-budget", files=files)
+        except requests.RequestException:
+            st.error("Unable to reach the backend service.")
+            return
+
+        if response.status_code >= 400:
+            show_backend_error(response)
+            return
+
+        try:
+            data = response.json()
+        except ValueError:
+            st.error("Unexpected response from backend.")
+            return
+
+        budget_id = data.get("budget_id")
+        detected_format = data.get("detected_format")
+        summary_preview = data.get("summary_preview")
+
+        if budget_id:
+            st.session_state["budget_id"] = budget_id
+            st.session_state["questions"] = []
+            st.session_state["partial_model"] = None
+            st.session_state["summary"] = None
+            st.session_state["summary_loaded_for"] = None
+            st.session_state["category_shares"] = None
+            st.session_state["suggestions"] = []
+            st.session_state["needs_clarification"] = True
+            st.session_state["questions_loaded_for"] = None
+            st.write(f"Detected format: {detected_format}")
+            st.write("Summary preview:")
+            st.write(summary_preview)
+        else:
+            st.error("Upload response missing budget_id.")
 
 
 def render_step2() -> None:
@@ -95,9 +117,12 @@ def render_step2() -> None:
                 f"{API_BASE}/clarification-questions",
                 params={"budget_id": budget_id},
             )
-            response.raise_for_status()
-        except requests.RequestException as exc:
-            st.error(f"Failed to load clarification questions: {exc}")
+        except requests.RequestException:
+            st.error("Unable to reach the backend service.")
+            return
+
+        if response.status_code >= 400:
+            show_backend_error(response)
             return
 
         payload = response.json()
@@ -171,11 +196,15 @@ def render_step2() -> None:
                     "answers": answers,
                 },
             )
-            response.raise_for_status()
-        except requests.RequestException as exc:
-            st.error(f"Failed to submit answers: {exc}")
-        else:
-            st.session_state["step"] = 3
+        except requests.RequestException:
+            st.error("Unable to reach the backend service.")
+            return
+
+        if response.status_code >= 400:
+            show_backend_error(response)
+            return
+
+        st.session_state["step"] = 3
 
 
 def render_step3() -> None:
@@ -197,9 +226,12 @@ def render_step3() -> None:
                 f"{API_BASE}/summary-and-suggestions",
                 params={"budget_id": budget_id},
             )
-            response.raise_for_status()
-        except requests.RequestException as exc:
-            st.error(f"Failed to load summary: {exc}")
+        except requests.RequestException:
+            st.error("Unable to reach the backend service.")
+            return
+
+        if response.status_code >= 400:
+            show_backend_error(response)
             return
 
         data = response.json()
@@ -285,6 +317,8 @@ def main() -> None:
     st.title("LifePath Planner (MVP)")
 
     step = st.session_state.get("step", 1)
+    st.caption(f"Step {step} of 3")
+
     if step == 1:
         render_step1()
     elif step == 2:
