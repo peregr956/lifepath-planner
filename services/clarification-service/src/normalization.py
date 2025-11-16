@@ -47,9 +47,14 @@ FALSE_STRINGS = {"false", "0", "no", "n", "nonessential", "flexible"}
 
 def draft_to_initial_unified(draft: DraftBudgetModel) -> UnifiedBudgetModel:
     """
-    Convert a DraftBudgetModel into a first-pass UnifiedBudgetModel that follows
-    deterministic rules only. This provides a stable structure for downstream
-    AI-powered clarification stages to refine.
+    Convert a DraftBudgetModel into a deterministic first-pass UnifiedBudgetModel.
+
+    Args:
+        draft: Ingested structure where positive line amounts represent income and negatives expenses.
+    Returns:
+        UnifiedBudgetModel with stub incomes, expenses, empty debts, default preferences, and a computed summary.
+    Assumptions:
+        Uses only sign-based rules (no AI); debt detection, essential flags, and rich metadata are left unset for later stages.
     """
 
     incomes: List[Income] = []
@@ -158,10 +163,15 @@ def _deterministic_id(kind: str, line: RawBudgetLine, ordinal: int) -> str:
 
 def apply_answers_to_model(model: UnifiedBudgetModel, answers: Dict[str, Any]) -> UnifiedBudgetModel:
     """
-    Apply structured clarification answers back onto the UnifiedBudgetModel.
+    Apply structured clarification answers to the unified model in place.
 
-    The function mutates the provided model in-place and also returns it so callers
-    can use whichever style they prefer.
+    Args:
+        model: UnifiedBudgetModel that will be mutated with clarified essential flags and preferences.
+        answers: Mapping of field_id strings to user-provided values collected via clarification questions.
+    Returns:
+        The same UnifiedBudgetModel instance after supported fields are updated.
+    Assumptions:
+        Recognizes only known field_id prefixes (e.g., essential flags, optimization focus); skips unknown keys and is a no-op when answers is empty.
     """
 
     if not answers:

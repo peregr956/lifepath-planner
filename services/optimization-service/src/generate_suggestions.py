@@ -27,7 +27,15 @@ def _clamp(value: float, minimum: float, maximum: float) -> float:
 
 def generate_suggestions(model: UnifiedBudgetModel, summary: Summary) -> List[Suggestion]:
     """
-    Produce a short list of rational, rule-based optimization suggestions.
+    Produce deterministic budgeting suggestions from the unified model and its summary.
+
+    Args:
+        model: UnifiedBudgetModel containing debts, expenses, and preferences used to ground heuristics.
+        summary: Precomputed Summary (income, expenses, surplus) derived from the same model instance.
+    Returns:
+        List of Suggestion dataclasses that downstream services can serialize directly.
+    Assumptions:
+        Operates on monthly dollar amounts, relies solely on rule-based heuristics, and never mutates inputs.
     """
     suggestions: List[Suggestion] = []
     surplus = summary.surplus
