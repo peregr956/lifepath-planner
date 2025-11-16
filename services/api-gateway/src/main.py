@@ -19,6 +19,7 @@ def health_check() -> dict:
 
 
 INGESTION_BASE = "http://localhost:8001"
+CLARIFICATION_BASE = "http://localhost:8002"
 
 
 @app.post("/upload-budget")
@@ -80,4 +81,38 @@ async def upload_budget(file: UploadFile = File(...)) -> Dict[str, Any]:
             "detected_income_lines": detected_income_lines,
             "detected_expense_lines": detected_expense_lines,
         },
+    }
+
+
+@app.get("/clarification-questions")
+async def clarification_questions(budget_id: str) -> Dict[str, Any]:
+    """
+    Forwards the draft budget to the clarification service and stores the resulting partial model.
+    """
+    budget_session = budgets.get(budget_id)
+    if not budget_session or not budget_session.get("draft"):
+        raise HTTPException(status_code=404, detail="Budget session not found.")
+
+    draft_payload = budget_session["draft"]
+
+    # TODO: add auth, tracing, and better error propagation when services fail.
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            clarification_response = await client.post(
+                f"{CLARIFICATION_BASE}/clarify", json=draft_payload
+            )
+            clarification_response.raise_for_status()
+    except httpx.HTTPError as exc:
+        raise HTTPException(status_code=502, detail="Clarification service is unavailable.") from exc
+
+    clarification_data: Dict[str, Any] = clarification_response.json()
+
+    partial_model = clarification_data.get("partial_model")
+    budget_session["partial"] = partial_model
+
+    return {
+        "budget_id": budget_id,
+        "needs_clarification": clarification_data.get("needs_clarification"),
+        "questions": clarification_data.get("questions", []),
+        "partial_model": partial_model,
     }
