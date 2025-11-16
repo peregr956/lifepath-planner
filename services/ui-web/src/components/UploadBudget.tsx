@@ -1,34 +1,46 @@
 'use client';
 
 import { useState } from 'react';
-import { uploadBudgetFile } from '@/utils/apiClient';
+import type { UploadBudgetResponse } from '@/types';
+import { uploadBudget } from '@/utils/apiClient';
 
 type Props = {
-  onUploaded?: (message: string) => void;
+  onUploaded?: (response: UploadBudgetResponse) => void;
 };
 
 export function UploadBudget({ onUploaded }: Props) {
   const [status, setStatus] = useState<'idle' | 'uploading'>('idle');
-  const [feedback, setFeedback] = useState<string | null>(null);
+  const [result, setResult] = useState<UploadBudgetResponse | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   async function handleChange(event: React.ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
     if (!file) return;
     setStatus('uploading');
-    setFeedback(null);
-    const { message } = await uploadBudgetFile(file);
-    setFeedback(message);
-    onUploaded?.(message);
-    setStatus('idle');
-    event.target.value = '';
+    setError(null);
+    setResult(null);
+    try {
+      const response = await uploadBudget(file);
+      setResult(response);
+      onUploaded?.(response);
+    } catch (uploadError) {
+      setError(
+        uploadError instanceof Error
+          ? uploadError.message
+          : 'Upload failed. Ensure the API gateway is reachable.'
+      );
+    } finally {
+      setStatus('idle');
+      event.target.value = '';
+    }
   }
 
   return (
-    <div className="card flex flex-col gap-3">
+    <div className="card flex flex-col gap-4">
       <div>
         <h2 className="text-xl font-semibold text-white">Upload a budget</h2>
         <p className="text-sm text-white/70">
-          Supports CSV, XLSX, or JSON exports from the budgeting service.
+          Supports CSV or XLSX exports. Files route through the ingestion service for parsing.
         </p>
       </div>
       <label className="inline-flex cursor-pointer flex-col rounded-xl border border-dashed border-white/20 bg-white/5 px-4 py-6 text-center transition hover:border-indigo-300">
@@ -46,7 +58,29 @@ export function UploadBudget({ onUploaded }: Props) {
           disabled={status === 'uploading'}
         />
       </label>
-      {feedback && <p className="text-xs text-emerald-200">{feedback}</p>}
+      {error && <p className="rounded bg-red-500/20 px-3 py-2 text-xs text-red-100">{error}</p>}
+      {result && (
+        <div className="rounded border border-white/10 bg-white/5 p-3 text-xs text-white/80">
+          <p>
+            <span className="font-semibold text-white">Budget ID:</span> {result.budgetId}
+          </p>
+          <p className="mt-1">
+            <span className="font-semibold text-white">Status:</span> {result.status}
+          </p>
+          {result.detectedFormat && (
+            <p className="mt-1">
+              <span className="font-semibold text-white">Detected format:</span>{' '}
+              {result.detectedFormat}
+            </p>
+          )}
+          {result.summaryPreview && (
+            <p className="mt-1 text-white/70">
+              {result.summaryPreview.detectedIncomeLines} income lines ·{' '}
+              {result.summaryPreview.detectedExpenseLines} expense lines
+            </p>
+          )}
+        </div>
+      )}
     </div>
   );
 }
