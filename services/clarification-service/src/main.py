@@ -33,7 +33,7 @@ from budget_model import (  # noqa: E402
     UnifiedBudgetModel,
 )
 
-from normalization import draft_to_initial_unified
+from normalization import apply_answers_to_model, draft_to_initial_unified
 from question_generator import QuestionSpec, generate_clarification_questions
 from ui_schema_builder import build_initial_ui_schema
 
@@ -347,14 +347,12 @@ def clarify_budget(payload: DraftBudgetPayload) -> ClarifyResponseModel:
 )
 def apply_answers(payload: ApplyAnswersPayload) -> ApplyAnswersResponseModel:
     """
-    Apply user-provided answers to the partial model. Placeholder implementation
-    returns the model unchanged until deterministic transformation rules are defined.
+    Apply user-provided answers to the partial model and return the updated structure.
     """
 
-    # TODO(ai-answer-application): Map field_ids back into the UnifiedBudgetModel structure.
-    # TODO(ai-answer-application): Update expense essential flags and other category-level data.
-    # TODO(ai-answer-application): Update preferences (e.g., optimization_focus) and other metadata.
-    return ApplyAnswersResponseModel(partial_model=payload.partial_model)
+    unified_model = payload.partial_model.to_dataclass()
+    updated_model = apply_answers_to_model(unified_model, payload.answers)
+    return ApplyAnswersResponseModel(partial_model=UnifiedBudgetResponseModel.from_dataclass(updated_model))
 
 
 def _serialize_question_specs(question_specs: Sequence[QuestionSpec]) -> List[QuestionSpecModel]:
