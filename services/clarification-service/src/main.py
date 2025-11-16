@@ -283,7 +283,8 @@ class ApplyAnswersPayload(BaseModel):
 
 
 class ApplyAnswersResponseModel(BaseModel):
-    partial_model: UnifiedBudgetResponseModel
+    updated_model: UnifiedBudgetResponseModel
+    ready_for_summary: bool
 
 
 @app.get("/health")
@@ -350,9 +351,17 @@ def apply_answers(payload: ApplyAnswersPayload) -> ApplyAnswersResponseModel:
     Apply user-provided answers to the partial model and return the updated structure.
     """
 
+    # TODO(ai-answer-application):
+    #   * Validate answers before mutating the model.
+    #   * Fill in debt balances and related metadata.
+    #   * Identify real debts within expense lines automatically.
+    #   * Generate more sophisticated field_id → model mappings.
     unified_model = payload.partial_model.to_dataclass()
     updated_model = apply_answers_to_model(unified_model, payload.answers)
-    return ApplyAnswersResponseModel(partial_model=UnifiedBudgetResponseModel.from_dataclass(updated_model))
+    return ApplyAnswersResponseModel(
+        updated_model=UnifiedBudgetResponseModel.from_dataclass(updated_model),
+        ready_for_summary=True,
+    )
 
 
 def _serialize_question_specs(question_specs: Sequence[QuestionSpec]) -> List[QuestionSpecModel]:
