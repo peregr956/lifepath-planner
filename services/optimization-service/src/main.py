@@ -6,6 +6,7 @@ suggestions that downstream products can display or refine with AI.
 from typing import Dict, List, Optional
 
 from fastapi import FastAPI
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from typing_extensions import Literal
 
@@ -164,6 +165,8 @@ def summarize_and_optimize(payload: UnifiedBudgetModelPayload) -> SummarizeAndOp
     Returns a `SummarizeAndOptimizeResponseModel` with totals, category shares, and suggestion cards.
     """
     model = payload.to_dataclass()
+    if not model.income and not model.expenses:
+        return JSONResponse(status_code=400, content={"error": "empty_model"})
     summary = compute_summary_for_model(model)
     category_shares = compute_category_shares(model)
     suggestions = generate_suggestions(model, summary)
