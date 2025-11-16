@@ -7,8 +7,16 @@ const questions: ClarificationQuestion[] = [
   {
     id: 'q1',
     prompt: 'Test prompt',
-    type: 'text',
-    required: true,
+    components: [
+      {
+        component: 'number_input',
+        fieldId: 'monthly_amount',
+        label: 'Monthly amount',
+        constraints: {
+          minimum: 0,
+        },
+      },
+    ],
   },
 ];
 
@@ -20,15 +28,15 @@ describe('ClarificationForm', () => {
     render(<ClarificationForm questions={questions} onSubmit={handleSubmit} />);
 
     const form = screen.getByRole('form', { name: /clarification/i });
-    const input = within(form).getByLabelText(/Test prompt/i);
+    const input = within(form).getByLabelText(/monthly amount/i);
 
     await act(async () => {
-      await user.type(input, 'This is a response');
+      await user.type(input, '123');
     });
     await act(async () => {
       await user.click(screen.getByRole('button', { name: /send clarifications/i }));
     });
 
-    expect(handleSubmit).toHaveBeenCalledWith([{ questionId: 'q1', value: 'This is a response' }]);
+    expect(handleSubmit).toHaveBeenCalledWith({ monthly_amount: 123 });
   });
 });
