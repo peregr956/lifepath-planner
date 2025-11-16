@@ -1,13 +1,19 @@
 import os
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Sequence
 
 import requests
 import streamlit as st
 
 
-DEFAULT_API_BASE = "http://localhost:8000"
+DEFAULT_API_BASE_CANDIDATES: Sequence[str] = (
+    "http://localhost:8000",
+    "http://127.0.0.1:8000",
+    "http://localhost:8080",
+    "http://127.0.0.1:8080",
+)
 _ENV_API_BASE_KEYS = ("LIFEPATH_API_BASE_URL", "API_BASE_URL", "GATEWAY_BASE_URL")
 _SECRET_API_BASE_KEYS = ("api_base_url", "API_BASE_URL", "gateway_base_url")
+API_REQUEST_TIMEOUT = 30.0
 
 
 def _first_defined(values) -> Optional[str]:
@@ -17,7 +23,18 @@ def _first_defined(values) -> Optional[str]:
     return None
 
 
-def _resolve_api_base() -> str:
+def _normalize_base_url(value: Optional[str]) -> Optional[str]:
+    if not value:
+        return None
+    base = str(value).strip().rstrip("/")
+    if not base:
+        return None
+    if not base.startswith(("http://", "https://")):
+        base = f"http://{base}"
+    return base
+
+
+def _resolve_api_bases() -> List[str]:
     env_base = _first_defined(os.environ.get(name) for name in _ENV_API_BASE_KEYS)
 
     secret_base: Optional[str] = None
@@ -25,20 +42,65 @@ def _resolve_api_base() -> str:
     if secrets_obj is not None and hasattr(secrets_obj, "get"):
         secret_base = _first_defined(secrets_obj.get(key) for key in _SECRET_API_BASE_KEYS)
 
-    base = _first_defined([secret_base, env_base, DEFAULT_API_BASE]) or DEFAULT_API_BASE
-    base = base.rstrip("/")
-    if not base.startswith(("http://", "https://")):
-        base = f"http://{base}"
-    return base
+    manual_base = _normalize_base_url(_first_defined([secret_base, env_base]))
+    if manual_base:
+        return [manual_base]
+
+    bases: List[str] = []
+    for candidate in DEFAULT_API_BASE_CANDIDATES:
+        normalized = _normalize_base_url(candidate)
+        if normalized and normalized not in bases:
+            bases.append(normalized)
+    return bases or [DEFAULT_API_BASE_CANDIDATES[0]]
 
 
-API_BASE = _resolve_api_base()
+API_BASE_CANDIDATES = _resolve_api_bases()
+_ACTIVE_API_BASE = API_BASE_CANDIDATES[0]
+
+
+def get_active_api_base() -> str:
+    try:
+        return st.session_state.get("api_base", _ACTIVE_API_BASE)
+    except RuntimeError:
+        return _ACTIVE_API_BASE
+
+
+def _set_active_api_base(base: str) -> None:
+    global _ACTIVE_API_BASE
+    _ACTIVE_API_BASE = base
+    try:
+        st.session_state["api_base"] = base
+    except RuntimeError:
+        pass
+
+
+def _backend_request(method: str, path: str, **kwargs) -> requests.Response:
+    normalized_path = path if path.startswith("/") else f"/{path}"
+    request_kwargs = dict(kwargs)
+    timeout = request_kwargs.pop("timeout", API_REQUEST_TIMEOUT)
+    last_exc: Optional[requests.RequestException] = None
+
+    for base in API_BASE_CANDIDATES:
+        url = f"{base}{normalized_path}"
+        try:
+            response = requests.request(method, url, timeout=timeout, **request_kwargs)
+        except requests.RequestException as exc:
+            last_exc = exc
+            continue
+        _set_active_api_base(base)
+        return response
+
+    raise last_exc or requests.ConnectionError(
+        f"Unable to reach backend via {', '.join(API_BASE_CANDIDATES)}"
+    )
 
 
 def show_backend_unreachable_error() -> None:
+    attempted = ", ".join(API_BASE_CANDIDATES)
     st.error(
-        f"Unable to reach the backend service at {API_BASE}. "
-        "Ensure the API gateway is running and reachable from this Streamlit app."
+        f"Unable to reach the backend service at {get_active_api_base()}. "
+        f"Tried: {attempted}. Ensure the API gateway is running and reachable from this Streamlit app, "
+        "or set LIFEPATH_API_BASE_URL / API_BASE_URL to the correct host."
     )
 
 
@@ -67,6 +129,7 @@ def init_session_state() -> None:
         "summary_loaded_for": None,  # type: Optional[str]
         "category_shares": None,  # type: Optional[Dict[str, Any]]
         "suggestions": [],  # type: List[Dict[str, Any]]
+        "api_base": _ACTIVE_API_BASE,
     }
 
     for key, value in defaults.items():
@@ -101,7 +164,7 @@ def render_step1() -> None:
             )
         }
         try:
-            response = requests.post(f"{API_BASE}/upload-budget", files=files)
+            response = _backend_request("post", "/upload-budget", files=files)
         except requests.RequestException:
             show_backend_unreachable_error()
             return
@@ -149,8 +212,9 @@ def render_step2() -> None:
 
     if st.session_state.get("questions_loaded_for") != budget_id:
         try:
-            response = requests.get(
-                f"{API_BASE}/clarification-questions",
+            response = _backend_request(
+                "get",
+                "/clarification-questions",
                 params={"budget_id": budget_id},
             )
         except requests.RequestException:
@@ -225,8 +289,9 @@ def render_step2() -> None:
 
     if submitted:
         try:
-            response = requests.post(
-                f"{API_BASE}/submit-answers",
+            response = _backend_request(
+                "post",
+                "/submit-answers",
                 json={
                     "budget_id": budget_id,
                     "answers": answers,
@@ -258,8 +323,9 @@ def render_step3() -> None:
         or st.session_state.get("summary_loaded_for") != budget_id
     ):
         try:
-            response = requests.get(
-                f"{API_BASE}/summary-and-suggestions",
+            response = _backend_request(
+                "get",
+                "/summary-and-suggestions",
                 params={"budget_id": budget_id},
             )
         except requests.RequestException:
@@ -353,7 +419,7 @@ def main() -> None:
     st.title("LifePath Planner (MVP)")
 
     step = st.session_state.get("step", 1)
-    st.caption(f"Step {step} of 3 · API base: {API_BASE}")
+    st.caption(f"Step {step} of 3 · API base: {get_active_api_base()}")
 
     if step == 1:
         render_step1()
