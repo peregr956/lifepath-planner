@@ -1,18 +1,28 @@
 import os
-from typing import Any, Dict, List, Optional, Sequence
+import re
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 import requests
 import streamlit as st
 
 
-DEFAULT_API_BASE_CANDIDATES: Sequence[str] = (
-    "http://localhost:8000",
-    "http://127.0.0.1:8000",
-    "http://localhost:8080",
-    "http://127.0.0.1:8080",
+DEFAULT_HOST_PORTS: Tuple[Tuple[str, int], ...] = (
+    ("localhost", 8000),
+    ("127.0.0.1", 8000),
+    ("localhost", 8080),
+    ("127.0.0.1", 8080),
+    ("host.docker.internal", 8000),
+    ("host.docker.internal", 8080),
+    ("api-gateway", 8000),
+    ("api-gateway", 8080),
+)
+DEFAULT_API_BASE_CANDIDATES: Sequence[str] = tuple(
+    f"http://{host}:{port}" for host, port in DEFAULT_HOST_PORTS
 )
 _ENV_API_BASE_KEYS = ("LIFEPATH_API_BASE_URL", "API_BASE_URL", "GATEWAY_BASE_URL")
 _SECRET_API_BASE_KEYS = ("api_base_url", "API_BASE_URL", "gateway_base_url")
+_ENV_CANDIDATE_KEYS = ("LIFEPATH_API_BASE_CANDIDATES", "API_BASE_CANDIDATES")
+_SECRET_CANDIDATE_KEYS = ("api_base_candidates", "API_BASE_CANDIDATES")
 API_REQUEST_TIMEOUT = 30.0
 
 
@@ -34,6 +44,23 @@ def _normalize_base_url(value: Optional[str]) -> Optional[str]:
     return base
 
 
+def _coerce_candidate_values(raw_value: Any) -> List[str]:
+    if raw_value is None:
+        return []
+
+    if isinstance(raw_value, (list, tuple, set)):
+        raw_items = [str(item) for item in raw_value]
+    else:
+        raw_items = re.split(r"[,\\s]+", str(raw_value))
+
+    candidates: List[str] = []
+    for item in raw_items:
+        normalized = _normalize_base_url(item)
+        if normalized and normalized not in candidates:
+            candidates.append(normalized)
+    return candidates
+
+
 def _resolve_api_bases() -> List[str]:
     env_base = _first_defined(os.environ.get(name) for name in _ENV_API_BASE_KEYS)
 
@@ -43,18 +70,28 @@ def _resolve_api_bases() -> List[str]:
         secret_base = _first_defined(secrets_obj.get(key) for key in _SECRET_API_BASE_KEYS)
 
     manual_base = _normalize_base_url(_first_defined([secret_base, env_base]))
-    if manual_base:
-        return [manual_base]
+
+    env_candidate_value = _first_defined(os.environ.get(name) for name in _ENV_CANDIDATE_KEYS)
+    secret_candidate_value = None
+    if secrets_obj is not None and hasattr(secrets_obj, "get"):
+        secret_candidate_value = _first_defined(secrets_obj.get(key) for key in _SECRET_CANDIDATE_KEYS)
+
+    resolved_candidates: List[str] = []
+    resolved_candidates.extend(_coerce_candidate_values(secret_candidate_value))
+    resolved_candidates.extend(_coerce_candidate_values(env_candidate_value))
 
     bases: List[str] = []
-    for candidate in DEFAULT_API_BASE_CANDIDATES:
+    if manual_base:
+        bases.append(manual_base)
+
+    for candidate in [*resolved_candidates, *DEFAULT_API_BASE_CANDIDATES]:
         normalized = _normalize_base_url(candidate)
         if normalized and normalized not in bases:
             bases.append(normalized)
     return bases or [DEFAULT_API_BASE_CANDIDATES[0]]
 
 
-API_BASE_CANDIDATES = _resolve_api_bases()
+API_BASE_CANDIDATES = list(_resolve_api_bases())
 _ACTIVE_API_BASE = API_BASE_CANDIDATES[0]
 
 
@@ -63,6 +100,17 @@ def get_active_api_base() -> str:
         return st.session_state.get("api_base", _ACTIVE_API_BASE)
     except RuntimeError:
         return _ACTIVE_API_BASE
+
+
+def get_api_base_candidates() -> List[str]:
+    try:
+        candidates = st.session_state.get("api_base_candidates")
+    except RuntimeError:
+        candidates = None
+
+    if candidates:
+        return list(candidates)
+    return list(API_BASE_CANDIDATES)
 
 
 def _set_active_api_base(base: str) -> None:
@@ -74,13 +122,76 @@ def _set_active_api_base(base: str) -> None:
         pass
 
 
+def _set_api_base_candidates(candidates: Sequence[str]) -> None:
+    normalized_candidates: List[str] = []
+    for candidate in candidates:
+        normalized = _normalize_base_url(candidate)
+        if normalized and normalized not in normalized_candidates:
+            normalized_candidates.append(normalized)
+
+    if not normalized_candidates:
+        normalized_candidates = list(API_BASE_CANDIDATES)
+
+    try:
+        st.session_state["api_base_candidates"] = normalized_candidates
+    except RuntimeError:
+        pass
+
+
+def _add_api_base_candidate(base: str) -> None:
+    candidates = get_api_base_candidates()
+    updated = [base] + [candidate for candidate in candidates if candidate != base]
+    _set_api_base_candidates(updated)
+    _set_active_api_base(base)
+
+
+def render_backend_selector() -> None:
+    st.sidebar.header("Backend connection")
+
+    candidates = get_api_base_candidates()
+    active_base = get_active_api_base()
+
+    if active_base not in candidates:
+        _add_api_base_candidate(active_base)
+        candidates = get_api_base_candidates()
+
+    try:
+        selected_index = candidates.index(active_base)
+    except ValueError:
+        selected_index = 0
+
+    selected_base = st.sidebar.selectbox(
+        "Known gateways",
+        candidates,
+        index=selected_index,
+        key="api_base_known_selector",
+        help="Choose which backend/API gateway this UI should call.",
+    )
+
+    if selected_base != active_base:
+        _set_active_api_base(selected_base)
+
+    custom_url = st.sidebar.text_input(
+        "Add custom gateway URL",
+        key="api_base_custom_input",
+        placeholder="http://host.docker.internal:8000",
+    )
+    if st.sidebar.button("Use custom gateway", key="api_base_custom_button"):
+        normalized = _normalize_base_url(custom_url)
+        if not normalized:
+            st.sidebar.error("Enter a valid http:// or https:// URL.")
+        else:
+            _add_api_base_candidate(normalized)
+            st.sidebar.success(f"Active backend updated to {normalized}")
+
+
 def _backend_request(method: str, path: str, **kwargs) -> requests.Response:
     normalized_path = path if path.startswith("/") else f"/{path}"
     request_kwargs = dict(kwargs)
     timeout = request_kwargs.pop("timeout", API_REQUEST_TIMEOUT)
     last_exc: Optional[requests.RequestException] = None
 
-    for base in API_BASE_CANDIDATES:
+    for base in get_api_base_candidates():
         url = f"{base}{normalized_path}"
         try:
             response = requests.request(method, url, timeout=timeout, **request_kwargs)
@@ -90,13 +201,12 @@ def _backend_request(method: str, path: str, **kwargs) -> requests.Response:
         _set_active_api_base(base)
         return response
 
-    raise last_exc or requests.ConnectionError(
-        f"Unable to reach backend via {', '.join(API_BASE_CANDIDATES)}"
-    )
+    candidates = ", ".join(get_api_base_candidates())
+    raise last_exc or requests.ConnectionError(f"Unable to reach backend via {candidates}")
 
 
 def show_backend_unreachable_error() -> None:
-    attempted = ", ".join(API_BASE_CANDIDATES)
+    attempted = ", ".join(get_api_base_candidates())
     st.error(
         f"Unable to reach the backend service at {get_active_api_base()}. "
         f"Tried: {attempted}. Ensure the API gateway is running and reachable from this Streamlit app, "
@@ -130,6 +240,7 @@ def init_session_state() -> None:
         "category_shares": None,  # type: Optional[Dict[str, Any]]
         "suggestions": [],  # type: List[Dict[str, Any]]
         "api_base": _ACTIVE_API_BASE,
+        "api_base_candidates": list(API_BASE_CANDIDATES),
     }
 
     for key, value in defaults.items():
@@ -416,6 +527,7 @@ def render_step3() -> None:
 
 def main() -> None:
     init_session_state()
+    render_backend_selector()
     st.title("LifePath Planner (MVP)")
 
     step = st.session_state.get("step", 1)
