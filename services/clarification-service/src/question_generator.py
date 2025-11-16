@@ -111,8 +111,8 @@ def _build_income_clarification_question(income_entries: Sequence["Income"]) -> 
         return None
 
     primary_income = max(income_entries, key=lambda entry: entry.monthly_amount)
-    assumed_type = primary_income.type in {"earned", "transfer"}
-    assumed_stability = primary_income.stability in {"stable", "seasonal"}
+    assumed_type = primary_income.type == "earned"
+    assumed_stability = primary_income.stability == "stable"
 
     if not (assumed_type or assumed_stability):
         return None
