@@ -2,48 +2,70 @@ import type { BudgetSummary } from '@/types';
 
 type Props = {
   summary: BudgetSummary;
+  categoryShares?: Record<string, number>;
 };
 
-export function SummaryView({ summary }: Props) {
+const currency = new Intl.NumberFormat('en-US', {
+  style: 'currency',
+  currency: 'USD',
+  maximumFractionDigits: 0,
+});
+
+const percentage = new Intl.NumberFormat('en-US', {
+  style: 'percent',
+  maximumFractionDigits: 1,
+});
+
+export function SummaryView({ summary, categoryShares = {} }: Props) {
+  const cards = [
+    { label: 'Total income', value: summary.totalIncome },
+    { label: 'Total expenses', value: summary.totalExpenses },
+    { label: 'Surplus', value: summary.surplus },
+  ];
+
+  const categories = Object.entries(categoryShares);
+
   return (
-    <div className="card flex flex-col gap-4">
+    <div className="card flex flex-col gap-6">
       <div>
-        <h2 className="text-xl font-semibold text-white">Budget Summary</h2>
-        <p className="text-xs text-white/60">Generated {new Date(summary.generatedAt).toLocaleString()}</p>
+        <h2 className="text-xl font-semibold text-white">Budget summary</h2>
+        <p className="text-xs text-white/60">
+          Deterministic totals computed by the optimization service.
+        </p>
       </div>
 
-      <div className="overflow-x-auto">
-        <table className="min-w-full divide-y divide-white/10 text-sm">
-          <thead>
-            <tr className="text-left text-white/70">
-              <th className="px-0 py-2 font-medium">Category</th>
-              <th className="px-0 py-2 font-medium">Allocated</th>
-              <th className="px-0 py-2 font-medium">Spent</th>
-              <th className="px-0 py-2 font-medium">Δ</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-white/5">
-            {summary.categories.map((category) => {
-              const delta = category.allocated - category.spent;
-              const isOver = delta < 0;
-              return (
-                <tr key={category.name}>
-                  <td className="px-0 py-2 font-semibold text-white">{category.name}</td>
-                  <td className="px-0 py-2 text-white/80">${category.allocated.toLocaleString()}</td>
-                  <td className="px-0 py-2 text-white/80">${category.spent.toLocaleString()}</td>
-                  <td
-                    className={`px-0 py-2 font-semibold ${
-                      isOver ? 'text-rose-300' : 'text-emerald-300'
-                    }`}
-                  >
-                    {isOver ? '+' : '-'}${Math.abs(delta).toLocaleString()}
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
+      <div className="grid gap-4 sm:grid-cols-3">
+        {cards.map((card) => (
+          <div key={card.label} className="rounded-lg border border-white/10 bg-white/5 p-4">
+            <p className="text-xs uppercase tracking-wide text-white/60">{card.label}</p>
+            <p className="text-2xl font-semibold text-white">{currency.format(card.value)}</p>
+          </div>
+        ))}
       </div>
+
+      {categories.length > 0 && (
+        <div>
+          <p className="text-sm font-semibold text-white">Category share of expenses</p>
+          <div className="mt-2 overflow-x-auto">
+            <table className="min-w-full divide-y divide-white/10 text-sm">
+              <thead>
+                <tr className="text-left text-white/70">
+                  <th className="px-0 py-2 font-medium">Category</th>
+                  <th className="px-0 py-2 font-medium">Share</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-white/10">
+                {categories.map(([category, share]) => (
+                  <tr key={category}>
+                    <td className="px-0 py-2 font-medium text-white">{category}</td>
+                    <td className="px-0 py-2 text-white/80">{percentage.format(share)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
