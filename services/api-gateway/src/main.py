@@ -21,6 +21,7 @@ def health_check() -> dict:
 
 INGESTION_BASE = "http://localhost:8001"
 CLARIFICATION_BASE = "http://localhost:8002"
+OPTIMIZATION_BASE = "http://localhost:8003"
 
 
 @app.post("/upload-budget")
@@ -161,4 +162,40 @@ async def submit_answers(payload: SubmitAnswersPayload) -> Dict[str, Any]:
     return {
         "budget_id": payload.budget_id,
         "status": "ready_for_summary",
+    }
+
+
+@app.get("/summary-and-suggestions")
+async def summary_and_suggestions(budget_id: str) -> Dict[str, Any]:
+    """
+    Sends the finalized budget model to the optimization service for summaries and suggestions.
+    """
+    budget_session = budgets.get(budget_id)
+    if not budget_session:
+        raise HTTPException(status_code=404, detail="Budget session not found.")
+
+    final_model = budget_session.get("final")
+    if final_model is None:
+        raise HTTPException(
+            status_code=400,
+            detail="Budget answers are incomplete; please finish clarification first.",
+        )
+
+    # TODO: propagate user context, auth, and tracing headers downstream.
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            optimization_response = await client.post(
+                f"{OPTIMIZATION_BASE}/summarize-and-optimize", json=final_model
+            )
+            optimization_response.raise_for_status()
+    except httpx.HTTPError as exc:
+        raise HTTPException(status_code=502, detail="Optimization service is unavailable.") from exc
+
+    optimization_data: Dict[str, Any] = optimization_response.json()
+
+    return {
+        "budget_id": budget_id,
+        "summary": optimization_data.get("summary"),
+        "category_shares": optimization_data.get("category_shares"),
+        "suggestions": optimization_data.get("suggestions"),
     }
