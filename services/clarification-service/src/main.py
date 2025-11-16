@@ -91,6 +91,15 @@ class IncomeModel(BaseModel):
             stability=income.stability,
         )
 
+    def to_dataclass(self) -> Income:
+        return Income(
+            id=self.id,
+            name=self.name,
+            monthly_amount=self.monthly_amount,
+            type=self.type,
+            stability=self.stability,
+        )
+
 
 class ExpenseModel(BaseModel):
     id: str
@@ -109,6 +118,15 @@ class ExpenseModel(BaseModel):
             notes=expense.notes,
         )
 
+    def to_dataclass(self) -> Expense:
+        return Expense(
+            id=self.id,
+            category=self.category,
+            monthly_amount=self.monthly_amount,
+            essential=self.essential,  # type: ignore[arg-type]
+            notes=self.notes,
+        )
+
 
 class RateChangeModel(BaseModel):
     date: str
@@ -117,6 +135,9 @@ class RateChangeModel(BaseModel):
     @classmethod
     def from_dataclass(cls, change: RateChange) -> "RateChangeModel":
         return cls(date=change.date, new_rate=change.new_rate)
+
+    def to_dataclass(self) -> RateChange:
+        return RateChange(date=self.date, new_rate=self.new_rate)
 
 
 class DebtModel(BaseModel):
@@ -145,6 +166,21 @@ class DebtModel(BaseModel):
             rate_changes=rate_changes,
         )
 
+    def to_dataclass(self) -> Debt:
+        rate_changes = None
+        if self.rate_changes:
+            rate_changes = [change.to_dataclass() for change in self.rate_changes]
+        return Debt(
+            id=self.id,
+            name=self.name,
+            balance=self.balance,
+            interest_rate=self.interest_rate,
+            min_payment=self.min_payment,
+            priority=self.priority,
+            approximate=self.approximate,
+            rate_changes=rate_changes,
+        )
+
 
 class PreferencesModel(BaseModel):
     optimization_focus: Literal["debt", "savings", "balanced"]
@@ -159,6 +195,13 @@ class PreferencesModel(BaseModel):
             max_desired_change_per_category=preferences.max_desired_change_per_category,
         )
 
+    def to_dataclass(self) -> Preferences:
+        return Preferences(
+            optimization_focus=self.optimization_focus,
+            protect_essentials=self.protect_essentials,
+            max_desired_change_per_category=self.max_desired_change_per_category,
+        )
+
 
 class SummaryModel(BaseModel):
     total_income: float
@@ -171,6 +214,13 @@ class SummaryModel(BaseModel):
             total_income=summary.total_income,
             total_expenses=summary.total_expenses,
             surplus=summary.surplus,
+        )
+
+    def to_dataclass(self) -> Summary:
+        return Summary(
+            total_income=self.total_income,
+            total_expenses=self.total_expenses,
+            surplus=self.surplus,
         )
 
 
@@ -191,11 +241,35 @@ class UnifiedBudgetResponseModel(BaseModel):
             summary=SummaryModel.from_dataclass(model.summary),
         )
 
+    def to_dataclass(self) -> UnifiedBudgetModel:
+        return UnifiedBudgetModel(
+            income=[income.to_dataclass() for income in self.income],
+            expenses=[expense.to_dataclass() for expense in self.expenses],
+            debts=[debt.to_dataclass() for debt in self.debts],
+            preferences=self.preferences.to_dataclass(),
+            summary=self.summary.to_dataclass(),
+        )
+
 
 class NormalizationResponseModel(BaseModel):
     unified_model: UnifiedBudgetResponseModel
     clarification_questions: List[str]
     ui_schema: Dict[str, Any]
+
+
+class ClarifyResponseModel(BaseModel):
+    needs_clarification: bool
+    questions: List[str]
+    partial_model: UnifiedBudgetResponseModel
+
+
+class ApplyAnswersPayload(BaseModel):
+    partial_model: UnifiedBudgetResponseModel
+    answers: Dict[str, Any] = Field(default_factory=dict)
+
+
+class ApplyAnswersResponseModel(BaseModel):
+    partial_model: UnifiedBudgetResponseModel
 
 
 @app.get("/health")
@@ -226,3 +300,39 @@ def normalize_budget(payload: DraftBudgetPayload) -> NormalizationResponseModel:
         clarification_questions=questions,
         ui_schema=ui_schema,
     )
+
+
+@app.post(
+    "/clarify",
+    response_model=ClarifyResponseModel,
+    response_model_exclude_none=True,
+)
+def clarify_budget(payload: DraftBudgetPayload) -> ClarifyResponseModel:
+    """
+    Produce a placeholder clarification response with the deterministic partial
+    model. Follow-up AI logic will eventually populate real questions.
+    """
+
+    draft_model = payload.to_dataclass()
+    unified_model = draft_to_initial_unified(draft_model)
+
+    return ClarifyResponseModel(
+        needs_clarification=True,
+        questions=[],  # TODO(ai-questioning): Populate deterministic or LLM-driven questions.
+        partial_model=UnifiedBudgetResponseModel.from_dataclass(unified_model),
+    )
+
+
+@app.post(
+    "/apply-answers",
+    response_model=ApplyAnswersResponseModel,
+    response_model_exclude_none=True,
+)
+def apply_answers(payload: ApplyAnswersPayload) -> ApplyAnswersResponseModel:
+    """
+    Apply user-provided answers to the partial model. Placeholder implementation
+    returns the model unchanged until transformation rules are defined.
+    """
+
+    # TODO(ai-answer-application): Merge answers into the UnifiedBudgetModel (e.g., mark essentials, add debts).
+    return ApplyAnswersResponseModel(partial_model=payload.partial_model)
