@@ -44,7 +44,7 @@ app = FastAPI(title="Clarification Service")
 
 class RawBudgetLinePayload(BaseModel):
     source_row_index: int
-    date: Optional[date]
+    date: Optional[date] = None
     category_label: str
     description: Optional[str]
     amount: float
