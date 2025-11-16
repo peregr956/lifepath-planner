@@ -1,5 +1,6 @@
 'use client';
 
+import { Controller, useForm } from 'react-hook-form';
 import { useEffect, useMemo, useState } from 'react';
 import type {
   ClarificationAnswerValue,
@@ -8,6 +9,8 @@ import type {
   ClarificationQuestion,
 } from '@/types';
 import { FieldRenderer } from '@/utils/renderField';
+
+type FormValues = Record<string, ClarificationAnswerValue | undefined>;
 
 type Props = {
   questions: ClarificationQuestion[];
@@ -22,75 +25,44 @@ export function ClarificationForm({
   disabled = false,
   onSubmit,
 }: Props) {
-  const [values, setValues] = useState<ClarificationAnswers>({});
-  const [status, setStatus] = useState<'idle' | 'submitting' | 'success'>('idle');
-  const [error, setError] = useState<string | null>(null);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+  const [wasSuccessful, setWasSuccessful] = useState(false);
+
+  const defaultValues = useMemo<FormValues>(() => deriveDefaultValues(questions), [questions]);
+
+  const {
+    control,
+    handleSubmit,
+    reset,
+    formState: { isSubmitting, isDirty },
+  } = useForm<FormValues>({
+    defaultValues,
+  });
 
   useEffect(() => {
-    setValues((prev) => {
-      const next = { ...prev };
-      questions.forEach((question) => {
-        question.components.forEach((component) => {
-          if (next[component.fieldId] !== undefined) {
-            return;
-          }
-          const defaultValue = deriveDefaultValue(component);
-          if (defaultValue !== undefined) {
-            next[component.fieldId] = defaultValue;
-          }
-        });
-      });
-      return next;
-    });
-  }, [questions]);
+    reset(defaultValues);
+  }, [defaultValues, reset]);
 
-  const preparedAnswers = useMemo<ClarificationAnswers>(() => {
-    const next: ClarificationAnswers = {};
-    Object.entries(values).forEach(([fieldId, value]) => {
-      if (value !== undefined) {
-        next[fieldId] = value;
-      }
-    });
-    return next;
-  }, [values]);
-
-  async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setStatus('submitting');
-    setError(null);
+  const handleFormSubmit = handleSubmit(async (values) => {
+    const answers = prepareAnswers(values);
+    setSubmitError(null);
+    setWasSuccessful(false);
     try {
-      await onSubmit?.(preparedAnswers);
-      setStatus('success');
+      await onSubmit?.(answers);
+      setWasSuccessful(true);
     } catch (submissionError) {
-      setError(
+      setSubmitError(
         submissionError instanceof Error ? submissionError.message : 'Unable to submit right now.'
       );
-      setStatus('idle');
     }
-  }
+  });
 
-  function handleChange(fieldId: string, value: ClarificationAnswerValue | undefined) {
-    setValues((prev) => {
-      if (value === undefined) {
-        if (!(fieldId in prev)) {
-          return prev;
-        }
-        const next = { ...prev };
-        delete next[fieldId];
-        return next;
-      }
-      return {
-        ...prev,
-        [fieldId]: value,
-      };
-    });
-    setStatus('idle');
-  }
-
+  const inputsDisabled = disabled || !needsClarification || isSubmitting;
   const noQuestionsAvailable = !needsClarification || questions.length === 0;
+  const showSuccess = wasSuccessful && !isDirty;
 
   return (
-    <form onSubmit={handleSubmit} className="card flex flex-col gap-6" aria-label="clarification form">
+    <form onSubmit={handleFormSubmit} className="card flex flex-col gap-6" aria-label="clarification form">
       <div>
         <h2 className="text-xl font-semibold text-white">Clarifications</h2>
         <p className="mt-1 text-sm text-white/70">
@@ -105,7 +77,10 @@ export function ClarificationForm({
       ) : (
         <div className="flex flex-col gap-5">
           {questions.map((question) => (
-            <div key={question.id} className="flex flex-col gap-4 rounded-xl border border-white/10 bg-white/5 p-4 text-sm text-white">
+            <div
+              key={question.id}
+              className="flex flex-col gap-4 rounded-xl border border-white/10 bg-white/5 p-4 text-sm text-white"
+            >
               <div>
                 <p className="font-medium">{question.prompt}</p>
                 {question.description && (
@@ -119,10 +94,20 @@ export function ClarificationForm({
                     <span className="text-xs font-semibold uppercase tracking-wide text-white/70">
                       {component.label}
                     </span>
-                    <FieldRenderer
-                      component={component}
-                      value={values[component.fieldId]}
-                      onChange={(value) => handleChange(component.fieldId, value)}
+                    <Controller
+                      name={component.fieldId}
+                      control={control}
+                      render={({ field }) => (
+                        <FieldRenderer
+                          component={component}
+                          value={field.value}
+                          disabled={inputsDisabled}
+                          onChange={(next) => {
+                            field.onChange(next);
+                            setWasSuccessful(false);
+                          }}
+                        />
+                      )}
                     />
                   </label>
                 ))}
@@ -132,8 +117,10 @@ export function ClarificationForm({
         </div>
       )}
 
-      {error && <p className="rounded bg-red-500/20 px-3 py-2 text-sm text-red-100">{error}</p>}
-      {status === 'success' && (
+      {submitError && (
+        <p className="rounded bg-red-500/20 px-3 py-2 text-sm text-red-100">{submitError}</p>
+      )}
+      {showSuccess && (
         <p className="rounded bg-emerald-500/20 px-3 py-2 text-sm text-emerald-100">
           Clarifications queued successfully.
         </p>
@@ -143,16 +130,39 @@ export function ClarificationForm({
         <button
           type="submit"
           className="inline-flex items-center justify-center rounded-lg bg-indigo-500 px-4 py-2 text-sm font-semibold text-white transition hover:bg-indigo-400 disabled:cursor-not-allowed disabled:bg-white/30"
-          disabled={status === 'submitting' || noQuestionsAvailable || disabled}
+          disabled={inputsDisabled || noQuestionsAvailable}
         >
-          {status === 'submitting' ? 'Submitting…' : 'Send clarifications'}
+          {isSubmitting ? 'Submitting…' : 'Send clarifications'}
         </button>
       </div>
     </form>
   );
 }
 
-function deriveDefaultValue(component: ClarificationComponentDescriptor): ClarificationAnswerValue | undefined {
+function deriveDefaultValues(questions: ClarificationQuestion[]): FormValues {
+  const defaults: FormValues = {};
+  questions.forEach((question) => {
+    question.components.forEach((component) => {
+      const defaultValue = deriveDefaultValue(component);
+      defaults[component.fieldId] = defaultValue;
+    });
+  });
+  return defaults;
+}
+
+function prepareAnswers(values: FormValues): ClarificationAnswers {
+  const answers: ClarificationAnswers = {};
+  Object.entries(values).forEach(([fieldId, value]) => {
+    if (value !== undefined) {
+      answers[fieldId] = value;
+    }
+  });
+  return answers;
+}
+
+function deriveDefaultValue(
+  component: ClarificationComponentDescriptor
+): ClarificationAnswerValue | undefined {
   switch (component.component) {
     case 'number_input':
     case 'slider':
