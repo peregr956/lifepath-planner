@@ -1,9 +1,6 @@
 from __future__ import annotations
 
-"""
-Lightweight heuristics that highlight the most obvious clarification questions
-before the AI reasoning layer applies more nuanced logic.
-"""
+"""Placeholder question generation module for clarification service."""
 
 from typing import List, TYPE_CHECKING
 
@@ -13,32 +10,9 @@ if TYPE_CHECKING:  # pragma: no cover
 
 def generate_clarification_questions(model: "UnifiedBudgetModel") -> List[str]:
     """
-    Generate deterministic clarification prompts based on obvious gaps in the
-    normalized budget. This acts as the seed set for the future AI layer.
+    Temporary stub that will be replaced with deterministic + AI-driven
+    question selection once the normalization backbone is finalized.
     """
 
-    questions: List[str] = []
-
-    for expense in model.expenses:
-        if expense.essential is None:
-            questions.append(
-                f"Is the '{expense.category}' expense essential every month, or could it be adjusted if needed?"
-            )
-
-    if not model.income:
-        questions.append(
-            "We did not detect any income entries. Can you share your primary income sources and their monthly amounts?"
-        )
-
-    if not model.expenses:
-        questions.append(
-            "We did not detect any expenses. Could you outline your recurring bills and key spending categories?"
-        )
-
-    if model.summary.surplus < 0:
-        questions.append(
-            "Your expenses exceed your income. Are there irregular costs, debts, or missing income sources we should capture?"
-        )
-
-    # TODO(ai-questioning): Replace heuristic prompts with LLM-generated follow-ups once context is richer.
-    return questions
+    # TODO(ai-questioning): Implement question generation using deterministic heuristics + AI refinements.
+    return []
