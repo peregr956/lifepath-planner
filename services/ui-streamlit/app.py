@@ -24,6 +24,48 @@ def init_session_state() -> None:
 
 def render_step1() -> None:
     st.header("Step 1: Upload Budget")
+    file = st.file_uploader(
+        "Upload your budget (CSV or XLSX)",
+        type=["csv", "xlsx"],
+    )
+
+    if file is not None:
+        if st.button("Upload Budget"):
+            files = {
+                "file": (
+                    file.name,
+                    file.getvalue(),
+                    file.type or "application/octet-stream",
+                )
+            }
+            try:
+                response = requests.post(f"{API_BASE}/upload-budget", files=files)
+                response.raise_for_status()
+            except requests.RequestException as exc:
+                st.error(f"Upload failed: {exc}")
+            else:
+                data = response.json()
+                budget_id = data.get("budget_id")
+                detected_format = data.get("detected_format")
+                summary_preview = data.get("summary_preview")
+
+                if budget_id:
+                    st.session_state["budget_id"] = budget_id
+                    st.write(f"Detected format: {detected_format}")
+                    st.write("Summary preview:")
+                    st.write(summary_preview)
+                else:
+                    st.error("Upload response missing budget_id.")
+
+    budget_id = st.session_state.get("budget_id")
+    if budget_id:
+        st.success(f"Budget uploaded: {budget_id}")
+
+    if st.button(
+        "Next: Clarify",
+        disabled=budget_id is None,
+    ):
+        st.session_state["step"] = 2
 
 
 def render_step2() -> None:
