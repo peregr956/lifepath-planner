@@ -5,12 +5,11 @@ import pytest
 
 
 SERVICE_ROOT = Path(__file__).resolve().parents[1]
-SRC_ROOT = SERVICE_ROOT / "src"
-if str(SRC_ROOT) not in sys.path:
-    sys.path.append(str(SRC_ROOT))
+if str(SERVICE_ROOT) not in sys.path:
+    sys.path.append(str(SERVICE_ROOT))
 
-from budget_model import Expense, Income, Preferences, Summary, UnifiedBudgetModel
-from compute_summary import (
+from src.budget_model import Expense, Income, Preferences, Summary, UnifiedBudgetModel
+from src.compute_summary import (
     attach_summary_to_model,
     compute_category_shares,
     compute_summary_for_model,
