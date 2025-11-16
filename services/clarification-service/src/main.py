@@ -1,3 +1,8 @@
+"""
+Clarification Service transforms raw budget drafts into unified models, follow-up
+questions, and UI schemas so humans and downstream systems can resolve missing data.
+"""
+
 from __future__ import annotations
 
 from datetime import date
@@ -38,8 +43,6 @@ from question_generator import QuestionSpec, generate_clarification_questions
 from ui_schema_builder import build_initial_ui_schema
 
 app = FastAPI(title="Clarification Service")
-
-# Generates targeted follow-up questions and UI schemas to fill gaps in the budget model (per PRD).
 
 
 class RawBudgetLinePayload(BaseModel):
@@ -289,7 +292,10 @@ class ApplyAnswersResponseModel(BaseModel):
 
 @app.get("/health")
 def health_check() -> dict:
-    """Basic health check."""
+    """
+    Report Clarification Service availability; expects no payload.
+    Returns static metadata so monitors and orchestrators can verify uptime.
+    """
     return {"status": "ok", "service": "clarification-service"}
 
 
@@ -300,9 +306,9 @@ def health_check() -> dict:
 )
 def normalize_budget(payload: DraftBudgetPayload) -> NormalizationResponseModel:
     """
-    Convert a draft budget into the baseline UnifiedBudgetModel structure and
-    attach heuristic questions + UI scaffolding. Later stages will replace the
-    heuristics with AI-driven logic.
+    Normalize an ingested draft budget and attach heuristic follow-ups plus UI scaffolding.
+    Expects a `DraftBudgetPayload` produced by the ingestion pipeline.
+    Returns a `NormalizationResponseModel` containing the unified model, clarification questions, and UI schema.
     """
 
     draft_model = payload.to_dataclass()
@@ -325,8 +331,9 @@ def normalize_budget(payload: DraftBudgetPayload) -> NormalizationResponseModel:
 )
 def clarify_budget(payload: DraftBudgetPayload) -> ClarifyResponseModel:
     """
-    Generate deterministic clarification questions and return the partial unified
-    budget model so the frontend can render follow-ups immediately.
+    Generate deterministic clarification questions and return the partial unified model for the UI.
+    Expects a `DraftBudgetPayload` with the latest ingestion output.
+    Returns a `ClarifyResponseModel` including the needs_clarification flag, question specs, and partial model.
     """
 
     draft_model = payload.to_dataclass()
@@ -348,7 +355,9 @@ def clarify_budget(payload: DraftBudgetPayload) -> ClarifyResponseModel:
 )
 def apply_answers(payload: ApplyAnswersPayload) -> ApplyAnswersResponseModel:
     """
-    Apply user-provided answers to the partial model and return the updated structure.
+    Apply user-provided answers to the partial unified model and gauge readiness for summarization.
+    Expects an `ApplyAnswersPayload` containing the serialized partial model and answers map.
+    Returns an `ApplyAnswersResponseModel` with the updated model and a readiness flag.
     """
 
     # TODO(ai-answer-application):
