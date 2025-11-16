@@ -7,6 +7,7 @@ from datetime import date
 from typing import Any, Dict, List, Optional
 
 from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 from typing_extensions import Literal
 
@@ -61,7 +62,7 @@ async def ingest_budget(file: UploadFile = File(...)) -> DraftBudgetResponseMode
     """
     parser_kind = _determine_parser_kind(file)
     if parser_kind is None:
-        raise HTTPException(status_code=400, detail="Only CSV or XLSX uploads are supported.")
+        return JSONResponse(status_code=400, content={"error": "unsupported_file_type"})
 
     file_bytes = await file.read()
     if not file_bytes:
