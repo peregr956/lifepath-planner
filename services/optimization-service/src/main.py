@@ -1,3 +1,8 @@
+"""
+Optimization Service summarizes unified household budgets and emits deterministic
+suggestions that downstream products can display or refine with AI.
+"""
+
 from typing import Dict, List, Optional
 
 from fastapi import FastAPI
@@ -123,16 +128,19 @@ class SummarizeAndOptimizeResponseModel(BaseModel):
 
 @app.get("/health")
 def health_check() -> dict:
-    """Basic health check."""
+    """
+    Report Optimization Service readiness; expects no payload.
+    Returns a static status document for load balancers and uptime checks.
+    """
     return {"status": "ok", "service": "optimization-service"}
 
 
 @app.post("/summarize", response_model=SummarizeResponseModel)
 def summarize_budget(payload: UnifiedBudgetModelPayload) -> SummarizeResponseModel:
     """
-    Deterministically summarize the provided budget without optimization suggestions.
-
-    The endpoint returns total income, expenses, surplus, and category share fractions.
+    Compute deterministic totals and category share fractions without suggestions.
+    Expects a `UnifiedBudgetModelPayload` that represents a fully clarified household budget.
+    Returns a `SummarizeResponseModel` containing income/expense/surplus totals plus category share ratios.
     """
     model = payload.to_dataclass()
     summary = compute_summary_for_model(model)
@@ -151,7 +159,9 @@ def summarize_budget(payload: UnifiedBudgetModelPayload) -> SummarizeResponseMod
 @app.post("/summarize-and-optimize", response_model=SummarizeAndOptimizeResponseModel)
 def summarize_and_optimize(payload: UnifiedBudgetModelPayload) -> SummarizeAndOptimizeResponseModel:
     """
-    Summarize the provided budget and return rule-based optimization suggestions.
+    Summarize the provided budget and emit rule-based optimization suggestions.
+    Expects a `UnifiedBudgetModelPayload` with normalized incomes, expenses, debts, preferences, and summary.
+    Returns a `SummarizeAndOptimizeResponseModel` with totals, category shares, and suggestion cards.
     """
     model = payload.to_dataclass()
     summary = compute_summary_for_model(model)

@@ -1,3 +1,8 @@
+"""
+Budget Ingestion Service accepts budget spreadsheets from the UI and maps them into
+structured DraftBudgetModels so downstream services can reason about consistent data.
+"""
+
 from datetime import date
 from typing import Any, Dict, List, Optional
 
@@ -10,8 +15,6 @@ from parsers.csv_parser import parse_csv_to_draft_model
 from parsers.xlsx_parser import parse_xlsx_to_draft_model
 
 app = FastAPI(title="Budget Ingestion Service")
-
-# Parses uploaded CSV/XLSX budgets into a structured model and detects missing data cues (per PRD).
 
 
 class RawBudgetLineModel(BaseModel):
@@ -42,14 +45,19 @@ XLSX_CONTENT_TYPES = {
 
 @app.get("/health")
 def health_check() -> dict:
-    """Basic health check."""
+    """
+    Report overall service health; expects no payload.
+    Returns a minimal status object for uptime probes and orchestrators.
+    """
     return {"status": "ok", "service": "budget-ingestion-service"}
 
 
 @app.post("/ingest", response_model=DraftBudgetResponseModel, response_model_exclude_none=True)
 async def ingest_budget(file: UploadFile = File(...)) -> DraftBudgetResponseModel:
     """
-    Ingest a CSV or XLSX budget upload and return a DraftBudgetModel representation.
+    Parse an uploaded CSV or XLSX budget file into the canonical DraftBudgetModel schema.
+    Expects a multipart/form-data payload with a single `file` field containing CSV/XLSX bytes.
+    Returns a `DraftBudgetResponseModel` describing the detected format, notes, and normalized lines.
     """
     parser_kind = _determine_parser_kind(file)
     if parser_kind is None:
