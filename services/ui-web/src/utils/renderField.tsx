@@ -6,12 +6,13 @@ type Props = {
   component: ClarificationComponentDescriptor;
   value?: ClarificationAnswerValue;
   onChange: (value: ClarificationAnswerValue | undefined) => void;
+  disabled?: boolean;
 };
 
 const baseInputStyles =
   'w-full rounded-lg border border-white/20 bg-white/5 px-3 py-2 text-sm text-white placeholder:text-white/40 focus:border-indigo-300 focus:outline-none focus:ring-2 focus:ring-indigo-500/40';
 
-export function FieldRenderer({ component, value, onChange }: Props) {
+export function FieldRenderer({ component, value, onChange, disabled }: Props) {
   switch (component.component) {
     case 'number_input': {
       const constraints = component.constraints;
@@ -34,6 +35,7 @@ export function FieldRenderer({ component, value, onChange }: Props) {
             }
             onChange(Number(nextValue));
           }}
+          disabled={disabled}
         />
       );
     }
@@ -48,6 +50,7 @@ export function FieldRenderer({ component, value, onChange }: Props) {
             const nextValue = event.target.value;
             onChange(nextValue.length ? nextValue : undefined);
           }}
+          disabled={disabled}
         >
           <option value="">Select…</option>
           {component.options.map((option) => (
@@ -59,7 +62,8 @@ export function FieldRenderer({ component, value, onChange }: Props) {
       );
     }
     case 'toggle': {
-      const resolvedValue = typeof value === 'boolean' ? value : component.constraints?.default ?? false;
+      const resolvedValue =
+        typeof value === 'boolean' ? value : component.constraints?.default ?? false;
       return (
         <input
           id={component.fieldId}
@@ -67,6 +71,7 @@ export function FieldRenderer({ component, value, onChange }: Props) {
           className="h-4 w-4 rounded border-white/40 bg-white/5 text-indigo-500 focus:ring-2 focus:ring-indigo-400"
           checked={resolvedValue}
           onChange={(event) => onChange(event.target.checked)}
+          disabled={disabled}
         />
       );
     }
@@ -91,6 +96,7 @@ export function FieldRenderer({ component, value, onChange }: Props) {
             value={resolvedValue}
             onChange={(event) => onChange(Number(event.target.value))}
             className="accent-indigo-400"
+            disabled={disabled}
           />
           <div className="flex justify-between text-xs text-white/60">
             <span>

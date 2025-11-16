@@ -1,7 +1,7 @@
 import type { Metadata } from 'next';
 import { Inter } from 'next/font/google';
 import './globals.css';
-import { ApiBaseProvider } from '@/utils/apiClient';
+import { AppProviders } from './providers';
 
 const inter = Inter({
   subsets: ['latin'],
@@ -21,7 +21,7 @@ export default function RootLayout({
   return (
     <html lang="en" className="bg-slate-950">
       <body className={`${inter.className} min-h-screen bg-slate-950 text-slate-100`}>
-        <ApiBaseProvider>{children}</ApiBaseProvider>
+        <AppProviders>{children}</AppProviders>
       </body>
     </html>
   );
