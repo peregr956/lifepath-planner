@@ -14,6 +14,7 @@ from .budget_model import (
     UnifiedBudgetModel,
 )
 from .compute_summary import compute_category_shares, compute_summary_for_model
+from .generate_suggestions import generate_suggestions
 
 app = FastAPI(title="Optimization Service")
 
@@ -62,6 +63,15 @@ class SummaryModel(BaseModel):
     surplus: float
 
 
+class SuggestionModel(BaseModel):
+    id: str
+    title: str
+    description: str
+    expected_monthly_impact: float
+    rationale: str
+    tradeoffs: str
+
+
 class UnifiedBudgetModelPayload(BaseModel):
     income: List[IncomeModel]
     expenses: List[ExpenseModel]
@@ -105,6 +115,12 @@ class SummarizeResponseModel(BaseModel):
     category_shares: Dict[str, float]
 
 
+class SummarizeAndOptimizeResponseModel(BaseModel):
+    summary: SummaryModel
+    category_shares: Dict[str, float]
+    suggestions: List[SuggestionModel]
+
+
 @app.get("/health")
 def health_check() -> dict:
     """Basic health check."""
@@ -129,4 +145,39 @@ def summarize_budget(payload: UnifiedBudgetModelPayload) -> SummarizeResponseMod
             surplus=summary.surplus,
         ),
         category_shares=category_shares,
+    )
+
+
+@app.post("/summarize-and-optimize", response_model=SummarizeAndOptimizeResponseModel)
+def summarize_and_optimize(payload: UnifiedBudgetModelPayload) -> SummarizeAndOptimizeResponseModel:
+    """
+    Summarize the provided budget and return rule-based optimization suggestions.
+    """
+    model = payload.to_dataclass()
+    summary = compute_summary_for_model(model)
+    category_shares = compute_category_shares(model)
+    suggestions = generate_suggestions(model, summary)
+
+    summary_model = SummaryModel(
+        total_income=summary.total_income,
+        total_expenses=summary.total_expenses,
+        surplus=summary.surplus,
+    )
+
+    suggestion_models = [
+        SuggestionModel(
+            id=suggestion.id,
+            title=suggestion.title,
+            description=suggestion.description,
+            expected_monthly_impact=suggestion.expected_monthly_impact,
+            rationale=suggestion.rationale,
+            tradeoffs=suggestion.tradeoffs,
+        )
+        for suggestion in suggestions
+    ]
+
+    return SummarizeAndOptimizeResponseModel(
+        summary=summary_model,
+        category_shares=category_shares,
+        suggestions=suggestion_models,
     )
