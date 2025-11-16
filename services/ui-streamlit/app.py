@@ -1,9 +1,45 @@
-import streamlit as st
+import os
+from typing import Any, Dict, List, Optional
+
 import requests
-from typing import Optional, List, Dict, Any
+import streamlit as st
 
 
-API_BASE = "http://localhost:8080"
+DEFAULT_API_BASE = "http://localhost:8000"
+_ENV_API_BASE_KEYS = ("LIFEPATH_API_BASE_URL", "API_BASE_URL", "GATEWAY_BASE_URL")
+_SECRET_API_BASE_KEYS = ("api_base_url", "API_BASE_URL", "gateway_base_url")
+
+
+def _first_defined(values) -> Optional[str]:
+    for value in values:
+        if value:
+            return str(value).strip()
+    return None
+
+
+def _resolve_api_base() -> str:
+    env_base = _first_defined(os.environ.get(name) for name in _ENV_API_BASE_KEYS)
+
+    secret_base: Optional[str] = None
+    secrets_obj = getattr(st, "secrets", None)
+    if secrets_obj is not None and hasattr(secrets_obj, "get"):
+        secret_base = _first_defined(secrets_obj.get(key) for key in _SECRET_API_BASE_KEYS)
+
+    base = _first_defined([secret_base, env_base, DEFAULT_API_BASE]) or DEFAULT_API_BASE
+    base = base.rstrip("/")
+    if not base.startswith(("http://", "https://")):
+        base = f"http://{base}"
+    return base
+
+
+API_BASE = _resolve_api_base()
+
+
+def show_backend_unreachable_error() -> None:
+    st.error(
+        f"Unable to reach the backend service at {API_BASE}. "
+        "Ensure the API gateway is running and reachable from this Streamlit app."
+    )
 
 
 def show_backend_error(response: requests.Response) -> None:
@@ -67,7 +103,7 @@ def render_step1() -> None:
         try:
             response = requests.post(f"{API_BASE}/upload-budget", files=files)
         except requests.RequestException:
-            st.error("Unable to reach the backend service.")
+            show_backend_unreachable_error()
             return
 
         if response.status_code >= 400:
@@ -118,7 +154,7 @@ def render_step2() -> None:
                 params={"budget_id": budget_id},
             )
         except requests.RequestException:
-            st.error("Unable to reach the backend service.")
+            show_backend_unreachable_error()
             return
 
         if response.status_code >= 400:
@@ -197,7 +233,7 @@ def render_step2() -> None:
                 },
             )
         except requests.RequestException:
-            st.error("Unable to reach the backend service.")
+            show_backend_unreachable_error()
             return
 
         if response.status_code >= 400:
@@ -227,7 +263,7 @@ def render_step3() -> None:
                 params={"budget_id": budget_id},
             )
         except requests.RequestException:
-            st.error("Unable to reach the backend service.")
+            show_backend_unreachable_error()
             return
 
         if response.status_code >= 400:
@@ -317,7 +353,7 @@ def main() -> None:
     st.title("LifePath Planner (MVP)")
 
     step = st.session_state.get("step", 1)
-    st.caption(f"Step {step} of 3")
+    st.caption(f"Step {step} of 3 · API base: {API_BASE}")
 
     if step == 1:
         render_step1()
