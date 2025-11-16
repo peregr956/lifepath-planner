@@ -12,23 +12,20 @@ app = FastAPI(title="API Gateway")
 budgets: Dict[str, Dict[str, Any]] = {}
 # Stores budget sessions keyed by session ID with draft/partial/final states ("draft", "partial", "final").
 
-
-@app.get("/health")
-def health_check() -> dict:
-    """Basic health check."""
-    return {"status": "ok", "service": "api-gateway"}
-
-
 INGESTION_BASE = "http://localhost:8001"
 CLARIFICATION_BASE = "http://localhost:8002"
 OPTIMIZATION_BASE = "http://localhost:8003"
 
 
+@app.get("/health")
+def health_check() -> dict:
+    """Reports API gateway uptime so orchestrators can confirm this entrypoint is available."""
+    return {"status": "ok", "service": "api-gateway"}
+
+
 @app.post("/upload-budget")
 async def upload_budget(file: UploadFile = File(...)) -> Dict[str, Any]:
-    """
-    Accepts a budget file upload and proxies it to the ingestion service, storing the draft result.
-    """
+    """Starts the pipeline by proxying uploads to the ingestion service's /ingest endpoint."""
     if file is None:
         raise HTTPException(status_code=400, detail="File upload is required.")
 
@@ -88,9 +85,7 @@ async def upload_budget(file: UploadFile = File(...)) -> Dict[str, Any]:
 
 @app.get("/clarification-questions")
 async def clarification_questions(budget_id: str) -> Dict[str, Any]:
-    """
-    Forwards the draft budget to the clarification service and stores the resulting partial model.
-    """
+    """Sends stored draft data to clarification service /clarify to generate questions and a partial model."""
     budget_session = budgets.get(budget_id)
     if not budget_session or not budget_session.get("draft"):
         raise HTTPException(status_code=404, detail="Budget session not found.")
@@ -127,9 +122,7 @@ class SubmitAnswersPayload(BaseModel):
 
 @app.post("/submit-answers")
 async def submit_answers(payload: SubmitAnswersPayload) -> Dict[str, Any]:
-    """
-    Applies user answers to the partial model to finalize the unified budget representation.
-    """
+    """Calls clarification service /apply-answers to merge user answers into a final unified model."""
     budget_session = budgets.get(payload.budget_id)
     if not budget_session:
         raise HTTPException(status_code=404, detail="Budget session not found.")
@@ -167,9 +160,7 @@ async def submit_answers(payload: SubmitAnswersPayload) -> Dict[str, Any]:
 
 @app.get("/summary-and-suggestions")
 async def summary_and_suggestions(budget_id: str) -> Dict[str, Any]:
-    """
-    Sends the finalized budget model to the optimization service for summaries and suggestions.
-    """
+    """Finishes the pipeline by calling optimization service /summarize-and-optimize for insights."""
     budget_session = budgets.get(budget_id)
     if not budget_session:
         raise HTTPException(status_code=404, detail="Budget session not found.")
