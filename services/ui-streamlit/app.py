@@ -15,6 +15,7 @@ def init_session_state() -> None:
         "questions_loaded_for": None,  # type: Optional[str]
         "partial_model": None,  # type: Optional[Dict[str, Any]]
         "summary": None,  # type: Optional[Dict[str, Any]]
+        "summary_loaded_for": None,  # type: Optional[str]
         "category_shares": None,  # type: Optional[Dict[str, Any]]
         "suggestions": [],  # type: List[Dict[str, Any]]
     }
@@ -56,6 +57,7 @@ def render_step1() -> None:
                     st.session_state["questions"] = []
                     st.session_state["partial_model"] = None
                     st.session_state["summary"] = None
+                    st.session_state["summary_loaded_for"] = None
                     st.session_state["category_shares"] = None
                     st.session_state["suggestions"] = []
                     st.session_state["needs_clarification"] = True
@@ -177,7 +179,105 @@ def render_step2() -> None:
 
 
 def render_step3() -> None:
-    st.header("Step 3: Review Plan")
+    st.header("Step 3: Summary and Suggestions")
+
+    budget_id = st.session_state.get("budget_id")
+    if not budget_id:
+        st.warning("No budget in session.")
+        if st.button("Back to Step 1"):
+            st.session_state["step"] = 1
+        return
+
+    if (
+        st.session_state.get("summary") is None
+        or st.session_state.get("summary_loaded_for") != budget_id
+    ):
+        try:
+            response = requests.get(
+                f"{API_BASE}/summary-and-suggestions",
+                params={"budget_id": budget_id},
+            )
+            response.raise_for_status()
+        except requests.RequestException as exc:
+            st.error(f"Failed to load summary: {exc}")
+            return
+
+        data = response.json()
+        st.session_state["summary"] = data.get("summary")
+        st.session_state["category_shares"] = data.get("category_shares", {})
+        st.session_state["suggestions"] = data.get("suggestions", [])
+        st.session_state["summary_loaded_for"] = budget_id
+
+    summary = st.session_state.get("summary") or {}
+    category_shares = st.session_state.get("category_shares") or {}
+    suggestions = st.session_state.get("suggestions") or []
+
+    if summary:
+        st.subheader("Budget Summary")
+        total_income = summary.get("total_income")
+        total_expenses = summary.get("total_expenses")
+        surplus = summary.get("surplus")
+
+        metrics = []
+        if total_income is not None:
+            metrics.append(("Total Income", total_income))
+        if total_expenses is not None:
+            metrics.append(("Total Expenses", total_expenses))
+        if surplus is not None:
+            metrics.append(("Surplus", surplus))
+
+        if metrics:
+            cols = st.columns(len(metrics))
+            for col, (label, value) in zip(cols, metrics):
+                col.metric(label, f"${value:,.2f}")
+        else:
+            st.write(summary)
+
+    if category_shares:
+        st.subheader("Spending by Category")
+        category_rows = [
+            {
+                "Category": category,
+                "Share (%)": f"{share * 100:.1f}",
+            }
+            for category, share in category_shares.items()
+        ]
+        st.table(category_rows)
+
+    if suggestions:
+        st.subheader("Suggestions")
+        for suggestion in suggestions:
+            title = suggestion.get("title", "Suggestion")
+            description = suggestion.get("description")
+            impact = suggestion.get("expected_monthly_impact")
+            rationale = suggestion.get("rationale")
+            tradeoffs = suggestion.get("tradeoffs")
+
+            st.markdown(f"**{title}**")
+            if description:
+                st.write(description)
+            if impact is not None:
+                st.write(f"Expected monthly impact: ${impact:,.2f}")
+            if rationale:
+                st.write(f"Rationale: {rationale}")
+            if tradeoffs:
+                st.write(f"Tradeoffs: {tradeoffs}")
+            st.divider()
+
+    if st.button("Start over"):
+        for key, reset_value in {
+            "budget_id": None,
+            "questions": [],
+            "partial_model": None,
+            "summary": None,
+            "summary_loaded_for": None,
+            "category_shares": None,
+            "suggestions": [],
+            "needs_clarification": True,
+            "questions_loaded_for": None,
+        }.items():
+            st.session_state[key] = reset_value
+        st.session_state["step"] = 1
 
 
 def main() -> None:
