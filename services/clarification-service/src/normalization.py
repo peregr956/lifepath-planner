@@ -7,7 +7,7 @@ invoking any AI-driven refinement.
 """
 
 from pathlib import Path
-from typing import Iterable, List, Sequence
+from typing import Any, Dict, Iterable, List, Sequence
 import sys
 
 # Ensure we can import shared dataclasses from sibling services without having
@@ -34,7 +34,15 @@ from budget_model import (  # noqa: E402
     UnifiedBudgetModel,
 )
 
-__all__ = ["draft_to_initial_unified"]
+__all__ = ["draft_to_initial_unified", "apply_answers_to_model"]
+
+ESSENTIAL_PREFIX = "essential_"
+VALID_OPTIMIZATION_FOCUS = {"debt", "savings", "balanced"}
+PRIMARY_INCOME_TYPE_FLAGS = {"net", "gross"}
+PRIMARY_INCOME_STABILITY_VALUES = {"stable", "variable", "seasonal"}
+PRIMARY_INCOME_FLAG_METADATA_KEY = "net_or_gross"
+TRUE_STRINGS = {"true", "1", "yes", "y", "essential", "needed"}
+FALSE_STRINGS = {"false", "0", "no", "n", "nonessential", "flexible"}
 
 
 def draft_to_initial_unified(draft: DraftBudgetModel) -> UnifiedBudgetModel:
@@ -146,4 +154,130 @@ def _deterministic_id(kind: str, line: RawBudgetLine, ordinal: int) -> str:
     if metadata_id:
         return f"{kind}-{metadata_id}"
     return f"{kind}-draft-{line.source_row_index}-{ordinal}"
+
+
+def apply_answers_to_model(model: UnifiedBudgetModel, answers: Dict[str, Any]) -> UnifiedBudgetModel:
+    """
+    Apply structured clarification answers back onto the UnifiedBudgetModel.
+
+    The function mutates the provided model in-place and also returns it so callers
+    can use whichever style they prefer.
+    """
+
+    if not answers:
+        return model
+
+    expense_lookup: Dict[str, Expense] = {expense.id: expense for expense in model.expenses if expense.id}
+    primary_income = model.income[0] if model.income else None
+
+    for field_id, raw_value in answers.items():
+        if not isinstance(field_id, str):
+            continue
+
+        if field_id.startswith(ESSENTIAL_PREFIX):
+            _apply_essential_flag(expense_lookup, field_id, raw_value)
+            continue
+
+        if field_id == "optimization_focus":
+            _apply_optimization_focus(model.preferences, raw_value)
+            continue
+
+        if field_id == "primary_income_type":
+            _apply_primary_income_type(primary_income, raw_value)
+            continue
+
+        if field_id == "primary_income_stability":
+            _apply_primary_income_stability(primary_income, raw_value)
+            continue
+
+        # TODO(answer-mapping): Support additional field_ids as the question catalog grows.
+
+    return model
+
+
+def _apply_essential_flag(expense_lookup: Dict[str, Expense], field_id: str, raw_value: Any) -> None:
+    expense_id = field_id[len(ESSENTIAL_PREFIX) :]
+    if not expense_id:
+        return
+
+    expense = expense_lookup.get(expense_id)
+    if expense is None:
+        return
+
+    essential_value = _coerce_to_bool(raw_value)
+    if essential_value is None:
+        return
+
+    expense.essential = essential_value
+
+
+def _apply_optimization_focus(preferences: Preferences, raw_value: Any) -> None:
+    normalized = _normalize_string(raw_value)
+    if normalized in VALID_OPTIMIZATION_FOCUS:
+        preferences.optimization_focus = normalized  # type: ignore[assignment]
+
+
+def _apply_primary_income_type(primary_income: Income | None, raw_value: Any) -> None:
+    if primary_income is None:
+        return
+
+    normalized = _normalize_string(raw_value)
+    if normalized not in PRIMARY_INCOME_TYPE_FLAGS:
+        return
+
+    # Primary income entries default to "earned" today. We retain that category but
+    # persist the user's clarification for downstream logic once the schema grows.
+    primary_income.type = "earned"
+    metadata = _ensure_metadata_dict(primary_income)
+    metadata[PRIMARY_INCOME_FLAG_METADATA_KEY] = normalized
+
+
+def _apply_primary_income_stability(primary_income: Income | None, raw_value: Any) -> None:
+    if primary_income is None:
+        return
+
+    normalized = _normalize_string(raw_value)
+    if normalized in PRIMARY_INCOME_STABILITY_VALUES:
+        primary_income.stability = normalized  # type: ignore[assignment]
+
+
+def _coerce_to_bool(value: Any) -> bool | None:
+    if isinstance(value, bool):
+        return value
+
+    if isinstance(value, (int, float)):
+        if value == 1:
+            return True
+        if value == 0:
+            return False
+
+    normalized = _normalize_string(value)
+    if normalized in TRUE_STRINGS:
+        return True
+    if normalized in FALSE_STRINGS:
+        return False
+
+    return None
+
+
+def _normalize_string(value: Any) -> str | None:
+    if value is None:
+        return None
+
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        return normalized or None
+
+    normalized = str(value).strip().lower()
+    return normalized or None
+
+
+def _ensure_metadata_dict(entry: Income) -> Dict[str, Any]:
+    metadata = getattr(entry, "metadata", None)
+    if metadata is None:
+        metadata = {}
+    elif not isinstance(metadata, dict):
+        metadata = dict(metadata)
+    setattr(entry, "metadata", metadata)
+    return metadata
 
