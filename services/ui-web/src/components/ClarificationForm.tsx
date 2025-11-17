@@ -1,14 +1,18 @@
 'use client';
 
-import { Controller, useForm } from 'react-hook-form';
 import { useEffect, useMemo, useState } from 'react';
+import { useForm } from 'react-hook-form';
+import type { FieldErrors, Resolver } from 'react-hook-form';
+import { z } from 'zod';
+import { QuestionRenderer } from './QuestionRenderer';
 import type {
   ClarificationAnswerValue,
   ClarificationAnswers,
   ClarificationComponentDescriptor,
+  ClarificationNumberInputDescriptor,
   ClarificationQuestion,
+  ClarificationSliderDescriptor,
 } from '@/types';
-import { FieldRenderer } from '@/utils/renderField';
 
 type FormValues = Record<string, ClarificationAnswerValue | undefined>;
 
@@ -29,6 +33,9 @@ export function ClarificationForm({
   const [wasSuccessful, setWasSuccessful] = useState(false);
 
   const defaultValues = useMemo<FormValues>(() => deriveDefaultValues(questions), [questions]);
+  const fieldLabels = useMemo(() => buildFieldLabelMap(questions), [questions]);
+  const formSchema = useMemo(() => buildClarificationSchema(questions), [questions]);
+  const resolver = useMemo(() => createFormResolver(formSchema, fieldLabels), [fieldLabels, formSchema]);
 
   const {
     control,
@@ -37,11 +44,18 @@ export function ClarificationForm({
     formState: { isSubmitting, isDirty },
   } = useForm<FormValues>({
     defaultValues,
+    resolver,
   });
 
   useEffect(() => {
     reset(defaultValues);
   }, [defaultValues, reset]);
+
+  useEffect(() => {
+    if (wasSuccessful && isDirty) {
+      setWasSuccessful(false);
+    }
+  }, [isDirty, wasSuccessful, setWasSuccessful]);
 
   const handleFormSubmit = handleSubmit(async (values) => {
     const answers = prepareAnswers(values);
@@ -70,52 +84,22 @@ export function ClarificationForm({
         </p>
       </div>
 
-      {noQuestionsAvailable ? (
-        <p className="rounded border border-white/10 bg-white/5 px-3 py-2 text-sm text-white/70">
-          No outstanding questions right now. Upload a budget to generate follow-up prompts.
-        </p>
-      ) : (
-        <div className="flex flex-col gap-5">
-          {questions.map((question) => (
-            <div
-              key={question.id}
-              className="flex flex-col gap-4 rounded-xl border border-white/10 bg-white/5 p-4 text-sm text-white"
-            >
-              <div>
-                <p className="font-medium">{question.prompt}</p>
-                {question.description && (
-                  <p className="mt-1 text-xs text-white/60">{question.description}</p>
-                )}
-              </div>
-
-              <div className="flex flex-col gap-4">
-                {question.components.map((component) => (
-                  <label key={component.fieldId} className="flex flex-col gap-2">
-                    <span className="text-xs font-semibold uppercase tracking-wide text-white/70">
-                      {component.label}
-                    </span>
-                    <Controller
-                      name={component.fieldId}
-                      control={control}
-                      render={({ field }) => (
-                        <FieldRenderer
-                          component={component}
-                          value={field.value}
-                          disabled={inputsDisabled}
-                          onChange={(next) => {
-                            field.onChange(next);
-                            setWasSuccessful(false);
-                          }}
-                        />
-                      )}
-                    />
-                  </label>
-                ))}
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
+        {noQuestionsAvailable ? (
+          <p className="rounded border border-white/10 bg-white/5 px-3 py-2 text-sm text-white/70">
+            No outstanding questions right now. Upload a budget to generate follow-up prompts.
+          </p>
+        ) : (
+          <div className="flex flex-col gap-5">
+            {questions.map((question) => (
+              <QuestionRenderer
+                key={question.id}
+                question={question}
+                control={control}
+                disabled={inputsDisabled}
+              />
+            ))}
+          </div>
+        )}
 
       {submitError && (
         <p className="rounded bg-red-500/20 px-3 py-2 text-sm text-red-100">{submitError}</p>
@@ -150,6 +134,16 @@ function deriveDefaultValues(questions: ClarificationQuestion[]): FormValues {
   return defaults;
 }
 
+function buildFieldLabelMap(questions: ClarificationQuestion[]): Record<string, string> {
+  const labels: Record<string, string> = {};
+  questions.forEach((question) => {
+    question.components.forEach((component) => {
+      labels[component.fieldId] = component.label;
+    });
+  });
+  return labels;
+}
+
 function prepareAnswers(values: FormValues): ClarificationAnswers {
   const answers: ClarificationAnswers = {};
   Object.entries(values).forEach(([fieldId, value]) => {
@@ -166,12 +160,118 @@ function deriveDefaultValue(
   switch (component.component) {
     case 'number_input':
     case 'slider':
+      if (component.component === 'slider') {
+        const min = component.constraints?.minimum ?? 0;
+        const max = component.constraints?.maximum ?? 100;
+        const midpoint = Math.round((min + max) / 2);
+        return component.constraints?.default ?? midpoint;
+      }
       return component.constraints?.default;
     case 'dropdown':
       return component.constraints?.default;
     case 'toggle':
-      return component.constraints?.default;
+      return component.constraints?.default ?? false;
     default:
       return undefined;
   }
+}
+
+type ClarificationSchema = z.ZodObject<Record<string, z.ZodTypeAny>>;
+type NumericComponentDescriptor = ClarificationNumberInputDescriptor | ClarificationSliderDescriptor;
+
+function buildClarificationSchema(questions: ClarificationQuestion[]): ClarificationSchema {
+  const shape: Record<string, z.ZodTypeAny> = {};
+  questions.forEach((question) => {
+    question.components.forEach((component) => {
+      shape[component.fieldId] = deriveComponentSchema(component);
+    });
+  });
+  return z.object(shape);
+}
+
+function createFormResolver(schema: ClarificationSchema, labels: Record<string, string>): Resolver<FormValues> {
+  return async (values) => {
+    const result = await schema.safeParseAsync(values);
+    if (result.success) {
+      return {
+        values: result.data,
+        errors: {},
+      };
+    }
+
+    const errors: FieldErrors<FormValues> = {};
+    const flattened = result.error.flatten();
+    Object.entries(flattened.fieldErrors).forEach(([fieldId, messages]) => {
+      if (messages?.length) {
+        errors[fieldId] = {
+          type: 'validation',
+          message: resolveErrorMessage(messages, labels[fieldId] ?? fieldId),
+        };
+      }
+    });
+
+    return {
+      values: {},
+      errors,
+    };
+  };
+}
+
+function resolveErrorMessage(messages: string[] | undefined, label: string): string {
+  const fallback = `${label} is required.`;
+  if (!messages || messages.length === 0) {
+    return fallback;
+  }
+  const message = messages[0];
+  if (/invalid input/i.test(message) || /required/i.test(message)) {
+    return fallback;
+  }
+  return message;
+}
+
+function deriveComponentSchema(component: ClarificationComponentDescriptor): z.ZodTypeAny {
+  const requiredMessage = `${component.label} is required.`;
+  switch (component.component) {
+    case 'number_input':
+      return buildNumberSchema(component, requiredMessage);
+    case 'slider':
+      return buildNumberSchema(component, requiredMessage);
+    case 'dropdown': {
+      const options = component.options;
+      return z
+        .string({
+          invalid_type_error: `${component.label} must be selected.`,
+          required_error: requiredMessage,
+        })
+        .refine((value) => options.includes(value), {
+          message: `${component.label} must match one of the provided options.`,
+        });
+    }
+    case 'toggle':
+      return z.boolean({
+        invalid_type_error: `${component.label} must be true or false.`,
+        required_error: requiredMessage,
+      });
+    default:
+      return z.any();
+  }
+}
+
+function buildNumberSchema(component: NumericComponentDescriptor, requiredMessage: string): z.ZodNumber {
+  let schema = z.number({
+    invalid_type_error: `${component.label} must be a number.`,
+    required_error: requiredMessage,
+  });
+
+  const { constraints } = component;
+  if (constraints?.minimum !== undefined) {
+    schema = schema.min(constraints.minimum, `${component.label} must be at least ${constraints.minimum}.`);
+  }
+  if (constraints?.maximum !== undefined) {
+    schema = schema.max(
+      constraints.maximum,
+      `${component.label} must be less than or equal to ${constraints.maximum}.`
+    );
+  }
+  return schema;
 }
