@@ -388,7 +388,8 @@ async def submit_answers(
         "answers": payload.answers,
     }
 
-    # TODO: validate answers schema and provide better downstream error handling/logging.
+    # TODO(ai-answer-validation): validate answers schema and enhance downstream error handling/logging.
+    # Tracked in docs/AI_integration_readiness.md#ai-answer-validation.
     apply_answers_url = f"{CLARIFICATION_BASE}/apply-answers"
     try:
         clarification_response, metrics = await http_client.post(
@@ -447,7 +448,8 @@ async def submit_answers(
         }
     )
 
-    # TODO: surface ready_for_summary flag to the client once downstream contract is finalized.
+    # TODO(ready-for-summary-contract): surface the clarification service readiness flag when the contract stabilizes.
+    # Tracked in docs/AI_integration_readiness.md#ready-for-summary-contract.
     return {
         "budget_id": payload.budget_id,
         "status": "ready_for_summary",
