@@ -225,7 +225,7 @@ type ApiBaseContextValue = {
 const ApiBaseContext = createContext<ApiBaseContextValue | undefined>(undefined);
 
 export function ApiBaseProvider({ children }: { children: ReactNode }) {
-  const snapshot = useSyncExternalStore(subscribe, getSnapshot);
+  const snapshot = useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
   const value = useMemo<ApiBaseContextValue>(
     () => ({
       activeApiBase: snapshot.active,
@@ -338,7 +338,8 @@ export class ApiClient {
 
   private async request<T>(path: string, options: RequestOptions = {}): Promise<T> {
     const { query, headers, body, ...rest } = options;
-    const url = this.buildUrl(path, query);
+    const activeBaseUrl = this.getBaseUrl();
+    const url = this.buildUrl(path, query, activeBaseUrl);
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), this.timeoutMs);
     const finalBody =
@@ -361,16 +362,22 @@ export class ApiClient {
       if (error instanceof DOMException && error.name === 'AbortError') {
         throw new ApiError('Request timed out while contacting the API gateway.', 408);
       }
+      if (error instanceof TypeError) {
+        throw new ApiError(
+          `Unable to reach the API gateway at ${activeBaseUrl}. Ensure the gateway is running and reachable from this browser.`,
+          503
+        );
+      }
       throw error;
     } finally {
       clearTimeout(timeoutId);
     }
   }
 
-  private buildUrl(path: string, query?: QueryParams): string {
+  private buildUrl(path: string, query?: QueryParams, baseUrl?: string): string {
     const normalizedPath = path.startsWith('/') ? path : `/${path}`;
-    const baseUrl = this.getBaseUrl();
-    const url = new URL(normalizedPath, baseUrl);
+    const resolvedBase = baseUrl ?? this.getBaseUrl();
+    const url = new URL(normalizedPath, resolvedBase);
     if (query) {
       Object.entries(query).forEach(([key, value]) => {
         if (value === undefined || value === null) return;
