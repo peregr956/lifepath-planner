@@ -5,16 +5,20 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Dict, List, Sequence, TYPE_CHECKING
 
-from ui_schema_builder import build_dropdown, build_toggle
+from normalization import ESSENTIAL_PREFIX, PRIMARY_INCOME_FLAG_METADATA_KEY
+from ui_schema_builder import (
+    OPTIMIZATION_FOCUS_OPTIONS,
+    PRIMARY_INCOME_STABILITY_OPTIONS,
+    PRIMARY_INCOME_TYPE_OPTIONS,
+    build_dropdown,
+    build_toggle,
+)
 
 if TYPE_CHECKING:  # pragma: no cover
     from budget_model import UnifiedBudgetModel, Expense, Income
 
 
 MAX_QUESTIONS = 5
-OPTIMIZATION_FOCUS_OPTIONS: Sequence[str] = ("debt", "savings", "balanced")
-PRIMARY_INCOME_TYPE_OPTIONS: Sequence[str] = ("net", "gross")
-PRIMARY_INCOME_STABILITY_OPTIONS: Sequence[str] = ("stable", "variable")
 
 
 @dataclass
@@ -65,8 +69,9 @@ def _build_essential_expense_question(expenses: Sequence["Expense"]) -> Question
 
     components = [
         build_toggle(
-            field_id=f"essential_{expense.id}",
+            field_id=f"{ESSENTIAL_PREFIX}{expense.id}",
             label=f"Mark {expense.category} as essential",
+            binding=f"expenses.{expense.id}.essential",
         )
         for expense in missing_flags
     ]
@@ -92,6 +97,7 @@ def _build_optimization_focus_question(model: "UnifiedBudgetModel") -> QuestionS
         field_id="optimization_focus",
         label="Select the priority that fits best",
         options=list(OPTIMIZATION_FOCUS_OPTIONS),
+        binding="preferences.optimization_focus",
     )
 
     return QuestionSpec(
@@ -117,16 +123,22 @@ def _build_income_clarification_question(income_entries: Sequence["Income"]) -> 
     if not (assumed_type or assumed_stability):
         return None
 
+    net_binding = f"income.{primary_income.id}.metadata.{PRIMARY_INCOME_FLAG_METADATA_KEY}"
+    stability_binding = f"income.{primary_income.id}.stability"
+
     components = [
         build_dropdown(
             field_id="primary_income_type",
             label="Is your primary income net (after tax) or gross?",
             options=list(PRIMARY_INCOME_TYPE_OPTIONS),
+            binding=net_binding,
         ),
         build_dropdown(
             field_id="primary_income_stability",
             label="Is your primary income generally stable or variable?",
             options=list(PRIMARY_INCOME_STABILITY_OPTIONS),
+            binding=stability_binding,
+            default=primary_income.stability,
         ),
     ]
 
