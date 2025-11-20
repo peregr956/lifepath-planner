@@ -1,5 +1,7 @@
 import logging
 import os
+import sys
+from pathlib import Path
 from typing import Any, Dict, List
 from uuid import uuid4
 
@@ -9,6 +11,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
+
+SRC_DIR = Path(__file__).resolve().parent
+if str(SRC_DIR) not in sys.path:
+    sys.path.insert(0, str(SRC_DIR))
 
 from persistence.database import get_session, init_db
 from persistence.repository import BudgetSessionRepository
@@ -98,8 +104,8 @@ def health_check() -> dict:
 
 @app.post("/upload-budget", response_model=None)
 async def upload_budget(
-    file: UploadFile = File(...),
     request: Request,
+    file: UploadFile = File(...),
     db: Session = Depends(get_session),
 ) -> Dict[str, Any] | JSONResponse:
     """Starts the pipeline by proxying uploads to the ingestion service's /ingest endpoint."""
