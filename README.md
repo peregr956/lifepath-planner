@@ -79,3 +79,19 @@ pytest services/budget-ingestion-service/tests
 pytest services/clarification-service/tests
 pytest services/optimization-service/tests
 ```
+
+### Deterministic pipeline tests
+
+To exercise the ingestion → clarification → optimization pipeline with fixture data (no UI required), run:
+
+```bash
+pytest tests/test_deterministic_pipeline.py
+```
+
+The test compares current responses to JSON snapshots stored in `tests/snapshots`. If intentional contract changes require new baselines, regenerate them with:
+
+```bash
+UPDATE_SNAPSHOTS=1 pytest tests/test_deterministic_pipeline.py
+```
+
+Review and commit the updated snapshot files afterward so future runs stay deterministic.
