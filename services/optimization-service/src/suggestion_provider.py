@@ -10,13 +10,28 @@ ready for serialization.
 """
 
 import json
+import logging
 import os
-from dataclasses import dataclass, field
+import sys
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Protocol, runtime_checkable
 
+SERVICE_SRC = Path(__file__).resolve().parent
+if str(SERVICE_SRC) not in sys.path:
+    sys.path.append(str(SERVICE_SRC))
+SERVICES_ROOT = SERVICE_SRC.parents[1]
+if str(SERVICES_ROOT) not in sys.path:
+    sys.path.append(str(SERVICES_ROOT))
+
+from observability.privacy import hash_payload, redact_fields
+
 from .budget_model import Summary, UnifiedBudgetModel
 from .generate_suggestions import Suggestion, generate_suggestions
+
+logger = logging.getLogger(__name__)
+
+SAFE_CONTEXT_KEYS = frozenset({"locale", "surface", "channel"})
 
 
 @dataclass(slots=True)
@@ -77,7 +92,9 @@ class DeterministicSuggestionProvider:
 
     def generate(self, request: SuggestionProviderRequest) -> SuggestionProviderResponse:
         suggestions = generate_suggestions(request.model, request.summary)
-        return SuggestionProviderResponse(suggestions=suggestions)
+        response = SuggestionProviderResponse(suggestions=suggestions)
+        _log_suggestion_metrics(self.name, request, response.suggestions)
+        return response
 
 
 class MockSuggestionProvider:
@@ -103,7 +120,9 @@ class MockSuggestionProvider:
         payload = self._load_fixture()
         suggestion_payloads = payload.get("suggestions", [])
         suggestions = [_deserialize_suggestion(item) for item in suggestion_payloads]
-        return SuggestionProviderResponse(suggestions=suggestions)
+        response = SuggestionProviderResponse(suggestions=suggestions)
+        _log_suggestion_metrics(self.name, request, response.suggestions)
+        return response
 
     def _load_fixture(self) -> Dict[str, Any]:
         try:
@@ -142,6 +161,34 @@ def build_suggestion_provider(name: str | None) -> SuggestionProvider:
         return MockSuggestionProvider()
 
     raise ValueError(f"Unsupported suggestion provider '{name}'")
+
+
+def _log_suggestion_metrics(
+    provider_name: str,
+    request: SuggestionProviderRequest,
+    suggestions: List[Suggestion],
+) -> None:
+    logger.info(
+        {
+            "event": "suggestion_provider_output",
+            "provider": provider_name,
+            "suggestion_count": len(suggestions),
+            "suggestion_hashes": [_hash_suggestion_payload(suggestion) for suggestion in suggestions],
+            "model_hash": hash_payload(asdict(request.model)),
+            "summary_hash": hash_payload(asdict(request.summary)),
+            "context_snapshot": _safe_context_snapshot(request.context),
+        }
+    )
+
+
+def _hash_suggestion_payload(suggestion: Suggestion) -> str:
+    return hash_payload(asdict(suggestion))
+
+
+def _safe_context_snapshot(context: Dict[str, Any]) -> Dict[str, Any]:
+    if not context:
+        return {}
+    return redact_fields(context, SAFE_CONTEXT_KEYS)
 
 
 

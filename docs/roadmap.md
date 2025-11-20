@@ -76,6 +76,7 @@ This roadmap outlines the phased delivery plan for the LifePath Planner MVP, ens
 - Conduct integration tests across services (upload → clarification → summary → suggestions).
 - Harden error handling, logging, and observability.
 - Prepare launch collateral: onboarding walkthrough, support docs, and demo script.
+- Keep `docs/operations.md` updated with telemetry toggles, rate limits, and logging guardrails.
 
 **Milestones**
 
