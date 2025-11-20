@@ -16,6 +16,7 @@ SRC_DIR = Path(__file__).resolve().parent
 if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
+from http_client import ResilientHttpClient, ensure_request_id
 from persistence.database import get_session, init_db
 from persistence.repository import BudgetSessionRepository
 
@@ -75,6 +76,8 @@ INGESTION_BASE = "http://localhost:8001"
 CLARIFICATION_BASE = "http://localhost:8002"
 OPTIMIZATION_BASE = "http://localhost:8003"
 
+http_client = ResilientHttpClient()
+
 
 def error_response(status_code: int, error_code: str, details: str) -> JSONResponse:
     return JSONResponse(
@@ -125,20 +128,39 @@ async def upload_budget(
         )
     }
 
-    # TODO: introduce retries/backoff and better error reporting.
+    request_id = ensure_request_id(request)
+
     ingestion_url = f"{INGESTION_BASE}/ingest"
     try:
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            ingestion_response = await client.post(ingestion_url, files=files)
-            ingestion_response.raise_for_status()
-    except httpx.HTTPStatusError:
+        ingestion_response, metrics = await http_client.post(
+            ingestion_url,
+            files=files,
+            request_id=request_id,
+        )
+    except httpx.HTTPStatusError as exc:
+        logger.error(
+            {
+                "event": "upload_budget_upstream_error",
+                "request_id": request_id,
+                "url": ingestion_url,
+                "status_code": exc.response.status_code,
+                "error": str(exc),
+            }
+        )
         return error_response(
             502,
             "upstream_service_unavailable",
             "Budget ingestion service returned an error response.",
         )
     except httpx.RequestError as exc:
-        logger.warning("Request to %s failed: %s", ingestion_url, exc)
+        logger.warning(
+            {
+                "event": "upload_budget_upstream_unavailable",
+                "request_id": request_id,
+                "url": ingestion_url,
+                "error": str(exc),
+            }
+        )
         return error_response(
             502,
             "upstream_service_unavailable",
@@ -174,9 +196,18 @@ async def upload_budget(
         budget_id,
         draft_budget,
         source_ip=_client_ip(request),
-        details={"filename": filename, **summary_counts},
+        details={"filename": filename, "request_id": request_id, **summary_counts},
     )
-    logger.info("upload-budget budget_id=%s filename=%s", budget_id, filename)
+    logger.info(
+        {
+            "event": "upload_budget",
+            "request_id": request_id,
+            "budget_id": budget_id,
+            "filename": filename,
+            "upstream_latency_ms": metrics.latency_ms,
+            "attempts": metrics.attempts,
+        }
+    )
 
     return {
         "budget_id": budget_id,
@@ -206,20 +237,39 @@ async def clarification_questions(
             "No draft budget found; please upload a budget before requesting clarifications.",
         )
 
-    # TODO: add auth, tracing, and better error propagation when services fail.
+    request_id = ensure_request_id(request)
+
     clarify_url = f"{CLARIFICATION_BASE}/clarify"
     try:
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            clarification_response = await client.post(clarify_url, json=draft_payload)
-            clarification_response.raise_for_status()
-    except httpx.HTTPStatusError:
+        clarification_response, metrics = await http_client.post(
+            clarify_url,
+            json=draft_payload,
+            request_id=request_id,
+        )
+    except httpx.HTTPStatusError as exc:
+        logger.error(
+            {
+                "event": "clarification_questions_upstream_error",
+                "request_id": request_id,
+                "url": clarify_url,
+                "status_code": exc.response.status_code,
+                "error": str(exc),
+            }
+        )
         return error_response(
             502,
             "upstream_service_unavailable",
             "Clarification service returned an error response.",
         )
     except httpx.RequestError as exc:
-        logger.warning("Request to %s failed: %s", clarify_url, exc)
+        logger.warning(
+            {
+                "event": "clarification_questions_upstream_unavailable",
+                "request_id": request_id,
+                "url": clarify_url,
+                "error": str(exc),
+            }
+        )
         return error_response(
             502,
             "upstream_service_unavailable",
@@ -234,12 +284,17 @@ async def clarification_questions(
         budget_session,
         partial_model,
         source_ip=_client_ip(request),
-        details={"question_count": len(questions)},
+        details={"question_count": len(questions), "request_id": request_id},
     )
     logger.info(
-        "clarification-questions budget_id=%s question_count=%s",
-        budget_id,
-        len(questions),
+        {
+            "event": "clarification_questions",
+            "request_id": request_id,
+            "budget_id": budget_id,
+            "question_count": len(questions),
+            "upstream_latency_ms": metrics.latency_ms,
+            "attempts": metrics.attempts,
+        }
     )
     return {
         "budget_id": budget_id,
@@ -261,7 +316,14 @@ async def submit_answers(
     db: Session = Depends(get_session),
 ) -> Dict[str, Any] | JSONResponse:
     """Calls clarification service /apply-answers to merge user answers into a final unified model."""
-    logger.info("submit-answers budget_id=%s", payload.budget_id)
+    request_id = ensure_request_id(request)
+    logger.info(
+        {
+            "event": "submit_answers_received",
+            "request_id": request_id,
+            "budget_id": payload.budget_id,
+        }
+    )
     repo = BudgetSessionRepository(db)
     budget_session = repo.get_session(payload.budget_id)
     if not budget_session:
@@ -283,17 +345,35 @@ async def submit_answers(
     # TODO: validate answers schema and provide better downstream error handling/logging.
     apply_answers_url = f"{CLARIFICATION_BASE}/apply-answers"
     try:
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            clarification_response = await client.post(apply_answers_url, json=request_body)
-            clarification_response.raise_for_status()
-    except httpx.HTTPStatusError:
+        clarification_response, metrics = await http_client.post(
+            apply_answers_url,
+            json=request_body,
+            request_id=request_id,
+        )
+    except httpx.HTTPStatusError as exc:
+        logger.error(
+            {
+                "event": "submit_answers_upstream_error",
+                "request_id": request_id,
+                "url": apply_answers_url,
+                "status_code": exc.response.status_code,
+                "error": str(exc),
+            }
+        )
         return error_response(
             502,
             "upstream_service_unavailable",
             "Clarification service returned an error response.",
         )
     except httpx.RequestError as exc:
-        logger.warning("Request to %s failed: %s", apply_answers_url, exc)
+        logger.warning(
+            {
+                "event": "submit_answers_upstream_unavailable",
+                "request_id": request_id,
+                "url": apply_answers_url,
+                "error": str(exc),
+            }
+        )
         return error_response(
             502,
             "upstream_service_unavailable",
@@ -307,7 +387,18 @@ async def submit_answers(
         budget_session,
         updated_model,
         source_ip=_client_ip(request),
-        details={"answer_count": len(payload.answers or {})},
+        details={"answer_count": len(payload.answers or {}), "request_id": request_id},
+    )
+
+    logger.info(
+        {
+            "event": "submit_answers",
+            "request_id": request_id,
+            "budget_id": payload.budget_id,
+            "answer_count": len(payload.answers or {}),
+            "upstream_latency_ms": metrics.latency_ms,
+            "attempts": metrics.attempts,
+        }
     )
 
     # TODO: surface ready_for_summary flag to the client once downstream contract is finalized.
@@ -320,6 +411,7 @@ async def submit_answers(
 @app.get("/summary-and-suggestions", response_model=None)
 async def summary_and_suggestions(
     budget_id: str,
+    request: Request,
     db: Session = Depends(get_session),
 ) -> Dict[str, Any] | JSONResponse:
     """Finishes the pipeline by calling optimization service /summarize-and-optimize for insights."""
@@ -336,20 +428,39 @@ async def summary_and_suggestions(
             "Clarification answers are incomplete; please submit answers before requesting the summary.",
         )
 
-    # TODO: propagate user context, auth, and tracing headers downstream.
+    request_id = ensure_request_id(request)
+
     optimize_url = f"{OPTIMIZATION_BASE}/summarize-and-optimize"
     try:
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            optimization_response = await client.post(optimize_url, json=final_model)
-            optimization_response.raise_for_status()
-    except httpx.HTTPStatusError:
+        optimization_response, metrics = await http_client.post(
+            optimize_url,
+            json=final_model,
+            request_id=request_id,
+        )
+    except httpx.HTTPStatusError as exc:
+        logger.error(
+            {
+                "event": "summary_upstream_error",
+                "request_id": request_id,
+                "url": optimize_url,
+                "status_code": exc.response.status_code,
+                "error": str(exc),
+            }
+        )
         return error_response(
             502,
             "upstream_service_unavailable",
             "Optimization service returned an error response.",
         )
     except httpx.RequestError as exc:
-        logger.warning("Request to %s failed: %s", optimize_url, exc)
+        logger.warning(
+            {
+                "event": "summary_upstream_unavailable",
+                "request_id": request_id,
+                "url": optimize_url,
+                "error": str(exc),
+            }
+        )
         return error_response(
             502,
             "upstream_service_unavailable",
@@ -359,10 +470,16 @@ async def summary_and_suggestions(
     optimization_data: Dict[str, Any] = optimization_response.json()
 
     summary_data = optimization_data.get("summary")
-    if summary_data is not None:
-        surplus = summary_data.get("surplus")
-        if surplus is not None:
-            logger.info("summary-and-suggestions budget_id=%s surplus=%s", budget_id, surplus)
+    logger.info(
+        {
+            "event": "summary_and_suggestions",
+            "request_id": request_id,
+            "budget_id": budget_id,
+            "upstream_latency_ms": metrics.latency_ms,
+            "attempts": metrics.attempts,
+            "surplus": summary_data.get("surplus") if summary_data else None,
+        }
+    )
     return {
         "budget_id": budget_id,
         "summary": summary_data,
