@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from datetime import date
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Sequence
+from typing import Any, Dict, List, Optional, Sequence, Set
 import sys
 
 from fastapi import FastAPI
@@ -43,7 +43,13 @@ from budget_model import (  # noqa: E402
     UnifiedBudgetModel,
 )
 
-from normalization import apply_answers_to_model, draft_to_initial_unified
+from normalization import (
+    ESSENTIAL_PREFIX,
+    SUPPORTED_SIMPLE_FIELD_IDS,
+    apply_answers_to_model,
+    draft_to_initial_unified,
+    parse_debt_field_id,
+)
 from question_generator import QuestionSpec, generate_clarification_questions
 from ui_schema_builder import build_initial_ui_schema
 
@@ -360,7 +366,7 @@ def clarify_budget(payload: DraftBudgetPayload) -> ClarifyResponseModel:
     response_model=ApplyAnswersResponseModel,
     response_model_exclude_none=True,
 )
-def apply_answers(payload: ApplyAnswersPayload) -> ApplyAnswersResponseModel:
+def apply_answers(payload: ApplyAnswersPayload) -> ApplyAnswersResponseModel | JSONResponse:
     """
     Apply user-provided answers to the partial unified model and gauge readiness for summarization.
     Expects an `ApplyAnswersPayload` containing the serialized partial model and answers map.
@@ -368,11 +374,18 @@ def apply_answers(payload: ApplyAnswersPayload) -> ApplyAnswersResponseModel:
     """
 
     # TODO(ai-answer-application):
-    #   * Validate answers before mutating the model.
-    #   * Fill in debt balances and related metadata.
     #   * Identify real debts within expense lines automatically.
     #   * Generate more sophisticated field_id → model mappings.
     unified_model = payload.partial_model.to_dataclass()
+    validation_errors = _validate_answer_field_ids(unified_model, payload.answers)
+    if validation_errors:
+        return JSONResponse(
+            status_code=400,
+            content={
+                "error": "invalid_field_ids",
+                "invalid_fields": validation_errors,
+            },
+        )
     updated_model = apply_answers_to_model(unified_model, payload.answers)
     return ApplyAnswersResponseModel(
         updated_model=UnifiedBudgetResponseModel.from_dataclass(updated_model),
@@ -387,3 +400,88 @@ def _serialize_question_specs(question_specs: Sequence[QuestionSpec]) -> List[Qu
     """
 
     return [QuestionSpecModel.from_dataclass(spec) for spec in question_specs]
+
+
+def _validate_answer_field_ids(model: UnifiedBudgetModel, answers: Dict[str, Any]) -> List[Dict[str, str]]:
+    """
+    Ensure every incoming field_id maps to a known expense, preference, income, or debt binding.
+    Returns a list of error descriptors when unsupported IDs are encountered.
+    """
+
+    if not answers:
+        return []
+
+    expense_ids = _collect_ids(model.expenses)
+    debt_ids = _collect_ids(model.debts)
+    invalid_entries: List[Dict[str, str]] = []
+
+    for raw_field_id in answers.keys():
+        if not isinstance(raw_field_id, str):
+            invalid_entries.append(
+                {
+                    "field_id": str(raw_field_id),
+                    "reason": "not_a_string",
+                    "detail": "Field ids must be non-empty strings.",
+                }
+            )
+            continue
+
+        field_id = raw_field_id.strip()
+        if not field_id:
+            invalid_entries.append(
+                {
+                    "field_id": raw_field_id,
+                    "reason": "empty_field_id",
+                    "detail": "Field ids must be non-empty strings.",
+                }
+            )
+            continue
+
+        if field_id.startswith(ESSENTIAL_PREFIX):
+            expense_id = field_id[len(ESSENTIAL_PREFIX) :]
+            if expense_id and expense_id in expense_ids:
+                continue
+            invalid_entries.append(
+                {
+                    "field_id": field_id,
+                    "reason": "unknown_expense",
+                    "detail": f"Expense '{expense_id or '<missing>'}' is not present in the partial model.",
+                }
+            )
+            continue
+
+        if field_id in SUPPORTED_SIMPLE_FIELD_IDS:
+            continue
+
+        debt_target = parse_debt_field_id(field_id)
+        if debt_target:
+            debt_id, attribute = debt_target
+            if debt_id in debt_ids:
+                continue
+            invalid_entries.append(
+                {
+                    "field_id": field_id,
+                    "reason": "unknown_debt",
+                    "detail": f"Debt '{debt_id}' is not present in the partial model for '{attribute}'.",
+                }
+            )
+            continue
+
+        invalid_entries.append(
+            {
+                "field_id": field_id,
+                "reason": "unsupported_field_id",
+                "detail": "No known mapping exists for this field_id.",
+            }
+        )
+
+    return invalid_entries
+
+
+def _collect_ids(entries: Sequence[Any]) -> Set[str]:
+    collected: Set[str] = set()
+    for entry in entries:
+        entry_id = getattr(entry, "id", None)
+        if entry_id:
+            collected.add(entry_id)
+    return collected

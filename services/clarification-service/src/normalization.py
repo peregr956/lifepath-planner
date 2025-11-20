@@ -7,7 +7,7 @@ invoking any AI-driven refinement.
 """
 
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Sequence
+from typing import Any, Dict, Iterable, List, Sequence, Tuple
 import sys
 
 # Ensure we can import shared dataclasses from sibling services without having
@@ -27,14 +27,16 @@ for candidate in OTHER_SERVICE_PATHS:
 
 from models.raw_budget import DraftBudgetModel, RawBudgetLine  # noqa: E402
 from budget_model import (  # noqa: E402
+    Debt,
     Expense,
     Income,
     Preferences,
+    RateChange,
     Summary,
     UnifiedBudgetModel,
 )
 
-__all__ = ["draft_to_initial_unified", "apply_answers_to_model"]
+__all__ = ["draft_to_initial_unified", "apply_answers_to_model", "parse_debt_field_id"]
 
 ESSENTIAL_PREFIX = "essential_"
 VALID_OPTIMIZATION_FOCUS = {"debt", "savings", "balanced"}
@@ -43,6 +45,21 @@ PRIMARY_INCOME_STABILITY_VALUES = {"stable", "variable", "seasonal"}
 PRIMARY_INCOME_FLAG_METADATA_KEY = "net_or_gross"
 TRUE_STRINGS = {"true", "1", "yes", "y", "essential", "needed"}
 FALSE_STRINGS = {"false", "0", "no", "n", "nonessential", "flexible"}
+SUPPORTED_SIMPLE_FIELD_IDS = {
+    "optimization_focus",
+    "primary_income_type",
+    "primary_income_stability",
+}
+DEBT_FIELD_SUFFIXES: Tuple[Tuple[str, str], ...] = (
+    ("_rate_change_new_rate", "rate_change_new_rate"),
+    ("_rate_change_date", "rate_change_date"),
+    ("_interest_rate", "interest_rate"),
+    ("_min_payment", "min_payment"),
+    ("_balance", "balance"),
+    ("_priority", "priority"),
+    ("_approximate", "approximate"),
+)
+VALID_DEBT_PRIORITIES = {"high", "medium", "low"}
 
 
 def draft_to_initial_unified(draft: DraftBudgetModel) -> UnifiedBudgetModel:
@@ -166,19 +183,23 @@ def apply_answers_to_model(model: UnifiedBudgetModel, answers: Dict[str, Any]) -
     Apply structured clarification answers to the unified model in place.
 
     Args:
-        model: UnifiedBudgetModel that will be mutated with clarified essential flags and preferences.
+        model: UnifiedBudgetModel that will be mutated with clarified essentials, preferences, and debt metadata.
         answers: Mapping of field_id strings to user-provided values collected via clarification questions.
     Returns:
         The same UnifiedBudgetModel instance after supported fields are updated.
     Assumptions:
-        Recognizes only known field_id prefixes (e.g., essential flags, optimization focus); skips unknown keys and is a no-op when answers is empty.
+        Recognizes only known field_id prefixes/patterns: expense essentials, optimization focus, primary income clarifications,
+        and debt suffixes such as `_balance`, `_interest_rate`, `_min_payment`, `_priority`, `_approximate`,
+        `_rate_change_date`, and `_rate_change_new_rate`. Skips unknown keys and is a no-op when answers is empty.
     """
 
     if not answers:
         return model
 
-    expense_lookup: Dict[str, Expense] = {expense.id: expense for expense in model.expenses if expense.id}
+    expense_lookup: Dict[str, Expense] = {expense.id: expense for expense in model.expenses if getattr(expense, "id", None)}
     primary_income = model.income[0] if model.income else None
+    debt_lookup: Dict[str, Debt] = {debt.id: debt for debt in model.debts if getattr(debt, "id", None)}
+    pending_rate_changes: Dict[str, Dict[str, Any]] = {}
 
     for field_id, raw_value in answers.items():
         if not isinstance(field_id, str):
@@ -200,8 +221,16 @@ def apply_answers_to_model(model: UnifiedBudgetModel, answers: Dict[str, Any]) -
             _apply_primary_income_stability(primary_income, raw_value)
             continue
 
+        debt_target = parse_debt_field_id(field_id)
+        if debt_target:
+            debt_id, attribute = debt_target
+            debt = _ensure_debt_entry(model, debt_lookup, debt_id)
+            _apply_debt_field(debt, attribute, raw_value, pending_rate_changes)
+            continue
+
         # TODO(answer-mapping): Support additional field_ids as the question catalog grows.
 
+    _finalize_rate_changes(debt_lookup, pending_rate_changes)
     return model
 
 
@@ -290,4 +319,138 @@ def _ensure_metadata_dict(entry: Income) -> Dict[str, Any]:
         metadata = dict(metadata)
     setattr(entry, "metadata", metadata)
     return metadata
+
+
+def parse_debt_field_id(field_id: str) -> Tuple[str, str] | None:
+    """
+    Attempt to split a field_id into (debt_id, attribute) when it matches a known
+    debt mapping suffix such as `_balance` or `_interest_rate`.
+    """
+
+    for suffix, attribute in DEBT_FIELD_SUFFIXES:
+        if not field_id.endswith(suffix):
+            continue
+        debt_id = field_id[: -len(suffix)]
+        if debt_id:
+            return debt_id, attribute
+    return None
+
+
+def _ensure_debt_entry(
+    model: UnifiedBudgetModel,
+    debt_lookup: Dict[str, Debt],
+    debt_id: str,
+) -> Debt:
+    debt = debt_lookup.get(debt_id)
+    if debt:
+        return debt
+
+    debt = Debt(
+        id=debt_id,
+        name=_humanize_debt_name(debt_id),
+        balance=0.0,
+        interest_rate=0.0,
+        min_payment=0.0,
+        priority="medium",
+        approximate=True,
+        rate_changes=None,
+    )
+    model.debts.append(debt)
+    debt_lookup[debt_id] = debt
+    return debt
+
+
+def _humanize_debt_name(debt_id: str) -> str:
+    cleaned = debt_id.replace("_", " ").strip()
+    if not cleaned:
+        return "Debt"
+    return cleaned.title()
+
+
+def _apply_debt_field(
+    debt: Debt,
+    attribute: str,
+    raw_value: Any,
+    pending_rate_changes: Dict[str, Dict[str, Any]],
+) -> None:
+    if attribute == "balance":
+        numeric = _coerce_to_number(raw_value)
+        if numeric is not None:
+            debt.balance = numeric
+        return
+
+    if attribute == "interest_rate":
+        numeric = _coerce_to_number(raw_value)
+        if numeric is not None:
+            debt.interest_rate = numeric
+        return
+
+    if attribute == "min_payment":
+        numeric = _coerce_to_number(raw_value)
+        if numeric is not None:
+            debt.min_payment = numeric
+        return
+
+    if attribute == "priority":
+        normalized = _normalize_string(raw_value)
+        if normalized in VALID_DEBT_PRIORITIES:
+            debt.priority = normalized  # type: ignore[assignment]
+        return
+
+    if attribute == "approximate":
+        bool_value = _coerce_to_bool(raw_value)
+        if bool_value is not None:
+            debt.approximate = bool_value
+        return
+
+    if attribute == "rate_change_date":
+        date_value = _coerce_to_date_string(raw_value)
+        if date_value:
+            pending_rate_changes.setdefault(debt.id, {})["date"] = date_value
+        return
+
+    if attribute == "rate_change_new_rate":
+        numeric = _coerce_to_number(raw_value)
+        if numeric is not None:
+            pending_rate_changes.setdefault(debt.id, {})["new_rate"] = numeric
+        return
+
+
+def _finalize_rate_changes(debt_lookup: Dict[str, Debt], pending_rate_changes: Dict[str, Dict[str, Any]]) -> None:
+    for debt_id, fragment in pending_rate_changes.items():
+        if not fragment:
+            continue
+        date = fragment.get("date")
+        new_rate = fragment.get("new_rate")
+        if not date or new_rate is None:
+            continue
+
+        debt = debt_lookup.get(debt_id)
+        if debt is None:
+            continue
+
+        rate_change = RateChange(date=date, new_rate=new_rate)
+        debt.rate_changes = [rate_change]
+
+
+def _coerce_to_number(value: Any) -> float | None:
+    if isinstance(value, (int, float)):
+        return float(value)
+    normalized = _normalize_string(value)
+    if normalized is None:
+        return None
+    try:
+        return float(normalized)
+    except ValueError:
+        return None
+
+
+def _coerce_to_date_string(value: Any) -> str | None:
+    if value is None:
+        return None
+    if isinstance(value, str):
+        candidate = value.strip()
+        return candidate or None
+    candidate = str(value).strip()
+    return candidate or None
 
