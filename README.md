@@ -4,6 +4,9 @@ Multi-stage budgeting assistant composed of a Next.js UI plus three FastAPI micr
 connected through an API gateway. Each service can be run independently so teams can
 iterate on ingestion, clarification, or optimization logic without blocking one another.
 
+The previously experimental Streamlit UI has been removed; the Next.js interface under
+`services/ui-web` is now the single supported surface.
+
 ## Prerequisites
 
 - Python 3.11 (or newer) with `pip`
@@ -57,6 +60,15 @@ the defaults baked into the gateway (`services/api-gateway/src/main.py`).
 Once the services are online, visit http://localhost:3000, upload a budget export, and step
 through clarifications and summarization. The UI reads/writes through the gateway so you
 only need to update the base URL in one place if you change ports.
+
+## Documentation
+
+- `docs/roadmap.md` — phased delivery plan plus post-MVP targets.
+- `docs/pre_integration_prompts.md` — historical record of the seven pre-integration workstreams and prompts.
+- `docs/AI_integration_readiness.md` — snapshot of remaining blockers before enabling ChatGPT.
+- `docs/llm_adapter.md` — contracts for swapping in future ChatGPT-powered providers.
+- `docs/operations.md` — telemetry, rate limiting, and guardrail runbooks.
+- `docs/api_contracts.md`, `docs/budget_schema.md`, `docs/ui_components_spec.md` — canonical API and UI schemas.
 
 ## Troubleshooting
 
