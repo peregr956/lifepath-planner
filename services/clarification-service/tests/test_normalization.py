@@ -16,7 +16,7 @@ for candidate in (SERVICE_SRC, INGESTION_SRC, OPTIMIZATION_SRC):
 
 from normalization import apply_answers_to_model, draft_to_initial_unified
 from models.raw_budget import DraftBudgetModel, RawBudgetLine
-from budget_model import Expense, Income, Preferences, Summary, UnifiedBudgetModel
+from budget_model import Debt, Expense, Income, Preferences, RateChange, Summary, UnifiedBudgetModel
 
 
 def test_draft_to_initial_unified_splits_income_and_expenses():
@@ -96,3 +96,62 @@ def test_apply_answers_to_model_sets_essential_flags_and_preferences():
     assert updated.expenses[0].essential is True
     assert updated.expenses[1].essential is False
     assert updated.preferences.optimization_focus == "debt"
+
+
+def test_apply_answers_to_model_handles_income_and_debt_fields():
+    income = Income(
+        id="income_1",
+        name="Primary Salary",
+        monthly_amount=8000.0,
+        type="earned",
+        stability="stable",
+    )
+    preferences = Preferences(
+        optimization_focus="balanced",
+        protect_essentials=True,
+        max_desired_change_per_category=0.05,
+    )
+    summary = Summary(total_income=8000.0, total_expenses=0.0, surplus=8000.0)
+    personal_loan = Debt(
+        id="personal_loan",
+        name="Personal Loan",
+        balance=4000.0,
+        interest_rate=12.5,
+        min_payment=150.0,
+        priority="medium",
+        approximate=True,
+        rate_changes=None,
+    )
+    model = UnifiedBudgetModel(
+        income=[income],
+        expenses=[],
+        debts=[personal_loan],
+        preferences=preferences,
+        summary=summary,
+    )
+
+    answers = {
+        "primary_income_type": "net",
+        "primary_income_stability": "variable",
+        "personal_loan_balance": 7200,
+        "personal_loan_interest_rate": 9.75,
+        "personal_loan_min_payment": 275,
+        "personal_loan_priority": "high",
+        "personal_loan_approximate": False,
+        "personal_loan_rate_change_date": "2025-06-01",
+        "personal_loan_rate_change_new_rate": 14.25,
+    }
+
+    updated = apply_answers_to_model(model, answers)
+
+    metadata = getattr(updated.income[0], "metadata", {})
+    assert metadata.get("net_or_gross") == "net"
+    assert updated.income[0].stability == "variable"
+
+    debt_entry = updated.debts[0]
+    assert debt_entry.balance == pytest.approx(7200.0)
+    assert debt_entry.interest_rate == pytest.approx(9.75)
+    assert debt_entry.min_payment == pytest.approx(275.0)
+    assert debt_entry.priority == "high"
+    assert debt_entry.approximate is False
+    assert debt_entry.rate_changes == [RateChange(date="2025-06-01", new_rate=14.25)]
