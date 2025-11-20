@@ -4,10 +4,14 @@ from typing import Any, Dict, List
 from uuid import uuid4
 
 import httpx
-from fastapi import FastAPI, File, UploadFile
+from fastapi import Depends, FastAPI, File, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
+from sqlalchemy.orm import Session
+
+from persistence.database import get_session, init_db
+from persistence.repository import BudgetSessionRepository
 
 logger = logging.getLogger(__name__)
 
@@ -61,9 +65,6 @@ app.add_middleware(
 
 # Handles external API endpoints and orchestrates ingestion, clarification, and optimization flows (see PRD).
 
-budgets: Dict[str, Dict[str, Any]] = {}
-# Stores budget sessions keyed by session ID with draft/partial/final states ("draft", "partial", "final").
-
 INGESTION_BASE = "http://localhost:8001"
 CLARIFICATION_BASE = "http://localhost:8002"
 OPTIMIZATION_BASE = "http://localhost:8003"
@@ -76,6 +77,19 @@ def error_response(status_code: int, error_code: str, details: str) -> JSONRespo
     )
 
 
+def _client_ip(request: Request) -> str | None:
+    client = request.client
+    if client:
+        return client.host
+    return None
+
+
+@app.on_event("startup")
+def on_startup() -> None:
+    """Initialize persistence before serving requests."""
+    init_db()
+
+
 @app.get("/health")
 def health_check() -> dict:
     """Reports API gateway uptime so orchestrators can confirm this entrypoint is available."""
@@ -83,7 +97,11 @@ def health_check() -> dict:
 
 
 @app.post("/upload-budget", response_model=None)
-async def upload_budget(file: UploadFile = File(...)) -> Dict[str, Any] | JSONResponse:
+async def upload_budget(
+    file: UploadFile = File(...),
+    request: Request,
+    db: Session = Depends(get_session),
+) -> Dict[str, Any] | JSONResponse:
     """Starts the pipeline by proxying uploads to the ingestion service's /ingest endpoint."""
     if file is None:
         return error_response(400, "file_required", "File upload is required.")
@@ -123,14 +141,6 @@ async def upload_budget(file: UploadFile = File(...)) -> Dict[str, Any] | JSONRe
 
     draft_budget: Dict[str, Any] = ingestion_response.json()
 
-    budget_id = str(uuid4())
-    budgets[budget_id] = {
-        "draft": draft_budget,
-        "partial": None,
-        "final": None,
-    }
-    logger.info("upload-budget budget_id=%s filename=%s", budget_id, filename)
-
     lines: List[Dict[str, Any]] = draft_budget.get("lines") or []
     detected_income_lines = 0
     detected_expense_lines = 0
@@ -147,25 +157,42 @@ async def upload_budget(file: UploadFile = File(...)) -> Dict[str, Any] | JSONRe
         elif amount_value < 0:
             detected_expense_lines += 1
 
+    summary_counts = {
+        "detected_income_lines": detected_income_lines,
+        "detected_expense_lines": detected_expense_lines,
+    }
+
+    budget_id = str(uuid4())
+    repo = BudgetSessionRepository(db)
+    repo.create_session(
+        budget_id,
+        draft_budget,
+        source_ip=_client_ip(request),
+        details={"filename": filename, **summary_counts},
+    )
+    logger.info("upload-budget budget_id=%s filename=%s", budget_id, filename)
+
     return {
         "budget_id": budget_id,
         "status": "parsed",
         "detected_format": draft_budget.get("detected_format"),
-        "summary_preview": {
-            "detected_income_lines": detected_income_lines,
-            "detected_expense_lines": detected_expense_lines,
-        },
+        "summary_preview": summary_counts,
     }
 
 
 @app.get("/clarification-questions", response_model=None)
-async def clarification_questions(budget_id: str) -> Dict[str, Any] | JSONResponse:
+async def clarification_questions(
+    budget_id: str,
+    request: Request,
+    db: Session = Depends(get_session),
+) -> Dict[str, Any] | JSONResponse:
     """Sends stored draft data to clarification service /clarify to generate questions and a partial model."""
-    budget_session = budgets.get(budget_id)
+    repo = BudgetSessionRepository(db)
+    budget_session = repo.get_session(budget_id)
     if not budget_session:
         return error_response(404, "budget_session_not_found", "Budget session not found.")
 
-    draft_payload = budget_session.get("draft")
+    draft_payload = budget_session.draft
     if draft_payload is None:
         return error_response(
             404,
@@ -196,9 +223,13 @@ async def clarification_questions(budget_id: str) -> Dict[str, Any] | JSONRespon
     clarification_data: Dict[str, Any] = clarification_response.json()
 
     partial_model = clarification_data.get("partial_model")
-    budget_session["partial"] = partial_model
-
     questions = clarification_data.get("questions", [])
+    repo.update_partial(
+        budget_session,
+        partial_model,
+        source_ip=_client_ip(request),
+        details={"question_count": len(questions)},
+    )
     logger.info(
         "clarification-questions budget_id=%s question_count=%s",
         budget_id,
@@ -218,14 +249,19 @@ class SubmitAnswersPayload(BaseModel):
 
 
 @app.post("/submit-answers", response_model=None)
-async def submit_answers(payload: SubmitAnswersPayload) -> Dict[str, Any] | JSONResponse:
+async def submit_answers(
+    payload: SubmitAnswersPayload,
+    request: Request,
+    db: Session = Depends(get_session),
+) -> Dict[str, Any] | JSONResponse:
     """Calls clarification service /apply-answers to merge user answers into a final unified model."""
     logger.info("submit-answers budget_id=%s", payload.budget_id)
-    budget_session = budgets.get(payload.budget_id)
+    repo = BudgetSessionRepository(db)
+    budget_session = repo.get_session(payload.budget_id)
     if not budget_session:
         return error_response(404, "budget_session_not_found", "Budget session not found.")
 
-    partial_model = budget_session.get("partial")
+    partial_model = budget_session.partial
     if partial_model is None:
         return error_response(
             400,
@@ -261,7 +297,12 @@ async def submit_answers(payload: SubmitAnswersPayload) -> Dict[str, Any] | JSON
     apply_data: Dict[str, Any] = clarification_response.json()
 
     updated_model = apply_data.get("updated_model")
-    budget_session["final"] = updated_model
+    repo.update_final(
+        budget_session,
+        updated_model,
+        source_ip=_client_ip(request),
+        details={"answer_count": len(payload.answers or {})},
+    )
 
     # TODO: surface ready_for_summary flag to the client once downstream contract is finalized.
     return {
@@ -271,13 +312,17 @@ async def submit_answers(payload: SubmitAnswersPayload) -> Dict[str, Any] | JSON
 
 
 @app.get("/summary-and-suggestions", response_model=None)
-async def summary_and_suggestions(budget_id: str) -> Dict[str, Any] | JSONResponse:
+async def summary_and_suggestions(
+    budget_id: str,
+    db: Session = Depends(get_session),
+) -> Dict[str, Any] | JSONResponse:
     """Finishes the pipeline by calling optimization service /summarize-and-optimize for insights."""
-    budget_session = budgets.get(budget_id)
+    repo = BudgetSessionRepository(db)
+    budget_session = repo.get_session(budget_id)
     if not budget_session:
         return error_response(404, "budget_session_not_found", "Budget session not found.")
 
-    final_model = budget_session.get("final")
+    final_model = budget_session.final
     if final_model is None:
         return error_response(
             400,
