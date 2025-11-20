@@ -39,6 +39,13 @@ The gateway expects the supporting services to run on the default localhost port
 - The `BudgetSession` table retains the draft, partial, and final payloads plus timestamps.
 - Every state mutation records an `AuditEvent` with the action name, source IP, and stage transition metadata for troubleshooting.
 
+## Rate Limiting
+
+- The gateway ships with a lightweight in-memory limiter to prevent abuse before a real edge proxy is in place.
+- Defaults: `60` requests/minute with a `20` request burst per client IP.
+- Tune via `GATEWAY_RATE_LIMIT_PER_MIN` and `GATEWAY_RATE_LIMIT_BURST`.
+- The limiter adds a `Retry-After` header and logs a structured `rate_limited` event with the offending IP/request ID.
+
 ## Testing
 
 Run the persistence-focused suite to verify durable storage and auditing behavior:

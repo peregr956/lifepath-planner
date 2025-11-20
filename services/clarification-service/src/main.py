@@ -12,7 +12,7 @@ import logging
 import os
 import sys
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 from typing_extensions import Literal
@@ -25,6 +25,9 @@ if SERVICE_SRC_STR not in sys.path:
     sys.path.append(SERVICE_SRC_STR)
 
 SERVICES_ROOT = SERVICE_SRC.parents[1]
+SERVICES_ROOT_STR = str(SERVICES_ROOT)
+if SERVICES_ROOT_STR not in sys.path:
+    sys.path.append(SERVICES_ROOT_STR)
 OTHER_SERVICE_PATHS = (
     SERVICES_ROOT / "budget-ingestion-service" / "src",
     SERVICES_ROOT / "optimization-service" / "src",
@@ -33,6 +36,8 @@ for path in OTHER_SERVICE_PATHS:
     path_str = str(path)
     if path.exists() and path_str not in sys.path:
         sys.path.append(path_str)
+
+from observability.telemetry import bind_request_context, ensure_request_id, reset_request_context, setup_telemetry
 
 from models.raw_budget import DraftBudgetModel, RawBudgetLine  # noqa: E402
 from budget_model import (  # noqa: E402
@@ -57,7 +62,30 @@ from ui_schema_builder import build_initial_ui_schema
 from clarification_provider import ClarificationProviderRequest, build_clarification_provider
 
 app = FastAPI(title="Clarification Service")
+setup_telemetry(app, service_name="clarification-service")
 logger = logging.getLogger(__name__)
+
+
+def _log_event(event: str, request: Request, **extra: Any) -> None:
+    logger.info(
+        {
+            "event": event,
+            "request_id": getattr(request.state, "request_id", None),
+            **extra,
+        }
+    )
+
+
+@app.middleware("http")
+async def request_context_middleware(request: Request, call_next):
+    request_id = ensure_request_id(request)
+    token = bind_request_context(request_id)
+    try:
+        response = await call_next(request)
+        response.headers.setdefault("x-request-id", request_id)
+        return response
+    finally:
+        reset_request_context(token)
 
 
 class RawBudgetLinePayload(BaseModel):
@@ -339,24 +367,32 @@ def health_check() -> dict:
     response_model=NormalizationResponseModel,
     response_model_exclude_none=True,
 )
-def normalize_budget(payload: DraftBudgetPayload) -> NormalizationResponseModel:
+def normalize_budget(request: Request, payload: DraftBudgetPayload) -> NormalizationResponseModel:
     """
     Normalize an ingested draft budget and attach heuristic follow-ups plus UI scaffolding.
     Expects a `DraftBudgetPayload` produced by the ingestion pipeline.
     Returns a `NormalizationResponseModel` containing the unified model, clarification questions, and UI schema.
     """
 
+    _log_event("normalize_received", request, line_count=len(payload.lines))
     draft_model = payload.to_dataclass()
     unified_model = draft_to_initial_unified(draft_model)
     questions = _build_clarification_questions(unified_model)
     question_models = _serialize_question_specs(questions)
     ui_schema = build_initial_ui_schema(unified_model)
 
-    return NormalizationResponseModel(
+    response = NormalizationResponseModel(
         unified_model=UnifiedBudgetResponseModel.from_dataclass(unified_model),
         clarification_questions=question_models,
         ui_schema=ui_schema,
     )
+    _log_event(
+        "normalize_completed",
+        request,
+        question_count=len(question_models),
+        component_count=sum(len(spec.components) for spec in questions),
+    )
+    return response
 
 
 @app.post(
@@ -364,13 +400,14 @@ def normalize_budget(payload: DraftBudgetPayload) -> NormalizationResponseModel:
     response_model=ClarifyResponseModel,
     response_model_exclude_none=True,
 )
-def clarify_budget(payload: DraftBudgetPayload) -> ClarifyResponseModel:
+def clarify_budget(request: Request, payload: DraftBudgetPayload) -> ClarifyResponseModel:
     """
     Generate deterministic clarification questions and return the partial unified model for the UI.
     Expects a `DraftBudgetPayload` with the latest ingestion output.
     Returns a `ClarifyResponseModel` including the needs_clarification flag, question specs, and partial model.
     """
 
+    _log_event("clarify_received", request, line_count=len(payload.lines))
     draft_model = payload.to_dataclass()
     if not draft_model.lines:
         return JSONResponse(status_code=400, content={"error": "empty_budget"})
@@ -378,11 +415,18 @@ def clarify_budget(payload: DraftBudgetPayload) -> ClarifyResponseModel:
     questions = _build_clarification_questions(unified_model)
     question_models = _serialize_question_specs(questions)
 
-    return ClarifyResponseModel(
+    response = ClarifyResponseModel(
         needs_clarification=bool(question_models),
         questions=question_models,
         partial_model=UnifiedBudgetResponseModel.from_dataclass(unified_model),
     )
+    _log_event(
+        "clarify_completed",
+        request,
+        question_count=len(question_models),
+        needs_clarification=response.needs_clarification,
+    )
+    return response
 
 
 @app.post(
@@ -390,13 +434,14 @@ def clarify_budget(payload: DraftBudgetPayload) -> ClarifyResponseModel:
     response_model=ApplyAnswersResponseModel,
     response_model_exclude_none=True,
 )
-def apply_answers(payload: ApplyAnswersPayload) -> ApplyAnswersResponseModel | JSONResponse:
+def apply_answers(request: Request, payload: ApplyAnswersPayload) -> ApplyAnswersResponseModel | JSONResponse:
     """
     Apply user-provided answers to the partial unified model and gauge readiness for summarization.
     Expects an `ApplyAnswersPayload` containing the serialized partial model and answers map.
     Returns an `ApplyAnswersResponseModel` with the updated model and a readiness flag.
     """
 
+    _log_event("apply_answers_received", request, answer_count=len(payload.answers))
     # TODO(ai-answer-application):
     #   * Identify real debts within expense lines automatically.
     #   * Generate more sophisticated field_id → model mappings.
@@ -411,10 +456,17 @@ def apply_answers(payload: ApplyAnswersPayload) -> ApplyAnswersResponseModel | J
             },
         )
     updated_model = apply_answers_to_model(unified_model, payload.answers)
-    return ApplyAnswersResponseModel(
+    response = ApplyAnswersResponseModel(
         updated_model=UnifiedBudgetResponseModel.from_dataclass(updated_model),
         ready_for_summary=True,
     )
+    _log_event(
+        "apply_answers_completed",
+        request,
+        answer_count=len(payload.answers),
+        ready_for_summary=response.ready_for_summary,
+    )
+    return response
 
 
 def _serialize_question_specs(question_specs: Sequence[QuestionSpec]) -> List[QuestionSpecModel]:

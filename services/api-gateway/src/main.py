@@ -16,13 +16,21 @@ SRC_DIR = Path(__file__).resolve().parent
 if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
-from http_client import ResilientHttpClient, ensure_request_id
+SERVICES_ROOT = SRC_DIR.parents[1]
+if str(SERVICES_ROOT) not in sys.path:
+    sys.path.insert(0, str(SERVICES_ROOT))
+
+from http_client import ResilientHttpClient
 from persistence.database import get_session, init_db
 from persistence.repository import BudgetSessionRepository
+from middleware.rate_limit import SimpleRateLimiter, build_default_rate_limiter
+from observability.telemetry import bind_request_context, ensure_request_id, reset_request_context, setup_telemetry
 
 logger = logging.getLogger(__name__)
 
 app = FastAPI(title="API Gateway")
+setup_telemetry(app, service_name="api-gateway")
+app.state.rate_limiter = build_default_rate_limiter()
 
 
 DEFAULT_CORS_ORIGINS: List[str] = [
@@ -60,6 +68,44 @@ def _resolve_cors_origins() -> List[str]:
                 return ["*"]
             return origins
     return DEFAULT_CORS_ORIGINS
+
+
+@app.middleware("http")
+async def request_context_middleware(request: Request, call_next):
+    request_id = ensure_request_id(request)
+    token = bind_request_context(request_id)
+    try:
+        response = await call_next(request)
+        response.headers.setdefault("x-request-id", request_id)
+        return response
+    finally:
+        reset_request_context(token)
+
+
+@app.middleware("http")
+async def rate_limit_middleware(request: Request, call_next):
+    limiter: SimpleRateLimiter = app.state.rate_limiter
+    client_id = _client_ip(request) or "unknown"
+    allowed, retry_after = await limiter.allow(client_id)
+    if allowed:
+        return await call_next(request)
+
+    retry_after_header = str(max(1, int(retry_after or 1)))
+    logger.warning(
+        {
+            "event": "rate_limited",
+            "request_id": getattr(request.state, "request_id", None),
+            "client_ip": client_id,
+            "retry_after_seconds": retry_after,
+        }
+    )
+    response = error_response(
+        429,
+        "rate_limit_exceeded",
+        "Too many requests. Please retry shortly.",
+    )
+    response.headers["Retry-After"] = retry_after_header
+    return response
 
 
 app.add_middleware(
