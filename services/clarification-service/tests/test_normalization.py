@@ -21,6 +21,7 @@ from budget_model import Debt, Expense, Income, Preferences, RateChange, Summary
 
 def test_draft_to_initial_unified_splits_income_and_expenses():
     # TODO(ai-integration): Expand once AI-driven debt/essentiality detection is available.
+    # Tracked in docs/AI_integration_readiness.md#model-enrichment-backlog.
     positive_line = RawBudgetLine(
         source_row_index=1,
         date=None,
@@ -50,6 +51,7 @@ def test_draft_to_initial_unified_splits_income_and_expenses():
 
 def test_apply_answers_to_model_sets_essential_flags_and_preferences():
     # TODO(ai-integration): Cover AI-provided answer formats once available.
+    # Tracked in docs/AI_integration_readiness.md#ai-answer-application.
     income = Income(
         id="income-1",
         name="Salary",

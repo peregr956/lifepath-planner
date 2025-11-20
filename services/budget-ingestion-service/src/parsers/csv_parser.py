@@ -62,7 +62,8 @@ def parse_csv_to_draft_model(file_bytes: bytes) -> DraftBudgetModel:
         )
 
     detected_format = "categorical"
-    # TODO: infer whether the CSV represents a ledger vs categorical budget.
+    # TODO(ingestion-ledger-detection): infer whether the CSV represents a ledger vs categorical budget.
+    # Tracked in docs/AI_integration_readiness.md#ingestion-ledger-detection.
 
     combined_notes = " ".join(warnings) if warnings else None
     return DraftBudgetModel(lines=lines, detected_format=detected_format, notes=combined_notes)
