@@ -6,8 +6,10 @@ baseline UnifiedBudgetModel the clarification service can reason about before
 invoking any AI-driven refinement.
 """
 
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Sequence, Tuple
+from typing import Any, Dict, Iterable, List, Sequence, Set, Tuple
+import re
 import sys
 
 # Ensure we can import shared dataclasses from sibling services without having
@@ -45,7 +47,7 @@ PRIMARY_INCOME_STABILITY_VALUES = {"stable", "variable", "seasonal"}
 PRIMARY_INCOME_FLAG_METADATA_KEY = "net_or_gross"
 TRUE_STRINGS = {"true", "1", "yes", "y", "essential", "needed"}
 FALSE_STRINGS = {"false", "0", "no", "n", "nonessential", "flexible"}
-SUPPORTED_SIMPLE_FIELD_IDS = {
+LEGACY_SIMPLE_FIELD_IDS = {
     "optimization_focus",
     "primary_income_type",
     "primary_income_stability",
@@ -60,6 +62,57 @@ DEBT_FIELD_SUFFIXES: Tuple[Tuple[str, str], ...] = (
     ("_approximate", "approximate"),
 )
 VALID_DEBT_PRIORITIES = {"high", "medium", "low"}
+PASSIVE_INCOME_KEYWORDS = {"dividend", "interest", "rental", "royalty", "yield"}
+TRANSFER_INCOME_KEYWORDS = {"transfer", "gift", "refund", "reimbursement", "stipend"}
+VARIABLE_INCOME_KEYWORDS = {"freelance", "contract", "gig", "bonus", "commission", "tips"}
+SEASONAL_INCOME_KEYWORDS = {"seasonal", "holiday", "tax refund"}
+ESSENTIAL_EXPENSE_KEYWORDS = {
+    "rent",
+    "mortgage",
+    "housing",
+    "utilities",
+    "insurance",
+    "childcare",
+    "health",
+    "grocery",
+    "groceries",
+    "transportation",
+    "car payment",
+    "auto",
+}
+FLEXIBLE_EXPENSE_KEYWORDS = {
+    "dining",
+    "restaurant",
+    "subscription",
+    "streaming",
+    "travel",
+    "vacation",
+    "shopping",
+    "entertainment",
+    "hobby",
+}
+DEBT_KEYWORDS = {
+    "loan",
+    "credit",
+    "mortgage",
+    "heloc",
+    "card",
+    "auto",
+    "car payment",
+    "student",
+    "line of credit",
+}
+PREFERENCE_FIELD_ALIASES = {
+    "protect_essentials": "protect_essentials",
+    "max_desired_change_per_category": "max_desired_change_per_category",
+    "optimization_focus": "optimization_focus",
+}
+SLUG_PATTERN = re.compile(r"[^a-z0-9]+")
+LEGACY_FIELD_BINDINGS = {
+    "optimization_focus": ("preferences", None, ("optimization_focus",)),
+    "primary_income_type": ("income", "primary", ("metadata", PRIMARY_INCOME_FLAG_METADATA_KEY)),
+    "primary_income_stability": ("income", "primary", ("stability",)),
+}
 
 
 def draft_to_initial_unified(draft: DraftBudgetModel) -> UnifiedBudgetModel:
@@ -84,25 +137,19 @@ def draft_to_initial_unified(draft: DraftBudgetModel) -> UnifiedBudgetModel:
         if line.amount > 0:
             income_index += 1
             incomes.append(_raw_line_to_income(line, income_index))
-            # TODO(ai-income-classification): Detect passive vs transfer income.
-            # Tracked in docs/AI_integration_readiness.md#model-enrichment-backlog.
             continue
 
         if line.amount < 0:
             expense_index += 1
             expenses.append(_raw_line_to_expense(line, expense_index))
-            # TODO(ai-essentiality): Predict essential vs discretionary spending.
-            # Tracked in docs/AI_integration_readiness.md#model-enrichment-backlog.
-            # TODO(ai-debt-detection): Identify loan/credit payments that should become debts.
-            # Tracked in docs/AI_integration_readiness.md#model-enrichment-backlog.
 
     summary = _build_summary(incomes, expenses)
+    detected_debts = _detect_debt_candidates(draft)
 
     unified = UnifiedBudgetModel(
         income=incomes,
         expenses=expenses,
-        debts=[],  # TODO(ai-debt-detection): Populate from loan-like draft lines or metadata.
-        # Tracked in docs/AI_integration_readiness.md#model-enrichment-backlog.
+        debts=detected_debts,
         preferences=_default_preferences(),
         summary=summary,
     )
@@ -118,10 +165,8 @@ def _raw_line_to_income(line: RawBudgetLine, ordinal: int) -> Income:
         id=_deterministic_id("income", line, ordinal),
         name=_resolve_label(line, fallback_prefix="Income"),
         monthly_amount=line.amount,
-        type="earned",  # TODO(ai-income-classification): Revisit via classifier.
-        # Tracked in docs/AI_integration_readiness.md#model-enrichment-backlog.
-        stability="stable",  # TODO(ai-income-stability): Infer from historical cadence.
-        # Tracked in docs/AI_integration_readiness.md#model-enrichment-backlog.
+        type=_infer_income_type(line),
+        stability=_infer_income_stability(line),
     )
 
 
@@ -133,10 +178,102 @@ def _raw_line_to_expense(line: RawBudgetLine, ordinal: int) -> Expense:
         id=_deterministic_id("expense", line, ordinal),
         category=_resolve_label(line, fallback_prefix="Expense"),
         monthly_amount=abs(line.amount),
-        essential=None,  # type: ignore[arg-type]  # TODO(ai-essentiality): determine boolean.
-        # Tracked in docs/AI_integration_readiness.md#model-enrichment-backlog.
+        essential=_infer_expense_essentiality(line),
         notes=line.description,
     )
+
+
+def _infer_income_type(line: RawBudgetLine) -> str:
+    label = _normalize_text_for_matching(line.category_label or line.description or "")
+    metadata_blob = _normalize_text_for_matching(" ".join(str(value) for value in (line.metadata or {}).values()))
+    if _contains_keyword(label, PASSIVE_INCOME_KEYWORDS) or _contains_keyword(metadata_blob, PASSIVE_INCOME_KEYWORDS):
+        return "passive"
+    if _contains_keyword(label, TRANSFER_INCOME_KEYWORDS) or _contains_keyword(metadata_blob, TRANSFER_INCOME_KEYWORDS):
+        return "transfer"
+    return "earned"
+
+
+def _infer_income_stability(line: RawBudgetLine) -> str:
+    label = _normalize_text_for_matching(line.category_label or line.description or "")
+    metadata_blob = _normalize_text_for_matching(" ".join(str(value) for value in (line.metadata or {}).values()))
+    if _contains_keyword(label, SEASONAL_INCOME_KEYWORDS) or _contains_keyword(metadata_blob, SEASONAL_INCOME_KEYWORDS):
+        return "seasonal"
+    if _contains_keyword(label, VARIABLE_INCOME_KEYWORDS) or _contains_keyword(metadata_blob, VARIABLE_INCOME_KEYWORDS):
+        return "variable"
+    return "stable"
+
+
+def _infer_expense_essentiality(line: RawBudgetLine) -> bool | None:
+    label = _normalize_text_for_matching(line.category_label or line.description or "")
+    metadata_blob = _normalize_text_for_matching(" ".join(str(value) for value in (line.metadata or {}).values()))
+    if _contains_keyword(label, ESSENTIAL_EXPENSE_KEYWORDS) or _contains_keyword(metadata_blob, ESSENTIAL_EXPENSE_KEYWORDS):
+        return True
+    if _contains_keyword(label, FLEXIBLE_EXPENSE_KEYWORDS) or _contains_keyword(metadata_blob, FLEXIBLE_EXPENSE_KEYWORDS):
+        return False
+    return None
+
+
+def _detect_debt_candidates(draft: DraftBudgetModel) -> List[Debt]:
+    detected: Dict[str, Debt] = {}
+    for ordinal, line in enumerate(draft.lines, start=1):
+        if line.amount >= 0:
+            continue
+        if not _looks_like_debt(line):
+            continue
+        debt_id = _deduce_debt_id(line, ordinal)
+        if debt_id in detected:
+            continue
+        detected[debt_id] = Debt(
+            id=debt_id,
+            name=_derive_debt_name(line, debt_id),
+            balance=0.0,
+            interest_rate=0.0,
+            min_payment=abs(line.amount),
+            priority="medium",
+            approximate=True,
+            rate_changes=None,
+        )
+    return list(detected.values())
+
+
+def _looks_like_debt(line: RawBudgetLine) -> bool:
+    label = _normalize_text_for_matching(line.category_label or "")
+    description = _normalize_text_for_matching(line.description or "")
+    metadata_blob = _normalize_text_for_matching(" ".join(str(value) for value in (line.metadata or {}).values()))
+    return any(
+        _contains_keyword(blob, DEBT_KEYWORDS)
+        for blob in (label, description, metadata_blob)
+    )
+
+
+def _deduce_debt_id(line: RawBudgetLine, ordinal: int) -> str:
+    if line.metadata and "id" in line.metadata:
+        candidate = str(line.metadata["id"])
+    elif line.category_label:
+        candidate = line.category_label
+    elif line.description:
+        candidate = line.description
+    else:
+        candidate = f"debt_line_{ordinal}"
+    slug = _slugify(candidate)
+    return slug or f"debt_line_{ordinal}"
+
+
+def _derive_debt_name(line: RawBudgetLine, fallback_id: str) -> str:
+    label = (line.category_label or line.description or "").strip()
+    if label:
+        return label
+    return _humanize_debt_name(fallback_id)
+
+
+def _contains_keyword(blob: str, keywords: Set[str]) -> bool:
+    if not blob:
+        return False
+    return any(keyword in blob for keyword in keywords)
+
+
+def _normalize_text_for_matching(text: str) -> str:
+    return text.strip().lower()
 
 
 def _build_summary(incomes: Iterable[Income], expenses: Iterable[Expense]) -> Summary:
