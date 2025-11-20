@@ -1,0 +1,350 @@
+{
+  "needs_clarification": true,
+  "partial_model": {
+    "debts": [],
+    "expenses": [
+      {
+        "category": "Rent",
+        "essential": null,
+        "id": "expense-draft-4-1",
+        "monthly_amount": 2200.0,
+        "notes": "Apartment rent"
+      },
+      {
+        "category": "Groceries",
+        "essential": null,
+        "id": "expense-draft-5-2",
+        "monthly_amount": 650.0,
+        "notes": "Weekly groceries"
+      },
+      {
+        "category": "Utilities",
+        "essential": null,
+        "id": "expense-draft-6-3",
+        "monthly_amount": 320.0,
+        "notes": "Electric and internet"
+      },
+      {
+        "category": "Student Loan",
+        "essential": null,
+        "id": "expense-draft-7-4",
+        "monthly_amount": 400.0,
+        "notes": "Loan payment"
+      },
+      {
+        "category": "Transportation",
+        "essential": null,
+        "id": "expense-draft-8-5",
+        "monthly_amount": 275.0,
+        "notes": "Transit pass"
+      },
+      {
+        "category": "Dining",
+        "essential": null,
+        "id": "expense-draft-9-6",
+        "monthly_amount": 180.0,
+        "notes": "Restaurants and takeout"
+      }
+    ],
+    "income": [
+      {
+        "id": "income-draft-2-1",
+        "monthly_amount": 6500.0,
+        "name": "Salary",
+        "stability": "stable",
+        "type": "earned"
+      },
+      {
+        "id": "income-draft-3-2",
+        "monthly_amount": 1200.0,
+        "name": "Freelance",
+        "stability": "stable",
+        "type": "earned"
+      }
+    ],
+    "preferences": {
+      "max_desired_change_per_category": 0.0,
+      "optimization_focus": "balanced",
+      "protect_essentials": true
+    },
+    "summary": {
+      "surplus": 3675.0,
+      "total_expenses": 4025.0,
+      "total_income": 7700.0
+    }
+  },
+  "question_count": 2,
+  "questions": [
+    {
+      "components": [
+        {
+          "binding": "expenses.expense-draft-4-1.essential",
+          "component": "toggle",
+          "field_id": "essential_expense-draft-4-1",
+          "label": "Mark Rent as essential"
+        },
+        {
+          "binding": "expenses.expense-draft-5-2.essential",
+          "component": "toggle",
+          "field_id": "essential_expense-draft-5-2",
+          "label": "Mark Groceries as essential"
+        },
+        {
+          "binding": "expenses.expense-draft-6-3.essential",
+          "component": "toggle",
+          "field_id": "essential_expense-draft-6-3",
+          "label": "Mark Utilities as essential"
+        },
+        {
+          "binding": "expenses.expense-draft-7-4.essential",
+          "component": "toggle",
+          "field_id": "essential_expense-draft-7-4",
+          "label": "Mark Student Loan as essential"
+        },
+        {
+          "binding": "expenses.expense-draft-8-5.essential",
+          "component": "toggle",
+          "field_id": "essential_expense-draft-8-5",
+          "label": "Mark Transportation as essential"
+        },
+        {
+          "binding": "expenses.expense-draft-9-6.essential",
+          "component": "toggle",
+          "field_id": "essential_expense-draft-9-6",
+          "label": "Mark Dining as essential"
+        }
+      ],
+      "prompt": "Which of these categories are essential for your basic needs?",
+      "question_id": "question_essential_expenses"
+    },
+    {
+      "components": [
+        {
+          "binding": "income.income-draft-2-1.metadata.net_or_gross",
+          "component": "dropdown",
+          "field_id": "primary_income_type",
+          "label": "Is your primary income net (after tax) or gross?",
+          "options": [
+            "net",
+            "gross"
+          ]
+        },
+        {
+          "binding": "income.income-draft-2-1.stability",
+          "component": "dropdown",
+          "constraints": {
+            "default": "stable"
+          },
+          "field_id": "primary_income_stability",
+          "label": "Is your primary income generally stable or variable?",
+          "options": [
+            "stable",
+            "variable"
+          ]
+        }
+      ],
+      "prompt": "Is your primary income net (after tax) or gross, and is it generally stable?",
+      "question_id": "question_primary_income_details"
+    }
+  ],
+  "ui_schema": {
+    "meta": {
+      "notes": "Deterministic scaffolding for clarification.",
+      "version": "clarify-ui-v1"
+    },
+    "schema_id": "clarification_initial",
+    "sections": [
+      {
+        "components": [
+          {
+            "binding": "income.income-draft-2-1.metadata.net_or_gross",
+            "component": "dropdown",
+            "field_id": "primary_income_type",
+            "label": "Is your primary income net (after tax) or gross?",
+            "options": [
+              "net",
+              "gross"
+            ]
+          },
+          {
+            "binding": "income.income-draft-2-1.stability",
+            "component": "dropdown",
+            "constraints": {
+              "default": "stable"
+            },
+            "field_id": "primary_income_stability",
+            "label": "Is your primary income generally stable or variable?",
+            "options": [
+              "stable",
+              "variable"
+            ]
+          }
+        ],
+        "description": "Review your current income sources and clarify the primary one.",
+        "section_id": "income",
+        "summary": {
+          "entries": [
+            {
+              "formatted_monthly_amount": "$6,500.00",
+              "id": "income-draft-2-1",
+              "label": "Salary",
+              "monthly_amount": 6500.0,
+              "stability": "stable"
+            },
+            {
+              "formatted_monthly_amount": "$1,200.00",
+              "id": "income-draft-3-2",
+              "label": "Freelance",
+              "monthly_amount": 1200.0,
+              "stability": "stable"
+            }
+          ],
+          "income_count": 2,
+          "primary_income_id": "income-draft-2-1",
+          "primary_income_monthly_amount": {
+            "formatted": "$6,500.00",
+            "raw": 6500.0
+          }
+        },
+        "title": "Income snapshot"
+      },
+      {
+        "components": [
+          {
+            "binding": "expenses.expense-draft-4-1.essential",
+            "component": "toggle",
+            "field_id": "essential_expense-draft-4-1",
+            "label": "Mark Rent as essential"
+          },
+          {
+            "binding": "expenses.expense-draft-5-2.essential",
+            "component": "toggle",
+            "field_id": "essential_expense-draft-5-2",
+            "label": "Mark Groceries as essential"
+          },
+          {
+            "binding": "expenses.expense-draft-6-3.essential",
+            "component": "toggle",
+            "field_id": "essential_expense-draft-6-3",
+            "label": "Mark Utilities as essential"
+          },
+          {
+            "binding": "expenses.expense-draft-7-4.essential",
+            "component": "toggle",
+            "field_id": "essential_expense-draft-7-4",
+            "label": "Mark Student Loan as essential"
+          },
+          {
+            "binding": "expenses.expense-draft-8-5.essential",
+            "component": "toggle",
+            "field_id": "essential_expense-draft-8-5",
+            "label": "Mark Transportation as essential"
+          },
+          {
+            "binding": "expenses.expense-draft-9-6.essential",
+            "component": "toggle",
+            "field_id": "essential_expense-draft-9-6",
+            "label": "Mark Dining as essential"
+          }
+        ],
+        "description": "Classify spending categories as essential or flexible.",
+        "section_id": "expenses",
+        "summary": {
+          "entries": [
+            {
+              "essential": null,
+              "formatted_monthly_amount": "$2,200.00",
+              "id": "expense-draft-4-1",
+              "label": "Rent",
+              "monthly_amount": 2200.0
+            },
+            {
+              "essential": null,
+              "formatted_monthly_amount": "$650.00",
+              "id": "expense-draft-5-2",
+              "label": "Groceries",
+              "monthly_amount": 650.0
+            },
+            {
+              "essential": null,
+              "formatted_monthly_amount": "$320.00",
+              "id": "expense-draft-6-3",
+              "label": "Utilities",
+              "monthly_amount": 320.0
+            },
+            {
+              "essential": null,
+              "formatted_monthly_amount": "$400.00",
+              "id": "expense-draft-7-4",
+              "label": "Student Loan",
+              "monthly_amount": 400.0
+            },
+            {
+              "essential": null,
+              "formatted_monthly_amount": "$275.00",
+              "id": "expense-draft-8-5",
+              "label": "Transportation",
+              "monthly_amount": 275.0
+            },
+            {
+              "essential": null,
+              "formatted_monthly_amount": "$180.00",
+              "id": "expense-draft-9-6",
+              "label": "Dining",
+              "monthly_amount": 180.0
+            }
+          ],
+          "pending_amount": {
+            "formatted": "$4,025.00",
+            "raw": 4025.0
+          },
+          "pending_classifications": 6
+        },
+        "title": "Expenses overview"
+      },
+      {
+        "components": [
+          {
+            "binding": "preferences.optimization_focus",
+            "component": "dropdown",
+            "constraints": {
+              "default": "balanced"
+            },
+            "field_id": "optimization_focus",
+            "label": "Select the priority that fits best",
+            "options": [
+              "debt",
+              "savings",
+              "balanced"
+            ]
+          }
+        ],
+        "description": "Pick the focus that best fits your current plan.",
+        "section_id": "preferences",
+        "summary": {
+          "current_focus": "balanced",
+          "max_desired_change_per_category": {
+            "formatted": "0%",
+            "raw": 0.0
+          },
+          "protect_essentials": true
+        },
+        "title": "Preferences"
+      }
+    ],
+    "summary": {
+      "surplus": {
+        "formatted": "$3,675.00",
+        "raw": 3675.0
+      },
+      "total_expenses": {
+        "formatted": "$4,025.00",
+        "raw": 4025.0
+      },
+      "total_income": {
+        "formatted": "$7,700.00",
+        "raw": 7700.0
+      }
+    }
+  }
+}
