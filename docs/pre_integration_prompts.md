@@ -116,6 +116,9 @@ Target services: clarification + optimization.
 Update relevant READMEs to describe the extension points.
 ```
 
+See `docs/llm_adapter.md` for the finalized provider contract and configuration
+details.
+
 ---
 
 ## Step 7 — Observability and Guardrails

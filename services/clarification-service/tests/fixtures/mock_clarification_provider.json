@@ -1,0 +1,17 @@
+{
+  "questions": [
+    {
+      "question_id": "mock_clarification_question",
+      "prompt": "Mock provider prompt for regression tests.",
+      "components": [
+        {
+          "component": "text",
+          "field_id": "mock_field",
+          "label": "Mock field label",
+          "binding": "mock.binding"
+        }
+      ]
+    }
+  ]
+}
+
