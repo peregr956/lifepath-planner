@@ -85,13 +85,16 @@ def draft_to_initial_unified(draft: DraftBudgetModel) -> UnifiedBudgetModel:
             income_index += 1
             incomes.append(_raw_line_to_income(line, income_index))
             # TODO(ai-income-classification): Detect passive vs transfer income.
+            # Tracked in docs/AI_integration_readiness.md#model-enrichment-backlog.
             continue
 
         if line.amount < 0:
             expense_index += 1
             expenses.append(_raw_line_to_expense(line, expense_index))
             # TODO(ai-essentiality): Predict essential vs discretionary spending.
+            # Tracked in docs/AI_integration_readiness.md#model-enrichment-backlog.
             # TODO(ai-debt-detection): Identify loan/credit payments that should become debts.
+            # Tracked in docs/AI_integration_readiness.md#model-enrichment-backlog.
 
     summary = _build_summary(incomes, expenses)
 
@@ -99,6 +102,7 @@ def draft_to_initial_unified(draft: DraftBudgetModel) -> UnifiedBudgetModel:
         income=incomes,
         expenses=expenses,
         debts=[],  # TODO(ai-debt-detection): Populate from loan-like draft lines or metadata.
+        # Tracked in docs/AI_integration_readiness.md#model-enrichment-backlog.
         preferences=_default_preferences(),
         summary=summary,
     )
@@ -115,7 +119,9 @@ def _raw_line_to_income(line: RawBudgetLine, ordinal: int) -> Income:
         name=_resolve_label(line, fallback_prefix="Income"),
         monthly_amount=line.amount,
         type="earned",  # TODO(ai-income-classification): Revisit via classifier.
+        # Tracked in docs/AI_integration_readiness.md#model-enrichment-backlog.
         stability="stable",  # TODO(ai-income-stability): Infer from historical cadence.
+        # Tracked in docs/AI_integration_readiness.md#model-enrichment-backlog.
     )
 
 
@@ -128,6 +134,7 @@ def _raw_line_to_expense(line: RawBudgetLine, ordinal: int) -> Expense:
         category=_resolve_label(line, fallback_prefix="Expense"),
         monthly_amount=abs(line.amount),
         essential=None,  # type: ignore[arg-type]  # TODO(ai-essentiality): determine boolean.
+        # Tracked in docs/AI_integration_readiness.md#model-enrichment-backlog.
         notes=line.description,
     )
 
@@ -229,6 +236,7 @@ def apply_answers_to_model(model: UnifiedBudgetModel, answers: Dict[str, Any]) -
             continue
 
         # TODO(answer-mapping): Support additional field_ids as the question catalog grows.
+        # Tracked in docs/AI_integration_readiness.md#ai-answer-application.
 
     _finalize_rate_changes(debt_lookup, pending_rate_changes)
     return model

@@ -445,6 +445,7 @@ def apply_answers(request: Request, payload: ApplyAnswersPayload) -> ApplyAnswer
     # TODO(ai-answer-application):
     #   * Identify real debts within expense lines automatically.
     #   * Generate more sophisticated field_id → model mappings.
+    # Tracked in docs/AI_integration_readiness.md#ai-answer-application.
     unified_model = payload.partial_model.to_dataclass()
     validation_errors = _validate_answer_field_ids(unified_model, payload.answers)
     if validation_errors:
