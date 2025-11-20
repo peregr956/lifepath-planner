@@ -54,6 +54,57 @@ All component descriptors must be simple, explicit, and self-contained so the fr
 
 ---
 
+## 3. UI Schema Envelope
+
+`build_initial_ui_schema` returns a deterministic payload with four top-level keys:
+
+```json
+{
+  "schema_id": "clarification_initial",
+  "sections": [
+    {
+      "section_id": "income_overview",
+      "title": "Income Review",
+      "description": "Contextual guidance for the user",
+      "summary": {
+        "entries": [
+          {
+            "id": "income-1",
+            "label": "Acme Corp Salary",
+            "monthly_amount": 5200,
+            "formatted_monthly_amount": "$5,200.00",
+            "stability": "stable"
+          }
+        ],
+        "primary_income_id": "income-1",
+        "income_count": 1
+      },
+      "components": [
+        { "... component descriptor ..." }
+      ]
+    }
+  ],
+  "summary": {
+    "total_income": {"raw": 8200, "formatted": "$8,200.00"},
+    "total_expenses": {"raw": 6100, "formatted": "$6,100.00"},
+    "surplus": {"raw": 2100, "formatted": "$2,100.00"}
+  },
+  "meta": {
+    "version": "clarify-ui-v1",
+    "notes": "Deterministic scaffolding for clarification."
+  }
+}
+```
+
+- `schema_id` communicates which template is being used. Downstream services can branch on this identifier if additional schemas are introduced later.
+- `sections` always contains zero or more grouped component collections. Each section **must** specify `section_id`, `title`, and `components`. `description` and `summary` remain optional helpers for the UI, but the clarification service now supplies summaries for income, expenses, and preferences by default.
+- `summary` mirrors the numeric totals from the unified budget model so the UI can surface context without re-computing. Always include both the numeric `raw` value and the user-facing `formatted` string.
+- `meta` captures schema provenance. `version` changes when the envelope shape materially evolves.
+
+Sections are deliberately lightweight: the UI only needs to loop through `sections` in order, render the accompanying components, and optionally display the section summaries.
+
+---
+
 ## 3. Composite Questions
 
 Sometimes a single user-facing question requires multiple fields. For example:
@@ -80,6 +131,21 @@ Examples:
 - `optimization_focus` → `preferences.optimization_focus`
 
 The backend should maintain a mapping table or derive the correct assignment from naming conventions. The UI does not need to understand the full model — it only needs to collect structured values.
+
+### Clarification binding conventions
+
+For the MVP schema builder we expose explicit bindings so the frontend can store responses deterministically:
+
+| `field_id`                | Binding path example                                   | Notes |
+|---------------------------|--------------------------------------------------------|-------|
+| `primary_income_type`     | `income.income-123.metadata.net_or_gross`              | Always targets the highest monthly income. |
+| `primary_income_stability`| `income.income-123.stability`                          | Uses the same primary income entry.        |
+| `optimization_focus`      | `preferences.optimization_focus`                       | Dropdown values limited to `debt`, `savings`, `balanced`. |
+| `essential_{expense_id}`  | `expenses.expense-42.essential`                        | Generated for every expense whose flag is `None`. |
+
+The `binding` field on each component descriptor mirrors these paths, ensuring every clarification answer round-trips into the unified model without additional guessing.
+
+All bindings follow a dot-delimited structure of `<collection>.<entry_id>.<attribute>`, with deeper segments when writing into nested dictionaries such as `metadata`. This makes it trivial for the UI to persist updates without duplicating backend logic.
 
 ---
 
