@@ -82,7 +82,7 @@ def health_check() -> dict:
     return {"status": "ok", "service": "api-gateway"}
 
 
-@app.post("/upload-budget")
+@app.post("/upload-budget", response_model=None)
 async def upload_budget(file: UploadFile = File(...)) -> Dict[str, Any] | JSONResponse:
     """Starts the pipeline by proxying uploads to the ingestion service's /ingest endpoint."""
     if file is None:
@@ -158,7 +158,7 @@ async def upload_budget(file: UploadFile = File(...)) -> Dict[str, Any] | JSONRe
     }
 
 
-@app.get("/clarification-questions")
+@app.get("/clarification-questions", response_model=None)
 async def clarification_questions(budget_id: str) -> Dict[str, Any] | JSONResponse:
     """Sends stored draft data to clarification service /clarify to generate questions and a partial model."""
     budget_session = budgets.get(budget_id)
@@ -217,7 +217,7 @@ class SubmitAnswersPayload(BaseModel):
     answers: Dict[str, Any]
 
 
-@app.post("/submit-answers")
+@app.post("/submit-answers", response_model=None)
 async def submit_answers(payload: SubmitAnswersPayload) -> Dict[str, Any] | JSONResponse:
     """Calls clarification service /apply-answers to merge user answers into a final unified model."""
     logger.info("submit-answers budget_id=%s", payload.budget_id)
@@ -270,7 +270,7 @@ async def submit_answers(payload: SubmitAnswersPayload) -> Dict[str, Any] | JSON
     }
 
 
-@app.get("/summary-and-suggestions")
+@app.get("/summary-and-suggestions", response_model=None)
 async def summary_and_suggestions(budget_id: str) -> Dict[str, Any] | JSONResponse:
     """Finishes the pipeline by calling optimization service /summarize-and-optimize for insights."""
     budget_session = budgets.get(budget_id)
