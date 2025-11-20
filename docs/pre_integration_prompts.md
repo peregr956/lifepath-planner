@@ -137,5 +137,7 @@ Tasks:
 Provide instructions for enabling/disabling telemetry locally.
 ```
 
+Runbook deliverables now live in `docs/operations.md`; update that file whenever telemetry, rate limiting, or logging guardrails change.
+
 ---
 
