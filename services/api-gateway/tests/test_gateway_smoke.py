@@ -26,6 +26,18 @@ def test_health_route_reports_api_gateway(client: TestClient) -> None:
     assert payload.get("status") == "ok"
 
 
+def test_cors_headers_allow_frontend_origin(client: TestClient) -> None:
+    response = client.options(
+        "/health",
+        headers={
+            "Origin": "http://localhost:3000",
+            "Access-Control-Request-Method": "GET",
+        },
+    )
+    assert response.status_code == 200
+    assert response.headers.get("access-control-allow-origin") == "http://localhost:3000"
+
+
 @pytest.mark.skip(reason="TODO(ai-integration): replace with ingestion integration test when services run together.")
 def test_upload_budget_placeholder() -> None:
     """Placeholder until ingestion service is exercised via AI orchestrated run."""
