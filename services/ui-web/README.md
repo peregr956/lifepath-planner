@@ -21,6 +21,10 @@ npm run dev
 
 Visit http://localhost:3000 to load the UI.
 
+> Tip: if you want the API gateway plus all FastAPI services to boot automatically, run
+> `npm install && npm run dev` from the repo root instead. That wrapper script starts the
+> UI and every backend in one shot.
+
 ### Package Scripts
 
 | Script | Description |
