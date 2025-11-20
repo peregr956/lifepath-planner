@@ -1,17 +1,23 @@
 import asyncio
 import logging
 import random
+import sys
 import time
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, Mapping, MutableMapping, Optional, Tuple
-from uuid import uuid4
 
 import httpx
 from fastapi import Request
 
-logger = logging.getLogger(__name__)
+SRC_DIR = Path(__file__).resolve().parent
+SERVICES_ROOT = SRC_DIR.parents[1]
+if str(SERVICES_ROOT) not in sys.path:
+    sys.path.insert(0, str(SERVICES_ROOT))
 
-CORRELATION_ID_HEADER = "x-request-id"
+from observability.telemetry import CORRELATION_ID_HEADER, ensure_request_id
+
+logger = logging.getLogger(__name__)
 DEFAULT_TIMEOUT = httpx.Timeout(30.0, connect=5.0, read=30.0, write=15.0, pool=5.0)
 DEFAULT_MAX_ATTEMPTS = 3
 DEFAULT_BACKOFF_FACTOR = 0.5
@@ -22,20 +28,6 @@ RETRYABLE_STATUS_CODES = {408, 425, 429, 500, 502, 503, 504}
 class RequestMetrics:
     attempts: int
     latency_ms: float
-
-
-def ensure_request_id(request: Optional[Request], header_name: str = CORRELATION_ID_HEADER) -> str:
-    """Retrieve the inbound request ID or generate a new UUID."""
-
-    if request is not None:
-        existing = request.headers.get(header_name) or getattr(request.state, "request_id", None)
-        if existing:
-            request.state.request_id = existing
-            return existing
-    request_id = str(uuid4())
-    if request is not None:
-        request.state.request_id = request_id
-    return request_id
 
 
 class ResilientHttpClient:
