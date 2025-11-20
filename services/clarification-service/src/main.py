@@ -8,9 +8,11 @@ from __future__ import annotations
 from datetime import date
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Set
+import logging
+import os
 import sys
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 from typing_extensions import Literal
@@ -50,10 +52,12 @@ from normalization import (
     draft_to_initial_unified,
     parse_debt_field_id,
 )
-from question_generator import QuestionSpec, generate_clarification_questions
+from question_generator import QuestionSpec
 from ui_schema_builder import build_initial_ui_schema
+from clarification_provider import ClarificationProviderRequest, build_clarification_provider
 
 app = FastAPI(title="Clarification Service")
+logger = logging.getLogger(__name__)
 
 
 class RawBudgetLinePayload(BaseModel):
@@ -301,6 +305,26 @@ class ApplyAnswersResponseModel(BaseModel):
     ready_for_summary: bool
 
 
+def _build_clarification_questions(unified_model: UnifiedBudgetModel) -> List[QuestionSpec]:
+    """
+    Invoke the configured clarification provider and return its question list.
+    """
+
+    provider_name = os.getenv("CLARIFICATION_PROVIDER", "deterministic")
+    try:
+        provider = build_clarification_provider(provider_name)
+    except ValueError as exc:
+        logger.error("Unsupported clarification provider '%s'", provider_name)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Unsupported clarification provider '{provider_name}'",
+        ) from exc
+
+    request = ClarificationProviderRequest(model=unified_model)
+    response = provider.generate(request)
+    return response.questions
+
+
 @app.get("/health")
 def health_check() -> dict:
     """
@@ -324,7 +348,7 @@ def normalize_budget(payload: DraftBudgetPayload) -> NormalizationResponseModel:
 
     draft_model = payload.to_dataclass()
     unified_model = draft_to_initial_unified(draft_model)
-    questions = generate_clarification_questions(unified_model)
+    questions = _build_clarification_questions(unified_model)
     question_models = _serialize_question_specs(questions)
     ui_schema = build_initial_ui_schema(unified_model)
 
@@ -351,7 +375,7 @@ def clarify_budget(payload: DraftBudgetPayload) -> ClarifyResponseModel:
     if not draft_model.lines:
         return JSONResponse(status_code=400, content={"error": "empty_budget"})
     unified_model = draft_to_initial_unified(draft_model)
-    questions = generate_clarification_questions(unified_model)
+    questions = _build_clarification_questions(unified_model)
     question_models = _serialize_question_specs(questions)
 
     return ClarifyResponseModel(

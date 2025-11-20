@@ -1,0 +1,13 @@
+{
+  "suggestions": [
+    {
+      "id": "mock-suggestion-1",
+      "title": "Use the mock provider output",
+      "description": "This suggestion is returned by the mock provider for tests.",
+      "expected_monthly_impact": 123.45,
+      "rationale": "Demonstrate provider swapping without calling an LLM.",
+      "tradeoffs": "None — this is a canned response."
+    }
+  ]
+}
+
