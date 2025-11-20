@@ -18,6 +18,10 @@ from typing_extensions import Literal
 # Temporary path wiring so this service can import shared dataclasses until the
 # repo is packaged as a proper workspace.
 SERVICE_SRC = Path(__file__).resolve().parent
+SERVICE_SRC_STR = str(SERVICE_SRC)
+if SERVICE_SRC_STR not in sys.path:
+    sys.path.append(SERVICE_SRC_STR)
+
 SERVICES_ROOT = SERVICE_SRC.parents[1]
 OTHER_SERVICE_PATHS = (
     SERVICES_ROOT / "budget-ingestion-service" / "src",

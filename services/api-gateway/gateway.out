@@ -1,2 +1,17 @@
 INFO:     Will watch for changes in these directories: ['/Users/kyle/Cursor/lifepath-planner/services/api-gateway']
-ERROR:    [Errno 48] Address already in use
+INFO:     Uvicorn running on http://127.0.0.1:8000 (Press CTRL+C to quit)
+INFO:     Started reloader process [62365] using WatchFiles
+INFO:     Started server process [62368]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     127.0.0.1:58642 - "POST /upload-budget HTTP/1.1" 502 Bad Gateway
+INFO:     127.0.0.1:58844 - "POST /upload-budget HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58844 - "GET /clarification-questions?budget_id=b4111804-debb-4e63-bdd0-12f182b96c36 HTTP/1.1" 502 Bad Gateway
+INFO:     127.0.0.1:58844 - "GET /clarification-questions?budget_id=b4111804-debb-4e63-bdd0-12f182b96c36 HTTP/1.1" 502 Bad Gateway
+INFO:     127.0.0.1:59181 - "GET /clarification-questions?budget_id=b4111804-debb-4e63-bdd0-12f182b96c36 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59185 - "OPTIONS /submit-answers HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59185 - "POST /submit-answers HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59194 - "GET /summary-and-suggestions?budget_id=b4111804-debb-4e63-bdd0-12f182b96c36 HTTP/1.1" 502 Bad Gateway
+INFO:     127.0.0.1:59194 - "GET /summary-and-suggestions?budget_id=b4111804-debb-4e63-bdd0-12f182b96c36 HTTP/1.1" 502 Bad Gateway
+INFO:     127.0.0.1:59342 - "GET /summary-and-suggestions?budget_id=b4111804-debb-4e63-bdd0-12f182b96c36 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59399 - "GET /summary-and-suggestions?budget_id=b4111804-debb-4e63-bdd0-12f182b96c36 HTTP/1.1" 200 OK

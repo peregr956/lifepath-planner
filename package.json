@@ -1,0 +1,11 @@
+{
+  "name": "lifepath-planner",
+  "private": true,
+  "scripts": {
+    "dev": "bash ./scripts/dev.sh"
+  },
+  "devDependencies": {
+    "concurrently": "^9.0.1"
+  }
+}
+
