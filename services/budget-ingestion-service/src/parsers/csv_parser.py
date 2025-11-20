@@ -4,7 +4,7 @@ import csv
 from io import StringIO
 from typing import Dict, Iterable, List, Optional, Sequence
 
-from models.raw_budget import DraftBudgetModel, RawBudgetLine
+from ..models.raw_budget import DraftBudgetModel, RawBudgetLine
 
 CategoryHeaders = ("category", "category_label", "category name", "type")
 AmountHeaders = ("amount", "value", "total")
