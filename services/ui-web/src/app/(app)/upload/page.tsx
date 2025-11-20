@@ -8,7 +8,7 @@ import { useBudgetSession } from '@/hooks/useBudgetSession';
 import { uploadBudget } from '@/utils/apiClient';
 
 type UploadFormValues = {
-  file: FileList | null;
+  file: File | null;
 };
 
 export default function UploadPage() {
@@ -43,10 +43,10 @@ export default function UploadPage() {
     },
   });
 
-  const selectedFile = watch('file')?.item(0) ?? null;
+  const selectedFile = watch('file');
 
   const onSubmit = handleSubmit(async (values) => {
-    const file = values.file?.item(0);
+    const file = values.file;
     if (!file) {
       return;
     }
@@ -55,7 +55,7 @@ export default function UploadPage() {
   });
 
   const fileField = register('file', {
-    validate: (value) => (value && value.length > 0) || 'Select a budget file to continue.',
+    validate: (value) => Boolean(value) || 'Select a budget file to continue.',
   });
 
   return (
@@ -86,8 +86,8 @@ export default function UploadPage() {
             ref={fileField.ref}
             onBlur={fileField.onBlur}
             onChange={(event) => {
-              const files = event.target.files;
-              fileField.onChange(files);
+              const file = event.target.files?.item(0) ?? null;
+              fileField.onChange(file);
             }}
             disabled={mutation.isPending}
           />

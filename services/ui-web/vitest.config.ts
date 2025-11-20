@@ -10,9 +10,16 @@ export default defineConfig({
     },
   },
   test: {
+    pool: 'threads',
     globals: true,
     environment: 'jsdom',
     setupFiles: ['./src/test/setup.ts'],
+    poolOptions: {
+      threads: {
+        minThreads: 1,
+        maxThreads: 1,
+      },
+    },
     coverage: {
       reporter: ['text', 'lcov'],
     },
