@@ -21,6 +21,7 @@ export default function UploadPage() {
     handleSubmit,
     reset,
     watch,
+    setValue,
     formState: { errors },
   } = useForm<UploadFormValues>({
     defaultValues: {
@@ -87,7 +88,7 @@ export default function UploadPage() {
             onBlur={fileField.onBlur}
             onChange={(event) => {
               const file = event.target.files?.item(0) ?? null;
-              fileField.onChange(file);
+              setValue('file', file, { shouldDirty: true, shouldValidate: true });
             }}
             disabled={mutation.isPending}
           />
