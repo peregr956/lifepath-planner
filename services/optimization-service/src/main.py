@@ -4,8 +4,10 @@ suggestions that downstream products can display or refine with AI.
 """
 
 from typing import Dict, List, Optional
+import logging
+import os
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from typing_extensions import Literal
@@ -20,9 +22,10 @@ from .budget_model import (
     UnifiedBudgetModel,
 )
 from .compute_summary import compute_category_shares, compute_summary_for_model
-from .generate_suggestions import generate_suggestions
+from .suggestion_provider import SuggestionProviderRequest, build_suggestion_provider
 
 app = FastAPI(title="Optimization Service")
+logger = logging.getLogger(__name__)
 
 
 class RateChangeModel(BaseModel):
@@ -127,6 +130,37 @@ class SummarizeAndOptimizeResponseModel(BaseModel):
     suggestions: List[SuggestionModel]
 
 
+def _build_suggestions(model: UnifiedBudgetModel, summary: Summary) -> List[SuggestionModel]:
+    """
+    Invoke the configured suggestion provider and convert its output into Pydantic models.
+    """
+
+    provider_name = os.getenv("SUGGESTION_PROVIDER", "deterministic")
+    try:
+        provider = build_suggestion_provider(provider_name)
+    except ValueError as exc:
+        logger.error("Unsupported suggestion provider '%s'", provider_name)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Unsupported suggestion provider '{provider_name}'",
+        ) from exc
+
+    request = SuggestionProviderRequest(model=model, summary=summary)
+    response = provider.generate(request)
+
+    return [
+        SuggestionModel(
+            id=item.id,
+            title=item.title,
+            description=item.description,
+            expected_monthly_impact=item.expected_monthly_impact,
+            rationale=item.rationale,
+            tradeoffs=item.tradeoffs,
+        )
+        for item in response.suggestions
+    ]
+
+
 @app.get("/health")
 def health_check() -> dict:
     """
@@ -169,25 +203,13 @@ def summarize_and_optimize(payload: UnifiedBudgetModelPayload) -> SummarizeAndOp
         return JSONResponse(status_code=400, content={"error": "empty_model"})
     summary = compute_summary_for_model(model)
     category_shares = compute_category_shares(model)
-    suggestions = generate_suggestions(model, summary)
+    suggestion_models = _build_suggestions(model, summary)
 
     summary_model = SummaryModel(
         total_income=summary.total_income,
         total_expenses=summary.total_expenses,
         surplus=summary.surplus,
     )
-
-    suggestion_models = [
-        SuggestionModel(
-            id=suggestion.id,
-            title=suggestion.title,
-            description=suggestion.description,
-            expected_monthly_impact=suggestion.expected_monthly_impact,
-            rationale=suggestion.rationale,
-            tradeoffs=suggestion.tradeoffs,
-        )
-        for suggestion in suggestions
-    ]
 
     return SummarizeAndOptimizeResponseModel(
         summary=summary_model,

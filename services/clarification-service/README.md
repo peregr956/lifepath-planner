@@ -57,3 +57,14 @@ Run the clarification service suite, which now includes regression tests for `/a
 ```bash
 cd services/clarification-service && pytest tests
 ```
+
+## Provider configuration
+
+- `CLARIFICATION_PROVIDER` controls which implementation generates questions.
+  - Defaults to `deterministic` (the existing heuristics).
+  - Set to `mock` to replay the canned fixture in `tests/fixtures/mock_clarification_provider.json`.
+- `CLARIFICATION_PROVIDER_FIXTURE` (optional) overrides the fixture path used by
+  the mock provider.
+
+See `docs/llm_adapter.md` for the full provider contract and extension
+guidelines.
