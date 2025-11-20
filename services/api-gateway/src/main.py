@@ -1,15 +1,63 @@
 import logging
+import os
 from typing import Any, Dict, List
 from uuid import uuid4
 
 import httpx
 from fastapi import FastAPI, File, UploadFile
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
 
 app = FastAPI(title="API Gateway")
+
+
+DEFAULT_CORS_ORIGINS: List[str] = [
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+    "http://localhost:4173",
+    "http://127.0.0.1:4173",
+]
+
+CORS_ENV_KEYS = (
+    "GATEWAY_CORS_ORIGINS",
+    "API_GATEWAY_CORS_ORIGINS",
+    "CORS_ALLOWED_ORIGINS",
+    "CORS_ORIGINS",
+)
+
+
+def _resolve_cors_origins() -> List[str]:
+    """
+    Determine which origins are allowed to call the gateway.
+
+    Developers can provide a comma-separated list via any env var in `CORS_ENV_KEYS`.
+    Falls back to localhost-friendly defaults so the Next.js dev server can talk to the API.
+    """
+
+    for key in CORS_ENV_KEYS:
+        raw_value = os.getenv(key)
+        if not raw_value:
+            continue
+        candidates = [origin.strip() for origin in raw_value.split(",")]
+        origins = [origin for origin in candidates if origin]
+        if origins:
+            # FastAPI expects ["*"] instead of mixing '*' with explicit origins.
+            if any(origin == "*" for origin in origins):
+                return ["*"]
+            return origins
+    return DEFAULT_CORS_ORIGINS
+
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=_resolve_cors_origins(),
+    allow_methods=["*"],
+    allow_headers=["*"],
+    allow_credentials=False,
+)
 
 # Handles external API endpoints and orchestrates ingestion, clarification, and optimization flows (see PRD).
 
