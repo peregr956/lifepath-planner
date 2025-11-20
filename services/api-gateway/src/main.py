@@ -83,7 +83,7 @@ def health_check() -> dict:
 
 
 @app.post("/upload-budget")
-async def upload_budget(file: UploadFile = File(...)) -> Dict[str, Any]:
+async def upload_budget(file: UploadFile = File(...)) -> Dict[str, Any] | JSONResponse:
     """Starts the pipeline by proxying uploads to the ingestion service's /ingest endpoint."""
     if file is None:
         return error_response(400, "file_required", "File upload is required.")
@@ -136,6 +136,8 @@ async def upload_budget(file: UploadFile = File(...)) -> Dict[str, Any]:
     detected_expense_lines = 0
     for line in lines:
         amount = line.get("amount")
+        if amount is None:
+            continue
         try:
             amount_value = float(amount)
         except (TypeError, ValueError):
@@ -157,7 +159,7 @@ async def upload_budget(file: UploadFile = File(...)) -> Dict[str, Any]:
 
 
 @app.get("/clarification-questions")
-async def clarification_questions(budget_id: str) -> Dict[str, Any]:
+async def clarification_questions(budget_id: str) -> Dict[str, Any] | JSONResponse:
     """Sends stored draft data to clarification service /clarify to generate questions and a partial model."""
     budget_session = budgets.get(budget_id)
     if not budget_session:
@@ -216,7 +218,7 @@ class SubmitAnswersPayload(BaseModel):
 
 
 @app.post("/submit-answers")
-async def submit_answers(payload: SubmitAnswersPayload) -> Dict[str, Any]:
+async def submit_answers(payload: SubmitAnswersPayload) -> Dict[str, Any] | JSONResponse:
     """Calls clarification service /apply-answers to merge user answers into a final unified model."""
     logger.info("submit-answers budget_id=%s", payload.budget_id)
     budget_session = budgets.get(payload.budget_id)
@@ -269,7 +271,7 @@ async def submit_answers(payload: SubmitAnswersPayload) -> Dict[str, Any]:
 
 
 @app.get("/summary-and-suggestions")
-async def summary_and_suggestions(budget_id: str) -> Dict[str, Any]:
+async def summary_and_suggestions(budget_id: str) -> Dict[str, Any] | JSONResponse:
     """Finishes the pipeline by calling optimization service /summarize-and-optimize for insights."""
     budget_session = budgets.get(budget_id)
     if not budget_session:
