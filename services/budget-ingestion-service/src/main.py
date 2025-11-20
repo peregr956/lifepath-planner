@@ -11,9 +11,9 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 from typing_extensions import Literal
 
-from models.raw_budget import DraftBudgetModel, RawBudgetLine
-from parsers.csv_parser import parse_csv_to_draft_model
-from parsers.xlsx_parser import parse_xlsx_to_draft_model
+from .models.raw_budget import DraftBudgetModel, RawBudgetLine
+from .parsers.csv_parser import parse_csv_to_draft_model
+from .parsers.xlsx_parser import parse_xlsx_to_draft_model
 
 app = FastAPI(title="Budget Ingestion Service")
 
