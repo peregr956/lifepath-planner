@@ -1,6 +1,7 @@
-INFO:     Started server process [42583]
+INFO:     Will watch for changes in these directories: ['/Users/kyle/Cursor/lifepath-planner/services/budget-ingestion-service']
+INFO:     Uvicorn running on http://127.0.0.1:8001 (Press CTRL+C to quit)
+INFO:     Started reloader process [64836] using WatchFiles
+INFO:     Started server process [64851]
 INFO:     Waiting for application startup.
 INFO:     Application startup complete.
-ERROR:    [Errno 1] error while attempting to bind on address ('127.0.0.1', 8001): operation not permitted
-INFO:     Waiting for application shutdown.
-INFO:     Application shutdown complete.
+INFO:     127.0.0.1:58846 - "POST /ingest HTTP/1.1" 200 OK
