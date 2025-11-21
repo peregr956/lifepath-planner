@@ -26,6 +26,31 @@ cd services/ui-web
 npm install
 ```
 
+## Environment configuration & secrets
+
+Copy `.env.example` (or recreate it with the snippet below if your tooling hides dotfiles) to `.env` before starting any service so the FastAPI providers and Next.js UI can read the ChatGPT credentials:
+
+1. `cp .env.example .env`
+2. Use the 1Password CLI to inject real values without pasting them into your shell history:
+   - `op read "op://LifePath/LLM/OpenAI Dev/api_key" | pbcopy`
+   - `op inject -i .env -o .env --force` (resolves any `{{OP://...}}` placeholders if you choose to keep them in your local file)
+3. Keep `.env` untracked—`.gitignore` already blocks it—and reference the same variables in any per-service `uvicorn` or `npm` command (`OPENAI_*` is automatically sourced by `scripts/dev.sh`).
+
+| Variable | Notes |
+| --- | --- |
+| `OPENAI_API_KEY` | Required to call ChatGPT from the API gateway and future LLM adapters. |
+| `OPENAI_MODEL` | Default model slug (e.g., `gpt-4o-mini`). Override per-environment to control spending. |
+| `OPENAI_API_BASE` | Base URL for the OpenAI-compatible endpoint. Use the official API, Azure OpenAI, or another proxy. |
+
+For GitHub Actions, store the same variables as repository or environment secrets via `gh secret set OPENAI_API_KEY --body "$(op read ...)"`. Deployment pipelines should export the secrets before invoking tests or builds so that LLM-dependent steps never hard-code keys. Additional rotation, syncing, and guardrail steps are captured in `docs/operations.md`.
+
+```
+# .env.example
+OPENAI_API_KEY=replace-with-op-secret
+OPENAI_MODEL=gpt-4o-mini
+OPENAI_API_BASE=https://api.openai.com/v1
+```
+
 ## Running the stack locally
 
 ### One-command dev environment
