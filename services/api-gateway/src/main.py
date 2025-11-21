@@ -20,6 +20,7 @@ SERVICES_ROOT = SRC_DIR.parents[1]
 if str(SERVICES_ROOT) not in sys.path:
     sys.path.insert(0, str(SERVICES_ROOT))
 
+from answer_validation import validate_answers
 from http_client import ResilientHttpClient
 from persistence.database import get_session, init_db
 from persistence.repository import BudgetSessionRepository
@@ -422,23 +423,22 @@ async def submit_answers(
         )
 
     answers = payload.answers or {}
-    validation_issues = validate_answers_payload(partial_model, answers)
-    if validation_issues:
+    validation_errors = validate_answers(partial_model, answers)
+    if validation_errors:
         logger.warning(
             {
                 "event": "submit_answers_validation_failed",
                 "request_id": request_id,
                 "budget_id": payload.budget_id,
-                "issue_count": len(validation_issues),
-                "reasons": sorted({issue.get("reason") for issue in validation_issues if issue.get("reason")}),
+                "issue_count": len(validation_errors),
+                "reasons": sorted({issue.get("reason") for issue in validation_errors if issue.get("reason")}),
             }
         )
         return JSONResponse(
             status_code=400,
             content={
                 "error": "invalid_answers",
-                "details": "One or more answers failed validation. See issues for details.",
-                "issues": validation_issues,
+                "details": {"field_errors": validation_errors},
             },
         )
 
@@ -486,13 +486,17 @@ async def submit_answers(
         )
 
     apply_data: Dict[str, Any] = clarification_response.json()
-
+    ready_for_summary = bool(apply_data.get("ready_for_summary"))
     updated_model = apply_data.get("updated_model")
     repo.update_final(
         budget_session,
         updated_model,
         source_ip=_client_ip(request),
-        details={"answer_count": answer_count, "request_id": request_id},
+        details={
+            "answer_count": answer_count,
+            "ready_for_summary": ready_for_summary,
+            "request_id": request_id,
+        },
     )
 
     logger.info(
@@ -503,14 +507,15 @@ async def submit_answers(
             "answer_count": answer_count,
             "upstream_latency_ms": metrics.latency_ms,
             "attempts": metrics.attempts,
+            "ready_for_summary": ready_for_summary,
         }
     )
 
-    # TODO(ready-for-summary-contract): surface the clarification service readiness flag when the contract stabilizes.
-    # Tracked in docs/AI_integration_readiness.md#ready-for-summary-contract.
+    status = "ready_for_summary" if ready_for_summary else "clarifying"
     return {
         "budget_id": payload.budget_id,
-        "status": "ready_for_summary",
+        "status": status,
+        "ready_for_summary": ready_for_summary,
     }
 
 

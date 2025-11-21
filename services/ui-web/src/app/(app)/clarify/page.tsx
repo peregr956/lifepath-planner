@@ -3,7 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import type { ClarificationAnswers } from '@/types';
+import type { ClarificationAnswers, SubmitAnswersResponse } from '@/types';
 import { ClarificationForm } from '@/components';
 import { useBudgetSession } from '@/hooks/useBudgetSession';
 import { fetchClarificationQuestions, submitClarificationAnswers } from '@/utils/apiClient';
@@ -13,6 +13,7 @@ export default function ClarifyPage() {
   const queryClient = useQueryClient();
   const { session, hydrated, markClarified } = useBudgetSession();
   const budgetId = session?.budgetId;
+  const readyForSummary = session?.readyForSummary ?? false;
 
   useEffect(() => {
     if (hydrated && !budgetId) {
@@ -31,24 +32,26 @@ export default function ClarifyPage() {
       return;
     }
     if (!clarificationQuery.data.needsClarification) {
-      if (!session?.clarified) {
-        markClarified();
+      if (!session?.clarified || !readyForSummary) {
+        markClarified({ readyForSummary: true });
       }
       router.push('/summarize');
     }
-  }, [clarificationQuery.data, markClarified, router, session?.clarified]);
+  }, [clarificationQuery.data, markClarified, readyForSummary, router, session?.clarified]);
 
-  const submitMutation = useMutation({
+  const submitMutation = useMutation<SubmitAnswersResponse, Error, ClarificationAnswers>({
     mutationFn: async (answers: ClarificationAnswers) => {
       if (!budgetId) {
         throw new Error('Upload a budget before submitting clarifications.');
       }
-      await submitClarificationAnswers(budgetId, answers);
+      return submitClarificationAnswers(budgetId, answers);
     },
-    onSuccess: async () => {
-      markClarified();
-      await queryClient.invalidateQueries({ queryKey: ['summary-and-suggestions', budgetId] });
-      router.push('/summarize');
+    onSuccess: async (response) => {
+      markClarified({ readyForSummary: response.readyForSummary });
+      if (response.readyForSummary && budgetId) {
+        await queryClient.invalidateQueries({ queryKey: ['summary-and-suggestions', budgetId] });
+        router.push('/summarize');
+      }
     },
   });
 

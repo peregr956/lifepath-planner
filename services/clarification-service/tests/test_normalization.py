@@ -1,3 +1,4 @@
+import json
 import sys
 from pathlib import Path
 
@@ -8,6 +9,7 @@ SERVICE_ROOT = Path(__file__).resolve().parents[1]
 SERVICE_SRC = SERVICE_ROOT / "src"
 INGESTION_SRC = SERVICE_ROOT.parent / "budget-ingestion-service" / "src"
 OPTIMIZATION_SRC = SERVICE_ROOT.parent / "optimization-service" / "src"
+FIXTURES_DIR = SERVICE_ROOT / "tests" / "fixtures"
 
 for candidate in (SERVICE_SRC, INGESTION_SRC, OPTIMIZATION_SRC):
     candidate_str = str(candidate)
@@ -19,9 +21,28 @@ from models.raw_budget import DraftBudgetModel, RawBudgetLine
 from budget_model import Debt, Expense, Income, Preferences, RateChange, Summary, UnifiedBudgetModel
 
 
+def _load_fixture(name: str) -> dict:
+    path = FIXTURES_DIR / name
+    with path.open("r", encoding="utf-8") as handle:
+        return json.load(handle)
+
+
+def _model_from_payload(payload: dict) -> UnifiedBudgetModel:
+    incomes = [Income(**entry) for entry in payload.get("income", [])]
+    expenses = [Expense(**entry) for entry in payload.get("expenses", [])]
+    debts = [Debt(**entry) for entry in payload.get("debts", [])]
+    preferences = Preferences(**payload["preferences"])
+    summary = Summary(**payload["summary"])
+    return UnifiedBudgetModel(
+        income=incomes,
+        expenses=expenses,
+        debts=debts,
+        preferences=preferences,
+        summary=summary,
+    )
+
+
 def test_draft_to_initial_unified_splits_income_and_expenses():
-    # TODO(ai-integration): Expand once AI-driven debt/essentiality detection is available.
-    # Tracked in docs/AI_integration_readiness.md#model-enrichment-backlog.
     positive_line = RawBudgetLine(
         source_row_index=1,
         date=None,
@@ -44,9 +65,40 @@ def test_draft_to_initial_unified_splits_income_and_expenses():
 
     assert len(unified.income) == 1
     assert unified.income[0].monthly_amount == pytest.approx(5200.0)
+    assert unified.income[0].type == "earned"
+    assert unified.income[0].stability == "stable"
     assert len(unified.expenses) == 1
     assert unified.expenses[0].monthly_amount == pytest.approx(1800.0)
+    assert unified.expenses[0].essential is True
     assert unified.debts == []
+
+
+def test_draft_to_initial_unified_detects_debt_candidates():
+    salary = RawBudgetLine(
+        source_row_index=1,
+        date=None,
+        category_label="Freelance",
+        description="Gig income",
+        amount=3200.0,
+        metadata={},
+    )
+    student_loan_payment = RawBudgetLine(
+        source_row_index=2,
+        date=None,
+        category_label="Student Loan",
+        description="Monthly payment",
+        amount=-450.0,
+        metadata={},
+    )
+    draft = DraftBudgetModel(lines=[salary, student_loan_payment])
+
+    unified = draft_to_initial_unified(draft)
+
+    assert len(unified.debts) == 1
+    detected_debt = unified.debts[0]
+    assert detected_debt.id.startswith("student_loan")
+    assert detected_debt.min_payment == pytest.approx(450.0)
+    assert detected_debt.priority == "medium"
 
 
 def test_apply_answers_to_model_sets_essential_flags_and_preferences():
@@ -157,3 +209,21 @@ def test_apply_answers_to_model_handles_income_and_debt_fields():
     assert debt_entry.priority == "high"
     assert debt_entry.approximate is False
     assert debt_entry.rate_changes == [RateChange(date="2025-06-01", new_rate=14.25)]
+
+
+def test_apply_answers_handles_binding_style_payloads():
+    payload = _load_fixture("ai_answers_payload.json")
+    partial_model = _model_from_payload(payload["partial_model"])
+
+    updated = apply_answers_to_model(partial_model, payload["answers"])
+
+    metadata = getattr(updated.income[0], "metadata", {})
+    assert metadata.get("net_or_gross") == "net"
+    assert updated.income[0].stability == "variable"
+    assert updated.preferences.optimization_focus == "debt"
+    assert len(updated.debts) == 1
+    debt_entry = updated.debts[0]
+    assert debt_entry.id == "student_loan"
+    assert debt_entry.balance == pytest.approx(12000.0)
+    assert debt_entry.min_payment == pytest.approx(350.0)
+    assert debt_entry.rate_changes == [RateChange(date="2026-01-01", new_rate=7.25)]
