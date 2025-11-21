@@ -438,6 +438,7 @@ type RawUploadBudgetResponse = {
   budget_id: string;
   status: string;
   detected_format?: string | null;
+  detected_format_hints?: Record<string, unknown> | null;
   summary_preview?: {
     detected_income_lines?: number | null;
     detected_expense_lines?: number | null;
@@ -454,7 +455,6 @@ type RawClarificationQuestionsResponse = {
 type RawSubmitAnswersResponse = {
   budget_id: string;
   status: string;
-  ready_for_summary?: boolean | null;
 };
 
 type RawSummaryAndSuggestionsResponse = {
@@ -592,6 +592,7 @@ function normalizeUploadBudgetResponse(raw: RawUploadBudgetResponse): UploadBudg
     budgetId: raw.budget_id,
     status: raw.status,
     detectedFormat: raw.detected_format ?? null,
+    detectedFormatHints: raw.detected_format_hints ?? null,
     summaryPreview: raw.summary_preview
       ? {
           detectedIncomeLines: raw.summary_preview.detected_income_lines ?? 0,
@@ -617,7 +618,6 @@ function normalizeSubmitAnswersResponse(raw: RawSubmitAnswersResponse): SubmitAn
   return {
     budgetId: raw.budget_id,
     status: raw.status,
-    readyForSummary: Boolean(raw.ready_for_summary),
   };
 }
 

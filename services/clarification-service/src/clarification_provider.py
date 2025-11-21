@@ -11,28 +11,15 @@ implementation.
 """
 
 import json
-import logging
 import os
-import sys
-from dataclasses import asdict, dataclass, field
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Protocol, runtime_checkable
 
 from budget_model import UnifiedBudgetModel
 from question_generator import QuestionSpec, generate_clarification_questions
 
-SERVICE_SRC = Path(__file__).resolve().parent
-SERVICES_ROOT = SERVICE_SRC.parents[1]
-SERVICES_ROOT_STR = str(SERVICES_ROOT)
-if SERVICES_ROOT_STR not in sys.path:
-    sys.path.append(SERVICES_ROOT_STR)
-
-from observability.privacy import hash_payload, redact_fields
-
-logger = logging.getLogger(__name__)
-
 DEFAULT_MAX_QUESTIONS = 5
-SAFE_CONTEXT_KEYS = frozenset({"locale", "surface", "channel"})
 
 
 @dataclass(slots=True)
@@ -99,7 +86,6 @@ class DeterministicClarificationProvider:
     def generate(self, request: ClarificationProviderRequest) -> ClarificationProviderResponse:
         questions = generate_clarification_questions(request.model)
         limited_questions = questions[: request.max_questions]
-        _log_provider_metrics(self.name, request, limited_questions)
         return ClarificationProviderResponse(questions=limited_questions)
 
 
@@ -130,9 +116,7 @@ class MockClarificationProvider:
         payload = self._load_fixture()
         question_payloads = payload.get("questions", [])
         questions = [_deserialize_question(item) for item in question_payloads]
-        limited_questions = questions[: request.max_questions]
-        _log_provider_metrics(self.name, request, limited_questions)
-        return ClarificationProviderResponse(questions=limited_questions)
+        return ClarificationProviderResponse(questions=questions[: request.max_questions])
 
     def _load_fixture(self) -> Dict[str, Any]:
         try:
@@ -171,43 +155,6 @@ def build_clarification_provider(name: str | None) -> ClarificationQuestionProvi
         return MockClarificationProvider()
 
     raise ValueError(f"Unsupported clarification provider '{name}'")
-
-
-def _log_provider_metrics(
-    provider_name: str,
-    request: ClarificationProviderRequest,
-    questions: List[QuestionSpec],
-) -> None:
-    context_snapshot = _safe_context_snapshot(request.context)
-    logger.info(
-        {
-            "event": "clarification_provider_output",
-            "provider": provider_name,
-            "question_count": len(questions),
-            "question_hashes": _hash_question_prompts(questions),
-            "model_hash": _hash_unified_model(request.model),
-            "max_questions": request.max_questions,
-            "context_snapshot": context_snapshot,
-        }
-    )
-
-
-def _hash_question_prompts(questions: List[QuestionSpec]) -> List[str]:
-    return [hash_payload(question.prompt or "") for question in questions]
-
-
-def _hash_unified_model(model: UnifiedBudgetModel) -> str:
-    try:
-        serialized = asdict(model)
-    except TypeError:
-        serialized = repr(model)
-    return hash_payload(serialized)
-
-
-def _safe_context_snapshot(context: Dict[str, Any]) -> Dict[str, Any]:
-    if not context:
-        return {}
-    return redact_fields(context, SAFE_CONTEXT_KEYS)
 
 
 

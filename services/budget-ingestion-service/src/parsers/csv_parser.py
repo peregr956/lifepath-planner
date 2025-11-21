@@ -5,11 +5,15 @@ from io import StringIO
 from typing import Dict, Iterable, List, Optional, Sequence
 
 from ..models.raw_budget import DraftBudgetModel, RawBudgetLine
+from .format_detection import HeaderSignals, detect_format
 
 CategoryHeaders = ("category", "category_label", "category name", "type")
 AmountHeaders = ("amount", "value", "total")
 DescriptionHeaders = ("description", "memo", "notes", "note")
 DateHeaders = ("date", "transaction date", "posted date")
+LedgerDebitHeaders = ("debit", "withdrawal", "withdraw", "dr")
+LedgerCreditHeaders = ("credit", "deposit", "cr")
+LedgerBalanceHeaders = ("balance", "running balance")
 
 
 def parse_csv_to_draft_model(file_bytes: bytes) -> DraftBudgetModel:
@@ -28,6 +32,7 @@ def parse_csv_to_draft_model(file_bytes: bytes) -> DraftBudgetModel:
     amount_key = _find_column(reader.fieldnames, AmountHeaders)
     description_key = _find_column(reader.fieldnames, DescriptionHeaders)
     date_key = _find_column(reader.fieldnames, DateHeaders)
+    header_signals = _extract_header_signals(reader.fieldnames)
 
     warnings: List[str] = []
     if category_key is None:
@@ -61,12 +66,14 @@ def parse_csv_to_draft_model(file_bytes: bytes) -> DraftBudgetModel:
             )
         )
 
-    detected_format = "categorical"
-    # TODO(ingestion-ledger-detection): infer whether the CSV represents a ledger vs categorical budget.
-    # Tracked in docs/AI_integration_readiness.md#ingestion-ledger-detection.
-
+    detected_format, format_hints = detect_format(lines, header_signals)
     combined_notes = " ".join(warnings) if warnings else None
-    return DraftBudgetModel(lines=lines, detected_format=detected_format, notes=combined_notes)
+    return DraftBudgetModel(
+        lines=lines,
+        detected_format=detected_format,
+        notes=combined_notes,
+        format_hints=format_hints,
+    )
 
 
 def _decode_bytes(file_bytes: bytes) -> str:
@@ -121,3 +128,12 @@ def _parse_date(raw_value: object):
 def _build_metadata(row: Dict[str, object], kept_keys: Iterable[Optional[str]]) -> Dict[str, object]:
     reserved = {key for key in kept_keys if key}
     return {key: value for key, value in row.items() if key not in reserved and value not in (None, "")}
+
+
+def _extract_header_signals(headers: Sequence[str]) -> HeaderSignals:
+    normalized = {header.strip().lower() for header in headers if header}
+    return HeaderSignals(
+        has_debit_column=any(candidate in normalized for candidate in LedgerDebitHeaders),
+        has_credit_column=any(candidate in normalized for candidate in LedgerCreditHeaders),
+        has_balance_column=any(candidate in normalized for candidate in LedgerBalanceHeaders),
+    )
