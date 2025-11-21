@@ -135,6 +135,7 @@ export type ClarificationQuestionsResponse = {
 export type SubmitAnswersResponse = {
   budgetId: string;
   status: string;
+  readyForSummary: boolean;
 };
 
 export type BudgetSuggestion = {

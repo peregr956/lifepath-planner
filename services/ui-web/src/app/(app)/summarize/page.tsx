@@ -11,6 +11,7 @@ export default function SummarizePage() {
   const router = useRouter();
   const { session, hydrated } = useBudgetSession();
   const budgetId = session?.budgetId;
+  const readyForSummary = session?.readyForSummary ?? false;
 
   useEffect(() => {
     if (hydrated && !budgetId) {
@@ -21,7 +22,7 @@ export default function SummarizePage() {
   const summaryQuery = useQuery({
     queryKey: ['summary-and-suggestions', budgetId],
     queryFn: () => fetchSummaryAndSuggestions(budgetId!),
-    enabled: Boolean(budgetId),
+    enabled: Boolean(budgetId && readyForSummary),
     staleTime: 30_000,
   });
 
@@ -48,7 +49,9 @@ export default function SummarizePage() {
         <div className="card">
           <p className="text-sm text-white/70">
             {budgetId
-              ? 'Complete any outstanding clarifications to unlock the summary view.'
+              ? readyForSummary
+                ? 'Generating summary results…'
+                : 'Clarifications saved. We’ll unlock the summary once the gateway signals it is ready.'
               : 'Upload a budget to kick off the pipeline.'}
           </p>
         </div>
