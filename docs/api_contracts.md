@@ -154,8 +154,7 @@ This indicates that ingestion/interpretation already produced a sufficiently com
 - **Status:** `200`
 - **Body fields:**
   - `budget_id` (string)
-  - `status` (string): `"ready_for_summary"` when the model can be summarized; `"clarified"` when answers were accepted but the downstream pipelines still need time.
-  - `ready_for_summary` (boolean): mirrors the clarification service readiness flag. The UI should wait to call `/summary-and-suggestions` until this is `true`.
+  - `status` (string): e.g., `"clarified"` or `"ready_for_summary"`
   - `normalized_budget_preview` (object, optional): high-level confirmation such as total income and expenses.
 
 **Response — error**

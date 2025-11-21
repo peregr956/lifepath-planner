@@ -9,12 +9,31 @@
   },
   "suggestions": [
     {
-      "description": "Schedule an automatic $1,470 transfer each month into high-yield savings while the surplus remains strong.",
-      "expected_monthly_impact": 1470.0,
+      "description": "Schedule an automatic $2,021 transfer each month into investment accounts while the surplus remains strong.",
+      "expected_monthly_impact": 2021.25,
       "id": "surplus-savings",
-      "rationale": "Directing excess cash into long-term savings builds resilience and keeps idle money working toward goals.",
-      "title": "Automate extra high-yield savings",
+      "profile": "money_guy_show",
+      "rationale": "Money Guy Show guidance channels extra cash toward investment accounts once high-interest debts are handled.",
+      "title": "Automate extra investment accounts",
       "tradeoffs": "Monthly cash cushion will shrink, so monitor variability in income or unexpected expenses."
+    },
+    {
+      "description": "Set aside about $402 per month until you have 2 months of expenses ($8,050) saved.",
+      "expected_monthly_impact": 402.5,
+      "id": "emergency-fund",
+      "profile": "money_guy_show",
+      "rationale": "Money Guy Show guidance prioritizes liquidity so unexpected expenses don't derail the plan.",
+      "title": "Build a 2-month buffer",
+      "tradeoffs": "Slows other goals temporarily but boosts resilience."
+    },
+    {
+      "description": "Boost recurring contributions by roughly $1,470 to keep long-term investments aligned with the growth-focused guidance.",
+      "expected_monthly_impact": 1470.0,
+      "id": "growth-investing",
+      "profile": "money_guy_show",
+      "rationale": "Compounding works best when contributions rise alongside surplus cash flow.",
+      "title": "Increase automated investing",
+      "tradeoffs": "Reduces take-home flexibility and assumes markets cooperate in the long run."
     }
   ],
   "summary": {
