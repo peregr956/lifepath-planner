@@ -2,6 +2,52 @@
 
 This guide explains how to operate the LifePath Planner services now that Step 7 (observability + guardrails) is in place.
 
+## Secret Management
+
+### Source of truth
+
+- **Vault** – All ChatGPT/OpenAI keys live in the `LifePath` 1Password vault under items `LLM/OpenAI Dev` and `LLM/OpenAI Prod`.
+- **Subfields** – Each item exposes `api_key`, `model` (default slug), and `api_base`. Update both the dev and prod items whenever a rotation occurs.
+- **Access** – Members of the `lifepath-ai` 1Password group have read/write permissions; audit logs live in 1Password for any changes.
+
+### Local `.env` workflow
+
+1. Copy the checked-in `.env.example` to `.env`.
+2. Sign in to 1Password CLI (`op signin <account>`).
+3. Pull secrets directly into the file (avoid manual copy/paste):
+   - `op read "op://LifePath/LLM/OpenAI Dev/api_key" | xargs -I{} sed -i '' 's|OPENAI_API_KEY=.*|OPENAI_API_KEY={}|' .env`
+   - `op read "op://LifePath/LLM/OpenAI Dev/model" | xargs -I{} sed -i '' 's|OPENAI_MODEL=.*|OPENAI_MODEL={}|' .env`
+   - `op read "op://LifePath/LLM/OpenAI Dev/api_base" | xargs -I{} sed -i '' 's|OPENAI_API_BASE=.*|OPENAI_API_BASE={}|' .env`
+4. Run `op run --env-file=.env -- npm run dev` (or `uvicorn ...`) to ensure processes inherit the secrets without leaving them in shell history.
+5. Never commit `.env`; `.gitignore` already enforces this, and pre-commit hooks should block accidental additions.
+
+### GitHub Actions & hosted environments
+
+1. Mirror the same variables as repository or environment secrets (`OPENAI_API_KEY`, `OPENAI_MODEL`, `OPENAI_API_BASE`).
+2. Use the 1Password CLI on a trusted workstation to sync secrets into GitHub:
+   - `gh secret set OPENAI_API_KEY --body "$(op read op://LifePath/LLM/OpenAI\ Prod/api_key)"`
+   - Repeat for `OPENAI_MODEL` and `OPENAI_API_BASE`, targeting the appropriate environment (`prod`, `staging`, etc).
+3. Workflows should load the secrets at the top of each job (`env:` block) and pass them only to the steps that require LLM access.
+4. For self-hosted or container deployments, export the same variables in the orchestrator (Docker, ECS task definition, etc.) instead of baking keys into images.
+
+### Rotation policy
+
+- **Cadence** – Rotate the OpenAI key monthly or immediately after any suspected leak.
+- **Execution**:
+  1. Generate a new key in the OpenAI dashboard.
+  2. Update the corresponding 1Password items (`api_key`, and optionally `model`/`api_base`).
+  3. Re-sync GitHub Actions secrets via `gh secret set ...`.
+  4. Redeploy services so the new environment variables take effect.
+  5. Verify traffic in telemetry dashboards (or `op run --env` locally) to confirm requests succeed with the new key.
+- **Revocation** – Delete the old key in OpenAI once all workloads confirm green to avoid orphaned credentials.
+
+### Rate-limit & telemetry guardrails
+
+- Tie OpenAI usage back to the API Gateway limiter. Keep `GATEWAY_RATE_LIMIT_PER_MIN` and `GATEWAY_RATE_LIMIT_BURST` at conservative defaults (60/20) for staging to prevent runaway token burn.
+- For load tests, temporarily raise both values and add `request_id` to the test logs so any spike can be attributed to a known campaign.
+- Telemetry (`ENABLE_TELEMETRY=true`) should remain enabled in staging/prod so that trace sampling reveals sudden increases in `/ai/*` calls. Pair traces with structured logs containing the OpenAI `model` and hashed payload metadata (see `observability/privacy.py`).
+- If telemetry detects rate-limit hits >5% of requests, increase burst only after validating that caching or queueing cannot absorb the spike.
+
 ## Telemetry & Tracing
 
 All FastAPI services call `observability.telemetry.setup_telemetry` at startup. The helper emits JSON logs plus OpenTelemetry spans when enabled via environment variables:
@@ -46,6 +92,12 @@ Blocked calls return HTTP 429 with a `Retry-After` header and emit a `rate_limit
 3. Revert the env vars once traffic normalizes.
 
 Because the limiter is in-memory, it should remain a stop-gap until a shared store (Redis) or upstream edge proxy is introduced for multi-instance deployments.
+
+### LLM-specific guardrails
+
+- Every outbound OpenAI call flows through the gateway, so the limiter effectively caps token spend and exposure. Keep the limiter enabled even for internal environments so compromised keys cannot be brute-forced via automated scripts.
+- Pair limiter alerts with telemetry dashboards to detect anomalies (e.g., sudden burst on `POST /clarify`) and suspend the key in OpenAI if traffic looks malicious.
+- When raising limits for a sanctioned test, document the window plus expected RPS in this runbook and schedule a reminder to reset values immediately after the test.
 
 ## Logging & PII Guardrails
 
