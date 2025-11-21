@@ -23,49 +23,25 @@ before wiring ChatGPT into the flow.
 
 ### ai-answer-validation
 
-- Location: `services/api-gateway/src/main.py` (`/submit-answers` handler).
-- Implement structural validation for `answers` payloads (types, allowed field IDs) before proxying
-  to clarification service.
-- Enrich error reporting/logging so upstream failures surface actionable context to clients.
+✅ `services/api-gateway/src/answer_validation.py` now mirrors the clarification-service binding logic. `/submit-answers` rejects unknown field IDs, enforces scalar types, and records structured errors before any upstream call.
 
 ### ready-for-summary-contract
 
-- Location: `services/api-gateway/src/main.py`.
-- Clarification service already returns `ready_for_summary`; expose that flag to the UI by expanding
-  the gateway response once the contract is finalized.
+✅ The gateway propagates `ready_for_summary` through its response and stores the flag alongside audit metadata. `services/ui-web` consumes the flag in `ClarifyPage`, gating the summary step until the clarification service signals readiness.
 
 ### ai-answer-application
 
-- Locations: `services/clarification-service/src/main.py`, `src/normalization.py`,
-  `tests/test_normalization.py`.
-- Expand `_validate_answer_field_ids`/`apply_answers_to_model` with richer mappings (nested debt
-  metadata, future AI-specific field IDs) and add fixtures that cover AI-provided answer shapes.
-- Introduce automatic debt extraction from expense lines so the clarification step can promote
-  loan-like entries before the LLM runs.
+✅ Clarification service binding logic supports dot-path field IDs, nested debt metadata, and automatic promotion of debt-like expenses. Tests load fixtures in `tests/fixtures/ai_answers_payload.json` to ensure AI-formatted payloads round-trip.
 
 ### model-enrichment-backlog
 
-- Locations: `services/clarification-service/src/normalization.py`, `tests/test_normalization.py`.
-- Add heuristics or AI hooks for:
-  - Income classification (earned vs passive vs transfer).
-  - Income stability inference from historical cadence.
-  - Essential vs flexible expense prediction.
-  - Debt detection during ingestion/normalization (promoting recurring payments to debt objects).
-- When implemented, update the associated tests and remove the deterministic placeholders.
+✅ `normalization.py` now infers income type/stability, flags essential expenses, and detects debts based on heuristics. The new logic is covered by expanded `test_normalization.py` cases.
 
 ### ingestion-ledger-detection
 
-- Locations: `services/budget-ingestion-service/src/parsers/csv_parser.py` and
-  `src/parsers/xlsx_parser.py`.
-- Detect whether uploads are ledger-style vs categorical and emit that signal upstream so the
-  clarification provider can tailor questions appropriately.
+✅ CSV/XLSX parsers emit `format_hints` describing ledger heuristics (debit/credit columns, cadence, line count). The ingestion response surfaces these hints to the UI and documentation now reflects the additional contract.
 
 ### integration-test-coverage
 
-- Location: `services/api-gateway/tests/test_gateway_smoke.py`.
-- Replace the skipped placeholder tests with real gateway-to-service integration tests (or mocked
-  HTTPX calls) so `/upload-budget`, `/clarification-questions`, `/submit-answers`, and
-  `/summary-and-suggestions` are exercised in CI.
-- These tests should run against either the deterministic providers or the mock fixtures described
-  in `docs/llm_adapter.md`.
+✅ `services/api-gateway/tests/test_gateway_smoke.py` uses a stubbed `ResilientHttpClient` to exercise `/upload-budget`, `/clarification-questions`, `/submit-answers`, and `/summary-and-suggestions` end-to-end without real services.
 
