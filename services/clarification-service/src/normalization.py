@@ -38,7 +38,15 @@ from budget_model import (  # noqa: E402
     UnifiedBudgetModel,
 )
 
-__all__ = ["draft_to_initial_unified", "apply_answers_to_model", "parse_debt_field_id"]
+__all__ = [
+    "draft_to_initial_unified",
+    "apply_answers_to_model",
+    "parse_debt_field_id",
+    "build_answer_binding_context",
+    "interpret_field_binding",
+    "map_debt_binding_to_attribute",
+    "is_supported_income_binding",
+]
 
 ESSENTIAL_PREFIX = "essential_"
 VALID_OPTIMIZATION_FOCUS = {"debt", "savings", "balanced"}
@@ -62,6 +70,15 @@ DEBT_FIELD_SUFFIXES: Tuple[Tuple[str, str], ...] = (
     ("_approximate", "approximate"),
 )
 VALID_DEBT_PRIORITIES = {"high", "medium", "low"}
+DEBT_ATTRIBUTE_PATHS = {
+    "balance": ("balance",),
+    "interest_rate": ("interest_rate",),
+    "min_payment": ("min_payment",),
+    "priority": ("priority",),
+    "approximate": ("approximate",),
+    "rate_change_date": ("rate_changes", "0", "date"),
+    "rate_change_new_rate": ("rate_changes", "0", "new_rate"),
+}
 PASSIVE_INCOME_KEYWORDS = {"dividend", "interest", "rental", "royalty", "yield"}
 TRANSFER_INCOME_KEYWORDS = {"transfer", "gift", "refund", "reimbursement", "stipend"}
 VARIABLE_INCOME_KEYWORDS = {"freelance", "contract", "gig", "bonus", "commission", "tips"}
@@ -322,6 +339,186 @@ def _deterministic_id(kind: str, line: RawBudgetLine, ordinal: int) -> str:
     return f"{kind}-draft-{line.source_row_index}-{ordinal}"
 
 
+@dataclass(frozen=True)
+class FieldBinding:
+    kind: str
+    target_id: str | None
+    path: Tuple[str, ...]
+    raw: str
+
+
+@dataclass
+class AnswerBindingContext:
+    expenses: Dict[str, Expense]
+    expense_aliases: Dict[str, Expense]
+    debts: Dict[str, Debt]
+    debt_aliases: Dict[str, Debt]
+    incomes: Dict[str, Income]
+    income_aliases: Dict[str, Income]
+    primary_income_id: str | None
+
+    @classmethod
+    def from_model(cls, model: UnifiedBudgetModel) -> "AnswerBindingContext":
+        expenses = {expense.id: expense for expense in model.expenses if getattr(expense, "id", None)}
+        debts = {debt.id: debt for debt in model.debts if getattr(debt, "id", None)}
+        incomes = {income.id: income for income in model.income if getattr(income, "id", None)}
+        return cls(
+            expenses=expenses,
+            expense_aliases=_build_alias_lookup(expenses.values(), lambda entry: entry.id, lambda entry: entry.category),
+            debts=debts,
+            debt_aliases=_build_alias_lookup(debts.values(), lambda entry: entry.id, lambda entry: entry.name),
+            incomes=incomes,
+            income_aliases=_build_alias_lookup(incomes.values(), lambda entry: entry.id, lambda entry: entry.name),
+            primary_income_id=_select_primary_income_id(incomes.values()),
+        )
+
+    def resolve_expense(self, identifier: str | None) -> Expense | None:
+        if not identifier:
+            return None
+        if identifier in self.expenses:
+            return self.expenses[identifier]
+        return self.expense_aliases.get(_slugify(identifier))
+
+    def resolve_income(self, identifier: str | None) -> Income | None:
+        if not identifier and self.primary_income_id:
+            return self.incomes.get(self.primary_income_id)
+        if identifier in self.incomes:
+            return self.incomes[identifier]
+        slug = _slugify(identifier or "")
+        if slug in {"primary", "primary_income"} and self.primary_income_id:
+            return self.incomes.get(self.primary_income_id)
+        return self.income_aliases.get(slug)
+
+    def resolve_debt(self, identifier: str | None) -> Tuple[Debt | None, Expense | None, str | None]:
+        if not identifier:
+            return None, None, None
+        if identifier in self.debts:
+            return self.debts[identifier], None, identifier
+        slug = _slugify(identifier)
+        debt_entry = self.debt_aliases.get(slug)
+        if debt_entry:
+            return debt_entry, None, debt_entry.id
+        expense_entry = self.expense_aliases.get(slug)
+        if expense_entry:
+            normalized_id = slug or expense_entry.id
+            return None, expense_entry, normalized_id
+        return None, None, slug or identifier
+
+
+def _build_alias_lookup(entries: Iterable[Any], *value_getters) -> Dict[str, Any]:
+    lookup: Dict[str, Any] = {}
+    for entry in entries:
+        for getter in value_getters:
+            value = getter(entry) if callable(getter) else getattr(entry, getter, None)
+            if not value:
+                continue
+            slug = _slugify(str(value))
+            if slug and slug not in lookup:
+                lookup[slug] = entry
+    return lookup
+
+
+def _select_primary_income_id(incomes: Iterable[Income]) -> str | None:
+    best_id: str | None = None
+    best_amount = -1.0
+    for income in incomes:
+        try:
+            amount = float(income.monthly_amount)
+        except (TypeError, ValueError):
+            amount = 0.0
+        if amount > best_amount and getattr(income, "id", None):
+            best_amount = amount
+            best_id = income.id
+    return best_id
+
+
+def _parse_binding_path(field_id: str) -> Tuple[str, str | None, Tuple[str, ...]] | None:
+    parts = [segment.strip() for segment in field_id.split(".") if segment.strip()]
+    if len(parts) < 2:
+        return None
+    collection = parts[0]
+    if collection == "preferences":
+        if len(parts) < 2:
+            return None
+        return collection, None, tuple(parts[1:])
+    if len(parts) < 3:
+        return None
+    target_id = parts[1]
+    path = tuple(parts[2:])
+    if not target_id or not path:
+        return None
+    if collection in {"income", "expenses", "debts"}:
+        return collection, target_id, path
+    return None
+
+
+def _binding_from_collection(collection: str, target_id: str | None, path: Tuple[str, ...], raw: str) -> FieldBinding | None:
+    if collection == "preferences":
+        return FieldBinding(kind="preferences", target_id=None, path=path, raw=raw)
+    if collection == "expenses" and path == ("essential",):
+        return FieldBinding(kind="expense_essential", target_id=target_id, path=(), raw=raw)
+    if collection == "income":
+        return FieldBinding(kind="income", target_id=target_id, path=path, raw=raw)
+    if collection == "debts":
+        return FieldBinding(kind="debt", target_id=target_id, path=path, raw=raw)
+    return None
+
+
+def _interpret_binding(field_id: str) -> FieldBinding | None:
+    if field_id in LEGACY_FIELD_BINDINGS:
+        collection, target_id, path = LEGACY_FIELD_BINDINGS[field_id]
+        return _binding_from_collection(collection, target_id, path, field_id)
+
+    if field_id.startswith(ESSENTIAL_PREFIX):
+        expense_id = field_id[len(ESSENTIAL_PREFIX) :]
+        return FieldBinding(kind="expense_essential", target_id=expense_id, path=(), raw=field_id)
+
+    legacy_debt = parse_debt_field_id(field_id)
+    if legacy_debt:
+        debt_id, attribute = legacy_debt
+        path = DEBT_ATTRIBUTE_PATHS.get(attribute)
+        if path:
+            return FieldBinding(kind="debt", target_id=debt_id, path=path, raw=field_id)
+
+    binding = _parse_binding_path(field_id)
+    if not binding:
+        return None
+    collection, target_id, path = binding
+    return _binding_from_collection(collection, target_id, path, field_id)
+
+
+def build_answer_binding_context(model: UnifiedBudgetModel) -> AnswerBindingContext:
+    return AnswerBindingContext.from_model(model)
+
+
+def interpret_field_binding(field_id: str) -> FieldBinding | None:
+    return _interpret_binding(field_id)
+
+
+def is_supported_income_binding(path: Tuple[str, ...]) -> bool:
+    if not path:
+        return False
+    head = path[0]
+    if head in {"stability", "type"}:
+        return True
+    if head == "metadata" and len(path) >= 2:
+        return True
+    return False
+
+
+def map_debt_binding_to_attribute(path: Tuple[str, ...]) -> str | None:
+    if not path:
+        return None
+    if len(path) == 1 and path[0] in {"balance", "interest_rate", "min_payment", "priority", "approximate"}:
+        return path[0]
+    if path[0] == "rate_changes" and len(path) >= 3:
+        if path[2] == "date":
+            return "rate_change_date"
+        if path[2] == "new_rate":
+            return "rate_change_new_rate"
+    return None
+
+
 def apply_answers_to_model(model: UnifiedBudgetModel, answers: Dict[str, Any]) -> UnifiedBudgetModel:
     """
     Apply structured clarification answers to the unified model in place.
@@ -340,47 +537,53 @@ def apply_answers_to_model(model: UnifiedBudgetModel, answers: Dict[str, Any]) -
     if not answers:
         return model
 
-    expense_lookup: Dict[str, Expense] = {expense.id: expense for expense in model.expenses if getattr(expense, "id", None)}
-    primary_income = model.income[0] if model.income else None
-    debt_lookup: Dict[str, Debt] = {debt.id: debt for debt in model.debts if getattr(debt, "id", None)}
+    context = build_answer_binding_context(model)
+    expense_lookup = context.expenses
+    debt_lookup: Dict[str, Debt] = dict(context.debts)
     pending_rate_changes: Dict[str, Dict[str, Any]] = {}
 
     for field_id, raw_value in answers.items():
         if not isinstance(field_id, str):
             continue
-
-        if field_id.startswith(ESSENTIAL_PREFIX):
-            _apply_essential_flag(expense_lookup, field_id, raw_value)
+        normalized_field_id = field_id.strip()
+        if not normalized_field_id:
             continue
 
-        if field_id == "optimization_focus":
-            _apply_optimization_focus(model.preferences, raw_value)
+        binding = interpret_field_binding(normalized_field_id)
+        if binding is None:
             continue
 
-        if field_id == "primary_income_type":
-            _apply_primary_income_type(primary_income, raw_value)
+        if binding.kind == "expense_essential":
+            expense = context.resolve_expense(binding.target_id)
+            if expense:
+                _apply_essential_flag(expense_lookup, expense.id, raw_value)
             continue
 
-        if field_id == "primary_income_stability":
-            _apply_primary_income_stability(primary_income, raw_value)
+        if binding.kind == "preferences":
+            _apply_preference_field(model.preferences, binding.path, raw_value)
             continue
 
-        debt_target = parse_debt_field_id(field_id)
-        if debt_target:
-            debt_id, attribute = debt_target
-            debt = _ensure_debt_entry(model, debt_lookup, debt_id)
-            _apply_debt_field(debt, attribute, raw_value, pending_rate_changes)
+        if binding.kind == "income":
+            income = context.resolve_income(binding.target_id)
+            if income and is_supported_income_binding(binding.path):
+                _apply_income_binding(income, binding.path, raw_value)
             continue
 
-        # TODO(answer-mapping): Support additional field_ids as the question catalog grows.
-        # Tracked in docs/AI_integration_readiness.md#ai-answer-application.
+        if binding.kind == "debt":
+            debt_entry, expense_entry, normalized_id = context.resolve_debt(binding.target_id)
+            if not normalized_id:
+                continue
+            debt = _ensure_debt_entry(model, debt_lookup, normalized_id, expense_entry)
+            attribute = map_debt_binding_to_attribute(binding.path)
+            if attribute:
+                _apply_debt_field(debt, attribute, raw_value, pending_rate_changes)
+            continue
 
     _finalize_rate_changes(debt_lookup, pending_rate_changes)
     return model
 
 
-def _apply_essential_flag(expense_lookup: Dict[str, Expense], field_id: str, raw_value: Any) -> None:
-    expense_id = field_id[len(ESSENTIAL_PREFIX) :]
+def _apply_essential_flag(expense_lookup: Dict[str, Expense], expense_id: str, raw_value: Any) -> None:
     if not expense_id:
         return
 
@@ -401,6 +604,25 @@ def _apply_optimization_focus(preferences: Preferences, raw_value: Any) -> None:
         preferences.optimization_focus = normalized  # type: ignore[assignment]
 
 
+def _apply_preference_field(preferences: Preferences, path: Tuple[str, ...], raw_value: Any) -> None:
+    if not path:
+        return
+    key = path[0]
+    if key == "optimization_focus":
+        _apply_optimization_focus(preferences, raw_value)
+        return
+    if key == "protect_essentials":
+        bool_value = _coerce_to_bool(raw_value)
+        if bool_value is not None:
+            preferences.protect_essentials = bool_value
+        return
+    if key == "max_desired_change_per_category":
+        numeric = _coerce_to_number(raw_value)
+        if numeric is not None:
+            preferences.max_desired_change_per_category = numeric
+        return
+
+
 def _apply_primary_income_type(primary_income: Income | None, raw_value: Any) -> None:
     if primary_income is None:
         return
@@ -409,9 +631,6 @@ def _apply_primary_income_type(primary_income: Income | None, raw_value: Any) ->
     if normalized not in PRIMARY_INCOME_TYPE_FLAGS:
         return
 
-    # Primary income entries default to "earned" today. We retain that category but
-    # persist the user's clarification for downstream logic once the schema grows.
-    primary_income.type = "earned"
     metadata = _ensure_metadata_dict(primary_income)
     metadata[PRIMARY_INCOME_FLAG_METADATA_KEY] = normalized
 
@@ -423,6 +642,23 @@ def _apply_primary_income_stability(primary_income: Income | None, raw_value: An
     normalized = _normalize_string(raw_value)
     if normalized in PRIMARY_INCOME_STABILITY_VALUES:
         primary_income.stability = normalized  # type: ignore[assignment]
+
+
+def _apply_income_binding(income: Income, path: Tuple[str, ...], raw_value: Any) -> None:
+    if not path:
+        return
+    head = path[0]
+    if head == "metadata" and len(path) >= 2:
+        if path[1] == PRIMARY_INCOME_FLAG_METADATA_KEY:
+            _apply_primary_income_type(income, raw_value)
+        return
+    if head == "stability":
+        _apply_primary_income_stability(income, raw_value)
+        return
+    if head == "type":
+        normalized = _normalize_string(raw_value)
+        if normalized in {"earned", "passive", "transfer"}:
+            income.type = normalized  # type: ignore[assignment]
 
 
 def _coerce_to_bool(value: Any) -> bool | None:
@@ -485,17 +721,24 @@ def _ensure_debt_entry(
     model: UnifiedBudgetModel,
     debt_lookup: Dict[str, Debt],
     debt_id: str,
+    source_expense: Expense | None = None,
 ) -> Debt:
     debt = debt_lookup.get(debt_id)
     if debt:
         return debt
 
+    inferred_name = None
+    inferred_payment = 0.0
+    if source_expense is not None:
+        inferred_name = source_expense.category or source_expense.id
+        inferred_payment = abs(getattr(source_expense, "monthly_amount", 0.0) or 0.0)
+
     debt = Debt(
         id=debt_id,
-        name=_humanize_debt_name(debt_id),
+        name=inferred_name or _humanize_debt_name(debt_id),
         balance=0.0,
         interest_rate=0.0,
-        min_payment=0.0,
+        min_payment=inferred_payment,
         priority="medium",
         approximate=True,
         rate_changes=None,
@@ -510,6 +753,14 @@ def _humanize_debt_name(debt_id: str) -> str:
     if not cleaned:
         return "Debt"
     return cleaned.title()
+
+
+def _slugify(value: str) -> str:
+    normalized = value.strip().lower()
+    if not normalized:
+        return ""
+    slug = SLUG_PATTERN.sub("_", normalized)
+    return slug.strip("_")
 
 
 def _apply_debt_field(

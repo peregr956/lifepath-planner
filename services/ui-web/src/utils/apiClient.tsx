@@ -454,6 +454,7 @@ type RawClarificationQuestionsResponse = {
 type RawSubmitAnswersResponse = {
   budget_id: string;
   status: string;
+  ready_for_summary?: boolean | null;
 };
 
 type RawSummaryAndSuggestionsResponse = {
@@ -616,6 +617,7 @@ function normalizeSubmitAnswersResponse(raw: RawSubmitAnswersResponse): SubmitAn
   return {
     budgetId: raw.budget_id,
     status: raw.status,
+    readyForSummary: Boolean(raw.ready_for_summary),
   };
 }
 

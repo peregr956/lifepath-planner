@@ -1,3 +1,4 @@
+import json
 import sys
 from pathlib import Path
 from typing import Any, Dict
@@ -8,6 +9,7 @@ SERVICE_ROOT = Path(__file__).resolve().parents[1]
 SERVICE_SRC = SERVICE_ROOT / "src"
 INGESTION_SRC = SERVICE_ROOT.parent / "budget-ingestion-service" / "src"
 OPTIMIZATION_SRC = SERVICE_ROOT.parent / "optimization-service" / "src"
+FIXTURES_DIR = SERVICE_ROOT / "tests" / "fixtures"
 
 for candidate in (SERVICE_SRC, INGESTION_SRC, OPTIMIZATION_SRC):
     candidate_str = str(candidate)
@@ -30,6 +32,12 @@ from budget_model import (  # noqa: E402
 
 
 client = TestClient(app)
+
+
+def _load_fixture(name: str) -> dict:
+    path = FIXTURES_DIR / name
+    with path.open("r", encoding="utf-8") as handle:
+        return json.load(handle)
 
 
 def _build_partial_model_payload() -> Dict[str, Any]:
@@ -118,4 +126,20 @@ def test_apply_answers_accepts_valid_field_ids():
     body = ApplyAnswersResponseModel(**response.json())
     assert body.ready_for_summary is True
     assert body.updated_model.summary.total_income == 6000.0
+
+
+def test_apply_answers_accepts_binding_style_fields():
+    fixture = _load_fixture("ai_answers_payload.json")
+    payload = {
+        "partial_model": fixture["partial_model"],
+        "answers": fixture["answers"],
+    }
+
+    response = client.post("/apply-answers", json=payload)
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["ready_for_summary"] is True
+    debts = data["updated_model"]["debts"]
+    assert debts and debts[0]["id"] == "student_loan"
 

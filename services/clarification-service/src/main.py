@@ -52,10 +52,13 @@ from budget_model import (  # noqa: E402
 
 from normalization import (
     ESSENTIAL_PREFIX,
-    SUPPORTED_SIMPLE_FIELD_IDS,
+    PREFERENCE_FIELD_ALIASES,
     apply_answers_to_model,
+    build_answer_binding_context,
     draft_to_initial_unified,
-    parse_debt_field_id,
+    interpret_field_binding,
+    is_supported_income_binding,
+    map_debt_binding_to_attribute,
 )
 from question_generator import QuestionSpec
 from ui_schema_builder import build_initial_ui_schema
@@ -488,8 +491,7 @@ def _validate_answer_field_ids(model: UnifiedBudgetModel, answers: Dict[str, Any
     if not answers:
         return []
 
-    expense_ids = _collect_ids(model.expenses)
-    debt_ids = _collect_ids(model.debts)
+    context = build_answer_binding_context(model)
     invalid_entries: List[Dict[str, str]] = []
 
     for raw_field_id in answers.keys():
@@ -514,32 +516,65 @@ def _validate_answer_field_ids(model: UnifiedBudgetModel, answers: Dict[str, Any
             )
             continue
 
-        if field_id.startswith(ESSENTIAL_PREFIX):
-            expense_id = field_id[len(ESSENTIAL_PREFIX) :]
-            if expense_id and expense_id in expense_ids:
+        binding = interpret_field_binding(field_id)
+        if binding is None:
+            invalid_entries.append(
+                {
+                    "field_id": field_id,
+                    "reason": "unsupported_field_id",
+                    "detail": "No known mapping exists for this field_id.",
+                }
+            )
+            continue
+
+        if binding.kind == "expense_essential":
+            expense = context.resolve_expense(binding.target_id)
+            if expense:
                 continue
             invalid_entries.append(
                 {
                     "field_id": field_id,
                     "reason": "unknown_expense",
-                    "detail": f"Expense '{expense_id or '<missing>'}' is not present in the partial model.",
+                    "detail": f"Expense '{binding.target_id or '<missing>'}' is not present in the partial model.",
                 }
             )
             continue
 
-        if field_id in SUPPORTED_SIMPLE_FIELD_IDS:
+        if binding.kind == "preferences":
+            if binding.path and binding.path[0] in PREFERENCE_FIELD_ALIASES:
+                continue
+            invalid_entries.append(
+                {
+                    "field_id": field_id,
+                    "reason": "unsupported_preference",
+                    "detail": "Preference updates must target known preference fields.",
+                }
+            )
             continue
 
-        debt_target = parse_debt_field_id(field_id)
-        if debt_target:
-            debt_id, attribute = debt_target
-            if debt_id in debt_ids:
+        if binding.kind == "income":
+            income = context.resolve_income(binding.target_id)
+            if income and is_supported_income_binding(binding.path):
+                continue
+            invalid_entries.append(
+                {
+                    "field_id": field_id,
+                    "reason": "unknown_income",
+                    "detail": f"Income '{binding.target_id or '<missing>'}' is not available for updates.",
+                }
+            )
+            continue
+
+        if binding.kind == "debt":
+            debt_entry, expense_entry, _ = context.resolve_debt(binding.target_id)
+            attribute = map_debt_binding_to_attribute(binding.path)
+            if attribute and (debt_entry or expense_entry):
                 continue
             invalid_entries.append(
                 {
                     "field_id": field_id,
                     "reason": "unknown_debt",
-                    "detail": f"Debt '{debt_id}' is not present in the partial model for '{attribute}'.",
+                    "detail": f"Debt '{binding.target_id or '<missing>'}' is not present in the partial model.",
                 }
             )
             continue

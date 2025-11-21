@@ -1,0 +1,52 @@
+{
+  "partial_model": {
+    "income": [
+      {
+        "id": "income-1",
+        "name": "Primary Salary",
+        "monthly_amount": 6500.0,
+        "type": "earned",
+        "stability": "stable"
+      }
+    ],
+    "expenses": [
+      {
+        "id": "student_loan_payment",
+        "category": "Student Loan",
+        "monthly_amount": 400.0,
+        "essential": true,
+        "notes": null
+      },
+      {
+        "id": "groceries",
+        "category": "Groceries",
+        "monthly_amount": 600.0,
+        "essential": null,
+        "notes": null
+      }
+    ],
+    "debts": [],
+    "preferences": {
+      "optimization_focus": "balanced",
+      "protect_essentials": true,
+      "max_desired_change_per_category": 0.05
+    },
+    "summary": {
+      "total_income": 6500.0,
+      "total_expenses": 1000.0,
+      "surplus": 5500.0
+    }
+  },
+  "answers": {
+    "expenses.student_loan_payment.essential": true,
+    "preferences.optimization_focus": "debt",
+    "income.income-1.metadata.net_or_gross": "net",
+    "income.income-1.stability": "variable",
+    "debts.student_loan.balance": 12000,
+    "debts.student_loan.interest_rate": 6.5,
+    "debts.student_loan.min_payment": 350,
+    "debts.student_loan.rate_changes.0.date": "2026-01-01",
+    "debts.student_loan.rate_changes.0.new_rate": 7.25
+  }
+}
+
