@@ -116,7 +116,10 @@ def test_submit_answers_validation_success_proxies_upstream(client: TestClient, 
 
     async def fake_post(url: str, *, json: Dict[str, object], request_id: str, **kwargs):
         captured_calls.append({"url": url, "json": json, "request_id": request_id})
-        return httpx.Response(200, json={"updated_model": {"summary": {}}}), RequestMetrics(attempts=1, latency_ms=12.5)
+        return (
+            httpx.Response(200, json={"updated_model": {"summary": {}}, "ready_for_summary": True}),
+            RequestMetrics(attempts=1, latency_ms=12.5),
+        )
 
     monkeypatch.setattr(
         "main.http_client.post",
@@ -138,11 +141,38 @@ def test_submit_answers_validation_success_proxies_upstream(client: TestClient, 
 
     assert response.status_code == 200
     payload = response.json()
-    assert payload == {"budget_id": budget_id, "status": "ready_for_summary"}
+    assert payload == {"budget_id": budget_id, "status": "ready_for_summary", "ready_for_summary": True}
     assert len(captured_calls) == 1
     forwarded = captured_calls[0]
     assert forwarded["url"].endswith("/apply-answers")
     assert forwarded["json"]["answers"] == answers
+
+
+def test_submit_answers_ready_flag_false_updates_status(client: TestClient, session_factory, monkeypatch) -> None:
+    async def fake_post(url: str, *, json: Dict[str, object], request_id: str, **kwargs):
+        return (
+            httpx.Response(200, json={"updated_model": {"summary": {}}, "ready_for_summary": False}),
+            RequestMetrics(attempts=1, latency_ms=8.4),
+        )
+
+    monkeypatch.setattr(
+        "main.http_client.post",
+        fake_post,
+    )
+
+    budget_id = _seed_budget_session(session_factory)
+    answers = {
+        "essential_expense-draft-1-1": True,
+    }
+
+    response = client.post(
+        "/submit-answers",
+        json={"budget_id": budget_id, "answers": answers},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload == {"budget_id": budget_id, "status": "clarified", "ready_for_summary": False}
 
 
 def test_submit_answers_validation_failure_returns_400(client: TestClient, session_factory, monkeypatch) -> None:
