@@ -1,25 +1,36 @@
 {
   "needs_clarification": true,
   "partial_model": {
-    "debts": [],
+    "debts": [
+      {
+        "approximate": true,
+        "balance": 0.0,
+        "id": "student_loan",
+        "interest_rate": 0.0,
+        "min_payment": 400.0,
+        "name": "Student Loan",
+        "priority": "medium",
+        "rate_changes": null
+      }
+    ],
     "expenses": [
       {
         "category": "Rent",
-        "essential": null,
+        "essential": true,
         "id": "expense-draft-4-1",
         "monthly_amount": 2200.0,
         "notes": "Apartment rent"
       },
       {
         "category": "Groceries",
-        "essential": null,
+        "essential": true,
         "id": "expense-draft-5-2",
         "monthly_amount": 650.0,
         "notes": "Weekly groceries"
       },
       {
         "category": "Utilities",
-        "essential": null,
+        "essential": true,
         "id": "expense-draft-6-3",
         "monthly_amount": 320.0,
         "notes": "Electric and internet"
@@ -33,14 +44,14 @@
       },
       {
         "category": "Transportation",
-        "essential": null,
+        "essential": true,
         "id": "expense-draft-8-5",
         "monthly_amount": 275.0,
         "notes": "Transit pass"
       },
       {
         "category": "Dining",
-        "essential": null,
+        "essential": false,
         "id": "expense-draft-9-6",
         "monthly_amount": 180.0,
         "notes": "Restaurants and takeout"
@@ -58,11 +69,12 @@
         "id": "income-draft-3-2",
         "monthly_amount": 1200.0,
         "name": "Freelance",
-        "stability": "stable",
+        "stability": "variable",
         "type": "earned"
       }
     ],
     "preferences": {
+      "guidance_profile": null,
       "max_desired_change_per_category": 0.0,
       "optimization_focus": "balanced",
       "protect_essentials": true
@@ -73,47 +85,39 @@
       "total_income": 7700.0
     }
   },
-  "question_count": 2,
+  "question_count": 3,
   "questions": [
     {
       "components": [
         {
-          "binding": "expenses.expense-draft-4-1.essential",
-          "component": "toggle",
-          "field_id": "essential_expense-draft-4-1",
-          "label": "Mark Rent as essential"
-        },
-        {
-          "binding": "expenses.expense-draft-5-2.essential",
-          "component": "toggle",
-          "field_id": "essential_expense-draft-5-2",
-          "label": "Mark Groceries as essential"
-        },
-        {
-          "binding": "expenses.expense-draft-6-3.essential",
-          "component": "toggle",
-          "field_id": "essential_expense-draft-6-3",
-          "label": "Mark Utilities as essential"
-        },
+          "binding": "preferences.guidance_profile",
+          "component": "dropdown",
+          "constraints": {
+            "default": "Balanced foundations"
+          },
+          "field_id": "guidance_profile",
+          "label": "Which guidance style should we follow?",
+          "options": [
+            "Balanced foundations",
+            "Personal finance subreddit",
+            "Money Guy Show"
+          ]
+        }
+      ],
+      "description": "This choice influences downstream suggestions\u2014for example, the r/personalfinance wiki prioritizes emergency funds while the Money Guy Show pushes higher savings rates.",
+      "prompt": "Pick the personal finance playbook that resonates most.",
+      "question_id": "question_guidance_profile"
+    },
+    {
+      "components": [
         {
           "binding": "expenses.expense-draft-7-4.essential",
           "component": "toggle",
           "field_id": "essential_expense-draft-7-4",
           "label": "Mark Student Loan as essential"
-        },
-        {
-          "binding": "expenses.expense-draft-8-5.essential",
-          "component": "toggle",
-          "field_id": "essential_expense-draft-8-5",
-          "label": "Mark Transportation as essential"
-        },
-        {
-          "binding": "expenses.expense-draft-9-6.essential",
-          "component": "toggle",
-          "field_id": "essential_expense-draft-9-6",
-          "label": "Mark Dining as essential"
         }
       ],
+      "description": null,
       "prompt": "Which of these categories are essential for your basic needs?",
       "question_id": "question_essential_expenses"
     },
@@ -143,6 +147,7 @@
           ]
         }
       ],
+      "description": "These answers help tailor emergency fund and surplus recommendations.",
       "prompt": "Is your primary income net (after tax) or gross, and is it generally stable?",
       "question_id": "question_primary_income_details"
     }
@@ -196,7 +201,7 @@
               "id": "income-draft-3-2",
               "label": "Freelance",
               "monthly_amount": 1200.0,
-              "stability": "stable"
+              "stability": "variable"
             }
           ],
           "income_count": 2,
@@ -211,40 +216,10 @@
       {
         "components": [
           {
-            "binding": "expenses.expense-draft-4-1.essential",
-            "component": "toggle",
-            "field_id": "essential_expense-draft-4-1",
-            "label": "Mark Rent as essential"
-          },
-          {
-            "binding": "expenses.expense-draft-5-2.essential",
-            "component": "toggle",
-            "field_id": "essential_expense-draft-5-2",
-            "label": "Mark Groceries as essential"
-          },
-          {
-            "binding": "expenses.expense-draft-6-3.essential",
-            "component": "toggle",
-            "field_id": "essential_expense-draft-6-3",
-            "label": "Mark Utilities as essential"
-          },
-          {
             "binding": "expenses.expense-draft-7-4.essential",
             "component": "toggle",
             "field_id": "essential_expense-draft-7-4",
             "label": "Mark Student Loan as essential"
-          },
-          {
-            "binding": "expenses.expense-draft-8-5.essential",
-            "component": "toggle",
-            "field_id": "essential_expense-draft-8-5",
-            "label": "Mark Transportation as essential"
-          },
-          {
-            "binding": "expenses.expense-draft-9-6.essential",
-            "component": "toggle",
-            "field_id": "essential_expense-draft-9-6",
-            "label": "Mark Dining as essential"
           }
         ],
         "description": "Classify spending categories as essential or flexible.",
@@ -252,21 +227,21 @@
         "summary": {
           "entries": [
             {
-              "essential": null,
+              "essential": true,
               "formatted_monthly_amount": "$2,200.00",
               "id": "expense-draft-4-1",
               "label": "Rent",
               "monthly_amount": 2200.0
             },
             {
-              "essential": null,
+              "essential": true,
               "formatted_monthly_amount": "$650.00",
               "id": "expense-draft-5-2",
               "label": "Groceries",
               "monthly_amount": 650.0
             },
             {
-              "essential": null,
+              "essential": true,
               "formatted_monthly_amount": "$320.00",
               "id": "expense-draft-6-3",
               "label": "Utilities",
@@ -280,14 +255,14 @@
               "monthly_amount": 400.0
             },
             {
-              "essential": null,
+              "essential": true,
               "formatted_monthly_amount": "$275.00",
               "id": "expense-draft-8-5",
               "label": "Transportation",
               "monthly_amount": 275.0
             },
             {
-              "essential": null,
+              "essential": false,
               "formatted_monthly_amount": "$180.00",
               "id": "expense-draft-9-6",
               "label": "Dining",
@@ -295,10 +270,10 @@
             }
           ],
           "pending_amount": {
-            "formatted": "$4,025.00",
-            "raw": 4025.0
+            "formatted": "$400.00",
+            "raw": 400.0
           },
-          "pending_classifications": 6
+          "pending_classifications": 1
         },
         "title": "Expenses overview"
       },

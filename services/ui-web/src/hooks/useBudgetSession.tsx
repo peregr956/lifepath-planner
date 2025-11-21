@@ -12,18 +12,13 @@ export type BudgetSession = {
   detectedFormat?: string | null;
   summaryPreview?: UploadSummaryPreview | null;
   clarified?: boolean;
-  readyForSummary?: boolean;
-};
-
-type MarkClarifiedOptions = {
-  readyForSummary?: boolean;
 };
 
 type BudgetSessionContextValue = {
   session: BudgetSession | null;
   hydrated: boolean;
   saveSession: (next: BudgetSession) => void;
-  markClarified: (options?: MarkClarifiedOptions) => void;
+  markClarified: () => void;
   clearSession: () => void;
 };
 
@@ -49,7 +44,7 @@ export function BudgetSessionProvider({ children }: { children: ReactNode }) {
   const updateUrl = useCallback(
     (value: BudgetSession | null) => {
       const params = new URLSearchParams(searchParams.toString());
-      ['budget_id', 'format', 'income_lines', 'expense_lines', 'clarified', 'summary_ready'].forEach((key) =>
+      ['budget_id', 'format', 'income_lines', 'expense_lines', 'clarified'].forEach((key) =>
         params.delete(key)
       );
       if (value) {
@@ -63,9 +58,6 @@ export function BudgetSessionProvider({ children }: { children: ReactNode }) {
         }
         if (value.clarified) {
           params.set('clarified', '1');
-        }
-        if (value.readyForSummary) {
-          params.set('summary_ready', '1');
         }
       }
       const query = params.toString();
@@ -82,9 +74,8 @@ export function BudgetSessionProvider({ children }: { children: ReactNode }) {
     const fromUrl = parseSessionFromString(searchParamsString);
     const nextSession = fromUrl ?? storedSession;
     if (nextSession) {
-      const normalized = normalizeSession(nextSession);
-      setSession(normalized);
-      persist(normalized);
+      setSession(nextSession);
+      persist(nextSession);
     } else {
       setSession(null);
       persist(null);
@@ -94,7 +85,10 @@ export function BudgetSessionProvider({ children }: { children: ReactNode }) {
 
   const saveSession = useCallback(
     (value: BudgetSession) => {
-      const nextSession = normalizeSession(value);
+      const nextSession = {
+        ...value,
+        clarified: value.clarified ?? false,
+      };
       setSession(nextSession);
       persist(nextSession);
       updateUrl(nextSession);
@@ -102,23 +96,15 @@ export function BudgetSessionProvider({ children }: { children: ReactNode }) {
     [persist, updateUrl]
   );
 
-  const markClarified = useCallback(
-    (options?: MarkClarifiedOptions) => {
-      setSession((prev) => {
-        if (!prev) return prev;
-        const nextSession = normalizeSession({
-          ...prev,
-          clarified: true,
-          readyForSummary:
-            options?.readyForSummary ?? (prev.readyForSummary ?? false),
-        });
-        persist(nextSession);
-        updateUrl(nextSession);
-        return nextSession;
-      });
-    },
-    [persist, updateUrl]
-  );
+  const markClarified = useCallback(() => {
+    setSession((prev) => {
+      if (!prev) return prev;
+      const nextSession = { ...prev, clarified: true };
+      persist(nextSession);
+      updateUrl(nextSession);
+      return nextSession;
+    });
+  }, [persist, updateUrl]);
 
   const clearSession = useCallback(() => {
     setSession(null);
@@ -169,14 +155,11 @@ function parseSessionFromParams(params: URLSearchParams): BudgetSession | null {
   }
   const clarifiedParam = params.get('clarified');
   const clarified = clarifiedParam === '1' || clarifiedParam === 'true';
-  const summaryReadyParam = params.get('summary_ready');
-  const readyForSummary = summaryReadyParam === '1' || summaryReadyParam === 'true';
   return {
     budgetId,
     detectedFormat: detectedFormat ?? undefined,
     summaryPreview: summaryPreview ?? undefined,
     clarified,
-    readyForSummary,
   };
 }
 
@@ -186,16 +169,8 @@ function safeParseSession(raw: string): BudgetSession | null {
     if (!parsed || typeof parsed !== 'object' || !('budgetId' in parsed)) {
       return null;
     }
-    return normalizeSession(parsed);
+    return parsed;
   } catch {
     return null;
   }
-}
-
-function normalizeSession(session: BudgetSession): BudgetSession {
-  return {
-    ...session,
-    clarified: session.clarified ?? false,
-    readyForSummary: session.readyForSummary ?? false,
-  };
 }

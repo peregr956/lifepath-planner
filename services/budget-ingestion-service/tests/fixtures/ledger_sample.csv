@@ -1,0 +1,10 @@
+Date,Description,Debit,Credit,Amount,Balance
+2025-01-01,Opening Balance,,5000,5000,5000
+2025-01-02,Coffee Shop,4.50,,-4.5,4995.5
+2025-01-03,Paycheck,,2000,2000,6995.5
+2025-01-04,Rent,1800,,-1800,5195.5
+2025-01-05,Groceries,120.75,,-120.75,5074.75
+2025-01-06,Electric Bill,95.25,,-95.25,4979.5
+2025-01-07,Subscription,15.99,,-15.99,4963.51
+2025-01-08,Client Invoice,,800,800,5763.51
+

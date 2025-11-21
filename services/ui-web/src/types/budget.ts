@@ -59,6 +59,7 @@ export type UploadBudgetResponse = {
   budgetId: string;
   status: string;
   detectedFormat?: string | null;
+  detectedFormatHints?: Record<string, unknown> | null;
   summaryPreview?: UploadSummaryPreview | null;
 };
 
@@ -135,7 +136,6 @@ export type ClarificationQuestionsResponse = {
 export type SubmitAnswersResponse = {
   budgetId: string;
   status: string;
-  readyForSummary: boolean;
 };
 
 export type BudgetSuggestion = {

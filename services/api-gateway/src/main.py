@@ -2,7 +2,7 @@ import logging
 import os
 import sys
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Sequence, Set, Tuple
+from typing import Any, Dict, List
 from uuid import uuid4
 
 import httpx
@@ -20,7 +20,6 @@ SERVICES_ROOT = SRC_DIR.parents[1]
 if str(SERVICES_ROOT) not in sys.path:
     sys.path.insert(0, str(SERVICES_ROOT))
 
-from answer_validation import validate_answers
 from http_client import ResilientHttpClient
 from persistence.database import get_session, init_db
 from persistence.repository import BudgetSessionRepository
@@ -260,6 +259,7 @@ async def upload_budget(
         "budget_id": budget_id,
         "status": "parsed",
         "detected_format": draft_budget.get("detected_format"),
+        "detected_format_hints": draft_budget.get("format_hints") or {},
         "summary_preview": summary_counts,
     }
 
@@ -356,29 +356,6 @@ class SubmitAnswersPayload(BaseModel):
     answers: Dict[str, Any]
 
 
-ESSENTIAL_PREFIX = "essential_"
-SUPPORTED_SIMPLE_FIELD_IDS = {
-    "optimization_focus",
-    "primary_income_type",
-    "primary_income_stability",
-}
-VALID_OPTIMIZATION_FOCUS = {"debt", "savings", "balanced"}
-PRIMARY_INCOME_TYPE_FLAGS = {"net", "gross"}
-PRIMARY_INCOME_STABILITY_VALUES = {"stable", "variable", "seasonal"}
-TRUE_STRINGS = {"true", "1", "yes", "y", "essential", "needed"}
-FALSE_STRINGS = {"false", "0", "no", "n", "nonessential", "flexible"}
-DEBT_FIELD_SUFFIXES: Tuple[Tuple[str, str], ...] = (
-    ("_rate_change_new_rate", "rate_change_new_rate"),
-    ("_rate_change_date", "rate_change_date"),
-    ("_interest_rate", "interest_rate"),
-    ("_min_payment", "min_payment"),
-    ("_balance", "balance"),
-    ("_priority", "priority"),
-    ("_approximate", "approximate"),
-)
-VALID_DEBT_PRIORITIES = {"high", "medium", "low"}
-AnswerIssue = Dict[str, str]
-
 @app.post("/submit-answers", response_model=None)
 async def submit_answers(
     payload: SubmitAnswersPayload,
@@ -407,47 +384,13 @@ async def submit_answers(
             "Clarification has not run for this budget; please answer the clarification questions first.",
         )
 
-    if not isinstance(partial_model, dict):
-        logger.error(
-            {
-                "event": "submit_answers_invalid_model",
-                "request_id": request_id,
-                "budget_id": payload.budget_id,
-                "detail": "Stored partial model is not a dict.",
-            }
-        )
-        return error_response(
-            500,
-            "partial_model_corrupted",
-            "Stored clarification data is malformed for this budget.",
-        )
-
-    answers = payload.answers or {}
-    validation_errors = validate_answers(partial_model, answers)
-    if validation_errors:
-        logger.warning(
-            {
-                "event": "submit_answers_validation_failed",
-                "request_id": request_id,
-                "budget_id": payload.budget_id,
-                "issue_count": len(validation_errors),
-                "reasons": sorted({issue.get("reason") for issue in validation_errors if issue.get("reason")}),
-            }
-        )
-        return JSONResponse(
-            status_code=400,
-            content={
-                "error": "invalid_answers",
-                "details": {"field_errors": validation_errors},
-            },
-        )
-
-    answer_count = len(answers)
     request_body = {
         "partial_model": partial_model,
-        "answers": answers,
+        "answers": payload.answers,
     }
 
+    # TODO(ai-answer-validation): validate answers schema and enhance downstream error handling/logging.
+    # Tracked in docs/AI_integration_readiness.md#ai-answer-validation.
     apply_answers_url = f"{CLARIFICATION_BASE}/apply-answers"
     try:
         clarification_response, metrics = await http_client.post(
@@ -486,17 +429,13 @@ async def submit_answers(
         )
 
     apply_data: Dict[str, Any] = clarification_response.json()
-    ready_for_summary = bool(apply_data.get("ready_for_summary"))
+
     updated_model = apply_data.get("updated_model")
     repo.update_final(
         budget_session,
         updated_model,
         source_ip=_client_ip(request),
-        details={
-            "answer_count": answer_count,
-            "ready_for_summary": ready_for_summary,
-            "request_id": request_id,
-        },
+        details={"answer_count": len(payload.answers or {}), "request_id": request_id},
     )
 
     logger.info(
@@ -504,18 +443,17 @@ async def submit_answers(
             "event": "submit_answers",
             "request_id": request_id,
             "budget_id": payload.budget_id,
-            "answer_count": answer_count,
+            "answer_count": len(payload.answers or {}),
             "upstream_latency_ms": metrics.latency_ms,
             "attempts": metrics.attempts,
-            "ready_for_summary": ready_for_summary,
         }
     )
 
-    status = "ready_for_summary" if ready_for_summary else "clarifying"
+    # TODO(ready-for-summary-contract): surface the clarification service readiness flag when the contract stabilizes.
+    # Tracked in docs/AI_integration_readiness.md#ready-for-summary-contract.
     return {
         "budget_id": payload.budget_id,
-        "status": status,
-        "ready_for_summary": ready_for_summary,
+        "status": "ready_for_summary",
     }
 
 
@@ -597,254 +535,3 @@ async def summary_and_suggestions(
         "category_shares": optimization_data.get("category_shares"),
         "suggestions": optimization_data.get("suggestions"),
     }
-
-
-def validate_answers_payload(partial_model: Dict[str, Any], answers: Dict[str, Any]) -> List[AnswerIssue]:
-    """
-    Ensure each answer targets a supported field_id and provides a coercible value.
-    Mirrors clarification-service semantics so invalid payloads are rejected before proxying upstream.
-    """
-
-    if not answers:
-        return []
-
-    expenses = _safe_sequence(partial_model.get("expenses"))
-    debts = _safe_sequence(partial_model.get("debts"))
-    expense_ids = _collect_entry_ids(expenses)
-    debt_ids = _collect_entry_ids(debts)
-
-    issues: List[AnswerIssue] = []
-    for raw_field_id, raw_value in answers.items():
-        issue = _validate_answer_field(raw_field_id, raw_value, expense_ids, debt_ids)
-        if issue:
-            issues.append(issue)
-    return issues
-
-
-def _validate_answer_field(
-    raw_field_id: Any,
-    raw_value: Any,
-    expense_ids: Set[str],
-    debt_ids: Set[str],
-) -> AnswerIssue | None:
-    if not isinstance(raw_field_id, str):
-        return {
-            "field_id": str(raw_field_id),
-            "reason": "invalid_field_id_type",
-            "detail": "Field ids must be non-empty strings.",
-        }
-
-    field_id = raw_field_id.strip()
-    if not field_id:
-        return {
-            "field_id": raw_field_id,
-            "reason": "empty_field_id",
-            "detail": "Field ids must be non-empty strings.",
-        }
-
-    if field_id.startswith(ESSENTIAL_PREFIX):
-        return _validate_essential_field(field_id, raw_value, expense_ids)
-
-    if field_id in SUPPORTED_SIMPLE_FIELD_IDS:
-        return _validate_simple_field(field_id, raw_value)
-
-    debt_target = _parse_debt_field_id(field_id)
-    if debt_target:
-        return _validate_debt_field(field_id, debt_target, raw_value, debt_ids)
-
-    return {
-        "field_id": field_id,
-        "reason": "unsupported_field_id",
-        "detail": "Field id is not recognized by the clarification schema.",
-    }
-
-
-def _validate_essential_field(field_id: str, raw_value: Any, expense_ids: Set[str]) -> AnswerIssue | None:
-    expense_id = field_id[len(ESSENTIAL_PREFIX) :]
-    if not expense_id or expense_id not in expense_ids:
-        return {
-            "field_id": field_id,
-            "reason": "unknown_expense",
-            "detail": f"Expense '{expense_id or '<missing>'}' is not part of the current partial model.",
-        }
-
-    if _coerce_to_bool(raw_value) is None:
-        return {
-            "field_id": field_id,
-            "reason": "invalid_boolean",
-            "detail": "Essential flags must be boolean values or boolean-like strings (true/false).",
-        }
-    return None
-
-
-def _validate_simple_field(field_id: str, raw_value: Any) -> AnswerIssue | None:
-    normalized = _normalize_string(raw_value)
-
-    if field_id == "optimization_focus":
-        if normalized in VALID_OPTIMIZATION_FOCUS:
-            return None
-        return {
-            "field_id": field_id,
-            "reason": "invalid_choice",
-            "detail": "Optimization focus must be one of: debt, savings, balanced.",
-        }
-
-    if field_id == "primary_income_type":
-        if normalized in PRIMARY_INCOME_TYPE_FLAGS:
-            return None
-        return {
-            "field_id": field_id,
-            "reason": "invalid_choice",
-            "detail": "Primary income type must be 'net' or 'gross'.",
-        }
-
-    if field_id == "primary_income_stability":
-        if normalized in PRIMARY_INCOME_STABILITY_VALUES:
-            return None
-        return {
-            "field_id": field_id,
-            "reason": "invalid_choice",
-            "detail": "Primary income stability must be stable, variable, or seasonal.",
-        }
-
-    return {
-        "field_id": field_id,
-        "reason": "unsupported_field_id",
-        "detail": "Field id is not recognized by the clarification schema.",
-    }
-
-
-def _validate_debt_field(
-    field_id: str,
-    debt_target: Tuple[str, str],
-    raw_value: Any,
-    debt_ids: Set[str],
-) -> AnswerIssue | None:
-    debt_id, attribute = debt_target
-    if not debt_id or debt_id not in debt_ids:
-        return {
-            "field_id": field_id,
-            "reason": "unknown_debt",
-            "detail": f"Debt '{debt_id or '<missing>'}' is not present in the partial model.",
-        }
-
-    if attribute in {"balance", "interest_rate", "min_payment", "rate_change_new_rate"}:
-        if _coerce_to_number(raw_value) is None:
-            return {
-                "field_id": field_id,
-                "reason": "invalid_number",
-                "detail": f"{attribute.replace('_', ' ').title()} must be numeric.",
-            }
-        return None
-
-    if attribute == "priority":
-        normalized = _normalize_string(raw_value)
-        if normalized in VALID_DEBT_PRIORITIES:
-            return None
-        return {
-            "field_id": field_id,
-            "reason": "invalid_choice",
-            "detail": "Debt priority must be high, medium, or low.",
-        }
-
-    if attribute == "approximate":
-        if _coerce_to_bool(raw_value) is not None:
-            return None
-        return {
-            "field_id": field_id,
-            "reason": "invalid_boolean",
-            "detail": "Approximate flags must be boolean values or boolean-like strings (true/false).",
-        }
-
-    if attribute == "rate_change_date":
-        if _coerce_to_date_string(raw_value):
-            return None
-        return {
-            "field_id": field_id,
-            "reason": "invalid_date",
-            "detail": "Rate change dates must be non-empty strings (preferably YYYY-MM-DD).",
-        }
-
-    return {
-        "field_id": field_id,
-        "reason": "unsupported_field_id",
-        "detail": "Field id is not recognized by the clarification schema.",
-    }
-
-
-def _safe_sequence(value: Any) -> Sequence[Dict[str, Any]]:
-    if isinstance(value, list):
-        return value
-    if isinstance(value, tuple):
-        return list(value)
-    return []
-
-
-def _collect_entry_ids(entries: Sequence[Any]) -> Set[str]:
-    collected: Set[str] = set()
-    for entry in entries:
-        if not isinstance(entry, dict):
-            continue
-        entry_id = entry.get("id")
-        if isinstance(entry_id, str) and entry_id:
-            collected.add(entry_id)
-    return collected
-
-
-def _parse_debt_field_id(field_id: str) -> Tuple[str, str] | None:
-    for suffix, attribute in DEBT_FIELD_SUFFIXES:
-        if not field_id.endswith(suffix):
-            continue
-        debt_id = field_id[: -len(suffix)]
-        if debt_id:
-            return debt_id, attribute
-    return None
-
-
-def _coerce_to_bool(value: Any) -> bool | None:
-    if isinstance(value, bool):
-        return value
-    if isinstance(value, (int, float)):
-        if value == 1:
-            return True
-        if value == 0:
-            return False
-
-    normalized = _normalize_string(value)
-    if normalized in TRUE_STRINGS:
-        return True
-    if normalized in FALSE_STRINGS:
-        return False
-    return None
-
-
-def _coerce_to_number(value: Any) -> float | None:
-    if isinstance(value, (int, float)):
-        return float(value)
-    normalized = _normalize_string(value)
-    if normalized is None:
-        return None
-    try:
-        return float(normalized)
-    except ValueError:
-        return None
-
-
-def _coerce_to_date_string(value: Any) -> str | None:
-    if value is None:
-        return None
-    if isinstance(value, str):
-        candidate = value.strip()
-        return candidate or None
-    candidate = str(value).strip()
-    return candidate or None
-
-
-def _normalize_string(value: Any) -> Optional[str]:
-    if value is None:
-        return None
-    if isinstance(value, str):
-        normalized = value.strip().lower()
-        return normalized or None
-    normalized = str(value).strip().lower()
-    return normalized or None

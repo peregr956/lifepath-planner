@@ -24,3 +24,4 @@ class DraftBudgetModel:
     lines: List[RawBudgetLine] = field(default_factory=list)
     detected_format: Literal["categorical", "ledger", "unknown"] = "unknown"
     notes: Optional[str] = None
+    format_hints: Optional[Dict[str, Any]] = None

@@ -3,25 +3,14 @@ Optimization Service summarizes unified household budgets and emits deterministi
 suggestions that downstream products can display or refine with AI.
 """
 
-from pathlib import Path
 from typing import Dict, List, Optional
 import logging
 import os
-import sys
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from typing_extensions import Literal
-
-SERVICE_SRC = Path(__file__).resolve().parent
-if str(SERVICE_SRC) not in sys.path:
-    sys.path.append(str(SERVICE_SRC))
-SERVICES_ROOT = SERVICE_SRC.parents[1]
-if str(SERVICES_ROOT) not in sys.path:
-    sys.path.append(str(SERVICES_ROOT))
-
-from observability.telemetry import bind_request_context, ensure_request_id, reset_request_context, setup_telemetry
 
 from .budget_model import (
     Debt,
@@ -36,30 +25,7 @@ from .compute_summary import compute_category_shares, compute_summary_for_model
 from .suggestion_provider import SuggestionProviderRequest, build_suggestion_provider
 
 app = FastAPI(title="Optimization Service")
-setup_telemetry(app, service_name="optimization-service")
 logger = logging.getLogger(__name__)
-
-
-def _log_event(event: str, request: Request, **extra: object) -> None:
-    logger.info(
-        {
-            "event": event,
-            "request_id": getattr(request.state, "request_id", None),
-            **extra,
-        }
-    )
-
-
-@app.middleware("http")
-async def request_context_middleware(request: Request, call_next):
-    request_id = ensure_request_id(request)
-    token = bind_request_context(request_id)
-    try:
-        response = await call_next(request)
-        response.headers.setdefault("x-request-id", request_id)
-        return response
-    finally:
-        reset_request_context(token)
 
 
 class RateChangeModel(BaseModel):
@@ -205,24 +171,17 @@ def health_check() -> dict:
 
 
 @app.post("/summarize", response_model=SummarizeResponseModel)
-def summarize_budget(request: Request, payload: UnifiedBudgetModelPayload) -> SummarizeResponseModel:
+def summarize_budget(payload: UnifiedBudgetModelPayload) -> SummarizeResponseModel:
     """
     Compute deterministic totals and category share fractions without suggestions.
     Expects a `UnifiedBudgetModelPayload` that represents a fully clarified household budget.
     Returns a `SummarizeResponseModel` containing income/expense/surplus totals plus category share ratios.
     """
-    _log_event(
-        "summarize_received",
-        request,
-        income_count=len(payload.income),
-        expense_count=len(payload.expenses),
-        debt_count=len(payload.debts),
-    )
     model = payload.to_dataclass()
     summary = compute_summary_for_model(model)
     category_shares = compute_category_shares(model)
 
-    response = SummarizeResponseModel(
+    return SummarizeResponseModel(
         summary=SummaryModel(
             total_income=summary.total_income,
             total_expenses=summary.total_expenses,
@@ -230,30 +189,15 @@ def summarize_budget(request: Request, payload: UnifiedBudgetModelPayload) -> Su
         ),
         category_shares=category_shares,
     )
-    _log_event(
-        "summarize_completed",
-        request,
-        surplus=response.summary.surplus,
-        total_income=response.summary.total_income,
-        total_expenses=response.summary.total_expenses,
-    )
-    return response
 
 
 @app.post("/summarize-and-optimize", response_model=SummarizeAndOptimizeResponseModel)
-def summarize_and_optimize(request: Request, payload: UnifiedBudgetModelPayload) -> SummarizeAndOptimizeResponseModel:
+def summarize_and_optimize(payload: UnifiedBudgetModelPayload) -> SummarizeAndOptimizeResponseModel:
     """
     Summarize the provided budget and emit rule-based optimization suggestions.
     Expects a `UnifiedBudgetModelPayload` with normalized incomes, expenses, debts, preferences, and summary.
     Returns a `SummarizeAndOptimizeResponseModel` with totals, category shares, and suggestion cards.
     """
-    _log_event(
-        "summarize_optimize_received",
-        request,
-        income_count=len(payload.income),
-        expense_count=len(payload.expenses),
-        debt_count=len(payload.debts),
-    )
     model = payload.to_dataclass()
     if not model.income and not model.expenses:
         return JSONResponse(status_code=400, content={"error": "empty_model"})
@@ -267,15 +211,8 @@ def summarize_and_optimize(request: Request, payload: UnifiedBudgetModelPayload)
         surplus=summary.surplus,
     )
 
-    response = SummarizeAndOptimizeResponseModel(
+    return SummarizeAndOptimizeResponseModel(
         summary=summary_model,
         category_shares=category_shares,
         suggestions=suggestion_models,
     )
-    _log_event(
-        "summarize_optimize_completed",
-        request,
-        surplus=response.summary.surplus,
-        suggestion_count=len(response.suggestions),
-    )
-    return response
