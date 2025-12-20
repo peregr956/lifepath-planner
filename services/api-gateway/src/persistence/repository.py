@@ -101,6 +101,62 @@ class BudgetSessionRepository:
         self._db.refresh(session)
         return session
 
+    def store_user_query(
+        self,
+        session: BudgetSession,
+        query: str,
+        *,
+        source_ip: Optional[str] = None,
+        details: Optional[Dict[str, Any]] = None,
+    ) -> BudgetSession:
+        """Store the user's initial question/query for personalized guidance."""
+        session.user_query = query
+        self._db.add(session)
+        self._record_event(
+            action="user_query_submitted",
+            session=session,
+            source_ip=source_ip,
+            from_stage=session.stage,
+            to_stage=session.stage,
+            details={"query_length": len(query), **(details or {})},
+        )
+        self._db.commit()
+        self._db.refresh(session)
+        return session
+
+    def store_user_profile(
+        self,
+        session: BudgetSession,
+        profile_data: Dict[str, Any],
+        *,
+        source_ip: Optional[str] = None,
+        details: Optional[Dict[str, Any]] = None,
+    ) -> BudgetSession:
+        """Store user profile data collected through adaptive questioning."""
+        # Merge with existing profile if any
+        existing_profile = session.user_profile or {}
+        merged_profile = {**existing_profile, **profile_data}
+        session.user_profile = merged_profile
+        self._db.add(session)
+        self._record_event(
+            action="user_profile_updated",
+            session=session,
+            source_ip=source_ip,
+            from_stage=session.stage,
+            to_stage=session.stage,
+            details={"profile_fields": list(profile_data.keys()), **(details or {})},
+        )
+        self._db.commit()
+        self._db.refresh(session)
+        return session
+
+    def get_user_context(self, session: BudgetSession) -> Dict[str, Any]:
+        """Retrieve user query and profile data for use in question/suggestion generation."""
+        return {
+            "user_query": session.user_query,
+            "user_profile": session.user_profile or {},
+        }
+
     def _record_event(
         self,
         *,

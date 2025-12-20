@@ -25,6 +25,12 @@ class BudgetSession(Base):
     partial: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSON, nullable=True)
     final: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSON, nullable=True)
 
+    # User's initial query/question that drives personalized guidance
+    user_query: Mapped[Optional[str]] = mapped_column(String(1000), nullable=True)
+
+    # User profile data collected through adaptive questioning
+    user_profile: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSON, nullable=True)
+
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         server_default=func.now(),

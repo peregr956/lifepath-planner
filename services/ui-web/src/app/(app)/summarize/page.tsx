@@ -46,6 +46,7 @@ export default function SummarizePage() {
           <SuggestionsList 
             suggestions={summaryQuery.data.suggestions} 
             providerMetadata={summaryQuery.data.providerMetadata}
+            userQuery={summaryQuery.data.userQuery}
           />
         </div>
       ) : (

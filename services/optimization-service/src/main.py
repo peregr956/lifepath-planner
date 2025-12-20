@@ -40,6 +40,7 @@ def _load_suggestion_provider_settings() -> ProviderSettings:
         timeout_env="SUGGESTION_PROVIDER_TIMEOUT_SECONDS",
         temperature_env="SUGGESTION_PROVIDER_TEMPERATURE",
         max_tokens_env="SUGGESTION_PROVIDER_MAX_TOKENS",
+        default_timeout=60.0,  # Increased default for OpenAI suggestion generation
     )
 
 
@@ -127,12 +128,27 @@ class SuggestionModel(BaseModel):
     tradeoffs: str
 
 
+class UserProfileModel(BaseModel):
+    user_query: Optional[str] = None
+    financial_philosophy: Optional[Literal["r_personalfinance", "money_guy", "neutral", "custom"]] = None
+    philosophy_notes: Optional[str] = None
+    risk_tolerance: Optional[Literal["conservative", "moderate", "aggressive"]] = None
+    risk_concerns: Optional[List[str]] = None
+    primary_goal: Optional[str] = None
+    goal_timeline: Optional[Literal["immediate", "short_term", "medium_term", "long_term"]] = None
+    financial_concerns: Optional[List[str]] = None
+    life_stage_context: Optional[str] = None
+
+
 class UnifiedBudgetModelPayload(BaseModel):
     income: List[IncomeModel]
     expenses: List[ExpenseModel]
     debts: List[DebtModel]
     preferences: PreferencesModel
     summary: SummaryModel
+    # User query and profile for personalized suggestions
+    user_query: Optional[str] = None
+    user_profile: Optional[Dict[str, Any]] = None
 
     def to_dataclass(self) -> UnifiedBudgetModel:
         """Convert validated payload into the internal dataclass representation."""
@@ -191,12 +207,26 @@ def _provider_call_context(settings: ProviderSettings) -> Dict[str, Any]:
     return context
 
 
-def _build_suggestions(model: UnifiedBudgetModel, summary: Summary) -> List[SuggestionModel]:
+def _build_suggestions(
+    model: UnifiedBudgetModel,
+    summary: Summary,
+    user_query: Optional[str] = None,
+    user_profile: Optional[Dict[str, Any]] = None,
+) -> List[SuggestionModel]:
     """
     Invoke the configured suggestion provider and convert its output into Pydantic models.
+    
+    Passes user_query and user_profile for personalized suggestion generation.
     """
 
     request_context = _provider_call_context(SUGGESTION_PROVIDER_SETTINGS)
+    
+    # Add user query and profile to context for personalized suggestions
+    if user_query:
+        request_context["user_query"] = user_query
+    if user_profile:
+        request_context["user_profile"] = user_profile
+    
     request = SuggestionProviderRequest(model=model, summary=summary, context=request_context)
     try:
         response = SUGGESTION_PROVIDER.generate(request)
@@ -250,8 +280,9 @@ def summarize_budget(payload: UnifiedBudgetModelPayload) -> SummarizeResponseMod
 @app.post("/summarize-and-optimize", response_model=SummarizeAndOptimizeResponseModel)
 def summarize_and_optimize(payload: UnifiedBudgetModelPayload) -> SummarizeAndOptimizeResponseModel:
     """
-    Summarize the provided budget and emit rule-based optimization suggestions.
+    Summarize the provided budget and emit personalized optimization suggestions.
     Expects a `UnifiedBudgetModelPayload` with normalized incomes, expenses, debts, preferences, and summary.
+    Optionally includes user_query and user_profile for personalized suggestions.
     Returns a `SummarizeAndOptimizeResponseModel` with totals, category shares, and suggestion cards.
     """
     model = payload.to_dataclass()
@@ -259,7 +290,14 @@ def summarize_and_optimize(payload: UnifiedBudgetModelPayload) -> SummarizeAndOp
         return JSONResponse(status_code=400, content={"error": "empty_model"})
     summary = compute_summary_for_model(model)
     category_shares = compute_category_shares(model)
-    suggestion_models = _build_suggestions(model, summary)
+    
+    # Pass user query and profile for personalized suggestions
+    suggestion_models = _build_suggestions(
+        model,
+        summary,
+        user_query=payload.user_query,
+        user_profile=payload.user_profile,
+    )
 
     summary_model = SummaryModel(
         total_income=summary.total_income,
