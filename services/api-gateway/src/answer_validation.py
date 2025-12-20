@@ -413,3 +413,4 @@ def _slugify(value: str) -> str:
     normalized = value.strip().lower()
     return "".join(ch if ch.isalnum() else "_" for ch in normalized).strip("_")
 
+

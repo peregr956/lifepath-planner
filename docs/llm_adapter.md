@@ -75,16 +75,57 @@ Example response payload:
 | Clarification Service    | `CLARIFICATION_PROVIDER`    | `CLARIFICATION_PROVIDER_FIXTURE`         | `deterministic`, fixture in `tests` |
 | Optimization Service     | `SUGGESTION_PROVIDER`       | `SUGGESTION_PROVIDER_FIXTURE`            | `deterministic`, fixture in `tests` |
 
-Set the provider env var to `deterministic` (current heuristics) or `mock`
-(fixture-backed responses). Additional provider names can be registered by
-extending the factory functions inside each `*_provider.py` module.
+Set the provider env var to `deterministic` (current heuristics), `mock`
+(fixture-backed responses), or `openai` (ChatGPT-powered generation).
+Additional provider names can be registered by extending the factory functions
+inside each `*_provider.py` module.
 
 When using the `mock` provider, the fixture env var can optionally point to a
 custom JSON document that adheres to the response schema above. If unset, the
 services fall back to the canned fixtures checked into `services/*/tests/fixtures`.
 
+Both services also support the shared tuning knobs
+`*_PROVIDER_TIMEOUT_SECONDS`, `*_PROVIDER_TEMPERATURE`, and
+`*_PROVIDER_MAX_TOKENS` (defaults: 10 seconds, 0.2 temperature, 512 tokens).
+
 Invalid provider names cause the API to emit a `500` response that explains which
-value was unsupported.
+value was unsupported. Selecting `openai` requires the global env vars
+`OPENAI_API_KEY`, `OPENAI_MODEL`, and `OPENAI_API_BASE`; services fail fast
+if any of those are missing.
+
+## OpenAI Provider Implementation
+
+### Clarification Provider (`openai`)
+
+Located at `services/clarification-service/src/providers/openai_clarification.py`:
+
+- **Prompt design**: System prompt establishes the assistant's role as a financial planning helper. User prompt includes the full budget model summary, income/expense/debt breakdowns, and the user's chosen financial framework (r/personalfinance, Money Guy, or neutral).
+- **Structured outputs**: Uses OpenAI function calling with a JSON schema matching `QuestionSpec` to ensure machine-readable responses.
+- **Validation**: Parses responses and validates required fields (`question_id`, `prompt`, `components` with `component`, `field_id`, `label`, `binding`). Skips malformed questions gracefully.
+- **Fallback**: On any OpenAI error (timeout, rate limit, invalid JSON), automatically falls back to `DeterministicClarificationProvider`.
+- **Logging**: Hashes prompts and responses via `observability/privacy.py`; never logs raw budget data.
+
+### Suggestion Provider (`openai`)
+
+Located at `services/optimization-service/src/providers/openai_suggestions.py`:
+
+- **Prompt design**: System prompt positions the assistant as a personal finance advisor. User prompt includes the clarified budget model, computed summary, debt profile, and the user's optimization focus and financial framework.
+- **Structured outputs**: Uses OpenAI function calling with a JSON schema matching `Suggestion` to ensure structured, actionable recommendations.
+- **Validation**: Validates all required fields, sanitizes string lengths (title: 100 chars, description/rationale/tradeoffs: 500 chars), and coerces impact values to floats.
+- **Fallback**: On any OpenAI error, automatically falls back to `DeterministicSuggestionProvider`.
+- **Logging**: Hashes all payloads before logging; logs provider name, question/suggestion counts, and response hashes.
+
+### Financial Framework Support
+
+Both providers accept a `framework` key in the request context:
+
+| Framework | Description |
+| --- | --- |
+| `r_personalfinance` | Follows the subreddit flowchart: emergency fund → employer match → high-interest debt → tax-advantaged accounts |
+| `money_guy` | Follows the Money Guy Show Financial Order of Operations with granular step sequencing |
+| `neutral` | General best practices without framework-specific ordering |
+
+The framework influences both the questions asked and the priority ordering of suggestions.
 
 ## Implementing a New Provider
 

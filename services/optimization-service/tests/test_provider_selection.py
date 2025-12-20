@@ -10,7 +10,7 @@ SERVICE_ROOT = Path(__file__).resolve().parents[1]
 if str(SERVICE_ROOT) not in sys.path:
     sys.path.append(str(SERVICE_ROOT))
 
-from src.main import app  # noqa: E402
+from src.main import app, reload_suggestion_provider_for_tests  # noqa: E402
 
 
 client = TestClient(app)
@@ -71,6 +71,7 @@ def _load_mock_suggestions() -> Dict[str, Any]:
 
 def test_summarize_and_optimize_uses_deterministic_provider(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("SUGGESTION_PROVIDER", "deterministic")
+    reload_suggestion_provider_for_tests()
     response = client.post("/summarize-and-optimize", json=_model_payload())
 
     assert response.status_code == 200
@@ -81,6 +82,7 @@ def test_summarize_and_optimize_uses_deterministic_provider(monkeypatch: pytest.
 
 def test_summarize_and_optimize_uses_mock_provider(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("SUGGESTION_PROVIDER", "mock")
+    reload_suggestion_provider_for_tests()
     response = client.post("/summarize-and-optimize", json=_model_payload())
 
     assert response.status_code == 200

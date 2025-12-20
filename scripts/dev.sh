@@ -3,6 +3,14 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
+# Source .env if present so all services inherit OpenAI and telemetry vars
+if [[ -f "$ROOT_DIR/.env" ]]; then
+  set -a
+  # shellcheck disable=SC1091
+  source "$ROOT_DIR/.env"
+  set +a
+fi
 CONCURRENTLY_BIN="$ROOT_DIR/node_modules/.bin/concurrently"
 
 if [[ ! -x "$CONCURRENTLY_BIN" ]]; then

@@ -9,7 +9,6 @@ from datetime import date
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Set
 import logging
-import os
 import sys
 
 from fastapi import FastAPI, HTTPException, Request
@@ -60,10 +59,50 @@ from normalization import (
 from question_generator import QuestionSpec
 from ui_schema_builder import build_initial_ui_schema
 from clarification_provider import ClarificationProviderRequest, build_clarification_provider
+from provider_settings import ProviderSettings, ProviderSettingsError, load_provider_settings
 
 app = FastAPI(title="Clarification Service")
 setup_telemetry(app, service_name="clarification-service")
 logger = logging.getLogger(__name__)
+
+def _load_clarification_provider_settings() -> ProviderSettings:
+    return load_provider_settings(
+        provider_env="CLARIFICATION_PROVIDER",
+        timeout_env="CLARIFICATION_PROVIDER_TIMEOUT_SECONDS",
+        temperature_env="CLARIFICATION_PROVIDER_TEMPERATURE",
+        max_tokens_env="CLARIFICATION_PROVIDER_MAX_TOKENS",
+    )
+
+
+try:
+    CLARIFICATION_PROVIDER_SETTINGS = _load_clarification_provider_settings()
+except ProviderSettingsError as exc:
+    logger.error("Failed to load clarification provider settings: %s", exc)
+    raise
+
+
+def _initialize_clarification_provider():
+    provider_name = CLARIFICATION_PROVIDER_SETTINGS.provider_name
+    try:
+        return build_clarification_provider(provider_name, settings=CLARIFICATION_PROVIDER_SETTINGS)
+    except ValueError as exc:
+        logger.error("Unsupported clarification provider '%s'", provider_name)
+        raise RuntimeError(f"Unsupported clarification provider '{provider_name}'") from exc
+
+
+CLARIFICATION_PROVIDER = _initialize_clarification_provider()
+
+
+def reload_clarification_provider_for_tests() -> None:
+    """
+    Allow tests to reconfigure the provider after mutating environment variables.
+    """
+
+    global CLARIFICATION_PROVIDER_SETTINGS
+    global CLARIFICATION_PROVIDER
+
+    CLARIFICATION_PROVIDER_SETTINGS = _load_clarification_provider_settings()
+    CLARIFICATION_PROVIDER = _initialize_clarification_provider()
 
 
 def _log_event(event: str, request: Request, **extra: Any) -> None:
@@ -333,23 +372,33 @@ class ApplyAnswersResponseModel(BaseModel):
     ready_for_summary: bool
 
 
+def _provider_call_context(settings: ProviderSettings) -> Dict[str, Any]:
+    context: Dict[str, Any] = {
+        "provider_name": settings.provider_name,
+        "timeout_seconds": settings.timeout_seconds,
+        "temperature": settings.temperature,
+        "max_output_tokens": settings.max_output_tokens,
+    }
+    if settings.openai:
+        context["openai"] = {
+            "model": settings.openai.model,
+            "api_base": settings.openai.api_base,
+        }
+    return context
+
+
 def _build_clarification_questions(unified_model: UnifiedBudgetModel) -> List[QuestionSpec]:
     """
     Invoke the configured clarification provider and return its question list.
     """
 
-    provider_name = os.getenv("CLARIFICATION_PROVIDER", "deterministic")
+    request_context = _provider_call_context(CLARIFICATION_PROVIDER_SETTINGS)
+    request = ClarificationProviderRequest(model=unified_model, context=request_context)
     try:
-        provider = build_clarification_provider(provider_name)
-    except ValueError as exc:
-        logger.error("Unsupported clarification provider '%s'", provider_name)
-        raise HTTPException(
-            status_code=500,
-            detail=f"Unsupported clarification provider '{provider_name}'",
-        ) from exc
-
-    request = ClarificationProviderRequest(model=unified_model)
-    response = provider.generate(request)
+        response = CLARIFICATION_PROVIDER.generate(request)
+    except NotImplementedError as exc:
+        logger.error("Clarification provider '%s' is not ready: %s", CLARIFICATION_PROVIDER_SETTINGS.provider_name, exc)
+        raise HTTPException(status_code=501, detail=str(exc)) from exc
     return response.questions
 
 

@@ -61,10 +61,23 @@ cd services/clarification-service && pytest tests
 ## Provider configuration
 
 - `CLARIFICATION_PROVIDER` controls which implementation generates questions.
-  - Defaults to `deterministic` (the existing heuristics).
-  - Set to `mock` to replay the canned fixture in `tests/fixtures/mock_clarification_provider.json`.
-- `CLARIFICATION_PROVIDER_FIXTURE` (optional) overrides the fixture path used by
-  the mock provider.
+  - `deterministic` (default) wraps the existing heuristics.
+  - `mock` replays `tests/fixtures/mock_clarification_provider.json`.
+  - `openai` reserves the slot for the upcoming LLM adapter. The API currently
+    returns `501` until the Stage 3 provider lands, but the environment variable
+    plumbing is in place so deployments can validate configuration early.
+- `CLARIFICATION_PROVIDER_TIMEOUT_SECONDS` (default: `10`) tunes outbound
+  request timeouts for external providers.
+- `CLARIFICATION_PROVIDER_TEMPERATURE` (default: `0.2`) controls generation
+  randomness for providers that support it.
+- `CLARIFICATION_PROVIDER_MAX_TOKENS` (default: `512`) caps LLM responses to
+  guard against runaway completions.
+- `CLARIFICATION_PROVIDER_FIXTURE` (optional) overrides the mock fixture path.
+- When `CLARIFICATION_PROVIDER=openai`, the service now fails fast unless the
+  shared OpenAI env vars are present:
+  - `OPENAI_API_KEY`
+  - `OPENAI_MODEL`
+  - `OPENAI_API_BASE`
 
 See `docs/llm_adapter.md` for the full provider contract and extension
 guidelines.
