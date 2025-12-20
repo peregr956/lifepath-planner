@@ -84,7 +84,12 @@ except ProviderSettingsError as exc:
 def _initialize_clarification_provider():
     provider_name = CLARIFICATION_PROVIDER_SETTINGS.provider_name
     try:
-        return build_clarification_provider(provider_name, settings=CLARIFICATION_PROVIDER_SETTINGS)
+        provider = build_clarification_provider(provider_name, settings=CLARIFICATION_PROVIDER_SETTINGS)
+        logger.info(
+            "Initialized clarification provider: %s (set CLARIFICATION_PROVIDER=openai to use OpenAI)",
+            provider_name
+        )
+        return provider
     except ValueError as exc:
         logger.error("Unsupported clarification provider '%s'", provider_name)
         raise RuntimeError(f"Unsupported clarification provider '{provider_name}'") from exc
@@ -150,6 +155,10 @@ class DraftBudgetPayload(BaseModel):
     lines: List[RawBudgetLinePayload] = Field(default_factory=list)
     detected_format: Literal["categorical", "ledger", "unknown"] = "unknown"
     notes: Optional[str] = None
+    # User query for personalized question generation
+    user_query: Optional[str] = None
+    # Existing user profile data
+    user_profile: Optional[Dict[str, Any]] = None
 
     def to_dataclass(self) -> DraftBudgetModel:
         return DraftBudgetModel(
@@ -387,12 +396,25 @@ def _provider_call_context(settings: ProviderSettings) -> Dict[str, Any]:
     return context
 
 
-def _build_clarification_questions(unified_model: UnifiedBudgetModel) -> List[QuestionSpec]:
+def _build_clarification_questions(
+    unified_model: UnifiedBudgetModel,
+    user_query: Optional[str] = None,
+    user_profile: Optional[Dict[str, Any]] = None,
+) -> List[QuestionSpec]:
     """
     Invoke the configured clarification provider and return its question list.
+    
+    Passes user_query and user_profile to enable adaptive questioning.
     """
 
     request_context = _provider_call_context(CLARIFICATION_PROVIDER_SETTINGS)
+    
+    # Add user query and profile to context for adaptive questioning
+    if user_query:
+        request_context["user_query"] = user_query
+    if user_profile:
+        request_context["user_profile"] = user_profile
+    
     request = ClarificationProviderRequest(model=unified_model, context=request_context)
     try:
         response = CLARIFICATION_PROVIDER.generate(request)
@@ -451,17 +473,30 @@ def normalize_budget(request: Request, payload: DraftBudgetPayload) -> Normaliza
 )
 def clarify_budget(request: Request, payload: DraftBudgetPayload) -> ClarifyResponseModel:
     """
-    Generate deterministic clarification questions and return the partial unified model for the UI.
-    Expects a `DraftBudgetPayload` with the latest ingestion output.
+    Generate adaptive clarification questions based on budget data and user query.
+    Expects a `DraftBudgetPayload` with the latest ingestion output, optionally including user_query.
     Returns a `ClarifyResponseModel` including the needs_clarification flag, question specs, and partial model.
+    
+    When user_query is provided, questions are tailored to answer the user's specific question.
     """
 
-    _log_event("clarify_received", request, line_count=len(payload.lines))
+    _log_event(
+        "clarify_received",
+        request,
+        line_count=len(payload.lines),
+        has_user_query=bool(payload.user_query),
+    )
     draft_model = payload.to_dataclass()
     if not draft_model.lines:
         return JSONResponse(status_code=400, content={"error": "empty_budget"})
     unified_model = draft_to_initial_unified(draft_model)
-    questions = _build_clarification_questions(unified_model)
+    
+    # Pass user query and profile for adaptive questioning
+    questions = _build_clarification_questions(
+        unified_model,
+        user_query=payload.user_query,
+        user_profile=payload.user_profile,
+    )
     question_models = _serialize_question_specs(questions)
 
     response = ClarifyResponseModel(
@@ -474,6 +509,7 @@ def clarify_budget(request: Request, payload: DraftBudgetPayload) -> ClarifyResp
         request,
         question_count=len(question_models),
         needs_clarification=response.needs_clarification,
+        user_query_provided=bool(payload.user_query),
     )
     return response
 

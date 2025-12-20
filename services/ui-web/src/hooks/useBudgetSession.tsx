@@ -11,14 +11,18 @@ export type BudgetSession = {
   budgetId: string;
   detectedFormat?: string | null;
   summaryPreview?: UploadSummaryPreview | null;
+  userQuery?: string | null;
   clarified?: boolean;
+  readyForSummary?: boolean;
 };
 
 type BudgetSessionContextValue = {
   session: BudgetSession | null;
   hydrated: boolean;
   saveSession: (next: BudgetSession) => void;
+  setUserQuery: (query: string) => void;
   markClarified: () => void;
+  markReadyForSummary: () => void;
   clearSession: () => void;
 };
 
@@ -44,7 +48,7 @@ export function BudgetSessionProvider({ children }: { children: ReactNode }) {
   const updateUrl = useCallback(
     (value: BudgetSession | null) => {
       const params = new URLSearchParams(searchParams.toString());
-      ['budget_id', 'format', 'income_lines', 'expense_lines', 'clarified'].forEach((key) =>
+      ['budget_id', 'format', 'income_lines', 'expense_lines', 'clarified', 'ready_for_summary'].forEach((key) =>
         params.delete(key)
       );
       if (value) {
@@ -58,6 +62,9 @@ export function BudgetSessionProvider({ children }: { children: ReactNode }) {
         }
         if (value.clarified) {
           params.set('clarified', '1');
+        }
+        if (value.readyForSummary) {
+          params.set('ready_for_summary', '1');
         }
       }
       const query = params.toString();
@@ -106,6 +113,28 @@ export function BudgetSessionProvider({ children }: { children: ReactNode }) {
     });
   }, [persist, updateUrl]);
 
+  const markReadyForSummary = useCallback(() => {
+    setSession((prev) => {
+      if (!prev) return prev;
+      const nextSession = { ...prev, readyForSummary: true };
+      persist(nextSession);
+      updateUrl(nextSession);
+      return nextSession;
+    });
+  }, [persist, updateUrl]);
+
+  const setUserQuery = useCallback(
+    (query: string) => {
+      setSession((prev) => {
+        if (!prev) return prev;
+        const nextSession = { ...prev, userQuery: query };
+        persist(nextSession);
+        return nextSession;
+      });
+    },
+    [persist]
+  );
+
   const clearSession = useCallback(() => {
     setSession(null);
     persist(null);
@@ -117,10 +146,12 @@ export function BudgetSessionProvider({ children }: { children: ReactNode }) {
       session,
       hydrated,
       saveSession,
+      setUserQuery,
       markClarified,
+      markReadyForSummary,
       clearSession,
     }),
-    [session, hydrated, saveSession, markClarified, clearSession]
+    [session, hydrated, saveSession, setUserQuery, markClarified, markReadyForSummary, clearSession]
   );
 
   return <BudgetSessionContext.Provider value={value}>{children}</BudgetSessionContext.Provider>;
@@ -155,11 +186,14 @@ function parseSessionFromParams(params: URLSearchParams): BudgetSession | null {
   }
   const clarifiedParam = params.get('clarified');
   const clarified = clarifiedParam === '1' || clarifiedParam === 'true';
+  const readyForSummaryParam = params.get('ready_for_summary');
+  const readyForSummary = readyForSummaryParam === '1' || readyForSummaryParam === 'true';
   return {
     budgetId,
     detectedFormat: detectedFormat ?? undefined,
     summaryPreview: summaryPreview ?? undefined,
     clarified,
+    readyForSummary: readyForSummary || undefined,
   };
 }
 

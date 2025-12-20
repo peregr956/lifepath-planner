@@ -3,6 +3,7 @@ import type { BudgetSuggestion, ProviderMetadata } from '@/types';
 type Props = {
   suggestions: BudgetSuggestion[];
   providerMetadata?: ProviderMetadata;
+  userQuery?: string | null;
 };
 
 const currency = new Intl.NumberFormat('en-US', {
@@ -34,7 +35,23 @@ function AIDisclaimer({ providerMetadata }: { providerMetadata?: ProviderMetadat
   );
 }
 
-export function SuggestionsList({ suggestions, providerMetadata }: Props) {
+function UserQueryContext({ userQuery }: { userQuery?: string | null }) {
+  if (!userQuery) {
+    return null;
+  }
+
+  return (
+    <div className="rounded-xl border border-indigo-500/20 bg-gradient-to-r from-indigo-500/10 to-purple-500/10 p-4">
+      <p className="text-xs font-medium uppercase tracking-wide text-indigo-300">Your Question</p>
+      <p className="mt-1 text-sm text-white">&ldquo;{userQuery}&rdquo;</p>
+      <p className="mt-2 text-xs text-white/60">
+        The suggestions below are tailored to answer your specific question.
+      </p>
+    </div>
+  );
+}
+
+export function SuggestionsList({ suggestions, providerMetadata, userQuery }: Props) {
   const isAI = providerMetadata?.suggestionProvider === 'openai';
 
   if (!suggestions.length) {
@@ -60,6 +77,7 @@ export function SuggestionsList({ suggestions, providerMetadata }: Props) {
           </span>
         )}
       </div>
+      <UserQueryContext userQuery={userQuery} />
       <AIDisclaimer providerMetadata={providerMetadata} />
       <ul className="flex flex-col gap-3">
         {suggestions.map((suggestion) => (
