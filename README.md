@@ -132,3 +132,41 @@ UPDATE_SNAPSHOTS=1 pytest tests/test_deterministic_pipeline.py
 ```
 
 Review and commit the updated snapshot files afterward so future runs stay deterministic.
+
+### Real-world validation with OpenAI
+
+To validate the prototype with real ChatGPT/OpenAI API calls:
+
+1. **Ensure OpenAI credentials are configured** in `.env` (see [Environment configuration](#environment-configuration--secrets))
+
+2. **Start services with OpenAI providers enabled**:
+   ```bash
+   CLARIFICATION_PROVIDER=openai SUGGESTION_PROVIDER=openai npm run dev
+   ```
+
+3. **Run validation** using one of these methods:
+   
+   **Option A: Automated script (recommended)**
+   ```bash
+   # Python script (requires httpx)
+   python scripts/validate_real_world.py sample_budget.csv
+   
+   # Or bash script (requires jq and curl)
+   ./scripts/validate_real_world.sh sample_budget.csv
+   ```
+   
+   **Option B: Manual UI testing**
+   - Open http://localhost:3000
+   - Upload a budget file and step through the full flow
+   - Review questions, answers, and suggestions for quality
+   
+   **Option C: API testing**
+   - Use the API Gateway endpoints directly (see `docs/api_contracts.md`)
+   - Test with `curl` or your preferred HTTP client
+
+4. **Review the validation guide** for detailed checklists and troubleshooting:
+   ```bash
+   cat docs/real_world_validation.md
+   ```
+
+The validation scripts test the full pipeline: upload → clarification questions → answer submission → summary and suggestions. They generate JSON reports with timing, errors, and full response payloads for analysis.
