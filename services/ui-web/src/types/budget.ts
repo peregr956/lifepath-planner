@@ -136,6 +136,7 @@ export type ClarificationQuestionsResponse = {
 export type SubmitAnswersResponse = {
   budgetId: string;
   status: string;
+  readyForSummary?: boolean;
 };
 
 export type BudgetSuggestion = {
@@ -163,4 +164,33 @@ export type SummaryAndSuggestionsResponse = {
   categoryShares: Record<string, number>;
   suggestions: BudgetSuggestion[];
   providerMetadata?: ProviderMetadata;
+  userQuery?: string | null;
+};
+
+// User profile types for adaptive personalization
+export type FinancialPhilosophy = 'r_personalfinance' | 'money_guy' | 'neutral' | 'custom';
+export type RiskTolerance = 'conservative' | 'moderate' | 'aggressive';
+export type GoalTimeline = 'immediate' | 'short_term' | 'medium_term' | 'long_term';
+
+export type UserProfile = {
+  userQuery?: string | null;
+  financialPhilosophy?: FinancialPhilosophy | null;
+  philosophyNotes?: string | null;
+  riskTolerance?: RiskTolerance | null;
+  riskConcerns?: string[] | null;
+  primaryGoal?: string | null;
+  goalTimeline?: GoalTimeline | null;
+  financialConcerns?: string[] | null;
+  lifeStageContext?: string | null;
+};
+
+export type UserQueryRequest = {
+  budgetId: string;
+  query: string;
+};
+
+export type UserQueryResponse = {
+  budgetId: string;
+  query: string;
+  status: string;
 };

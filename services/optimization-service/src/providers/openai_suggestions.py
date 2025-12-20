@@ -89,19 +89,30 @@ SUGGESTION_SCHEMA = {
 
 SYSTEM_PROMPT = """You are a personal finance advisor generating actionable budget optimization suggestions.
 
+CRITICAL: The user has asked a specific question. Your suggestions MUST directly address their question.
+Prioritize suggestions that answer what they asked about. Reference their question in your rationale.
+
 Your role is to analyze the user's budget and provide 3-6 specific, realistic recommendations. Focus on:
-1. High-interest debt payoff strategies
-2. Flexible expense reduction opportunities
-3. Savings and investment allocation
-4. Emergency fund adequacy
-5. Tax-advantaged account optimization
+1. Directly answering the user's question first
+2. High-interest debt payoff strategies (if relevant to their question)
+3. Flexible expense reduction opportunities (if relevant)
+4. Savings and investment allocation (if relevant)
+5. Emergency fund adequacy (if relevant)
 
 Important guidelines:
-- Prioritize based on the user's chosen financial framework
+- Start by addressing the user's specific question or concern
+- Prioritize based on the user's chosen financial framework and risk tolerance
+- Reference the user's question in suggestion rationales (e.g., "To answer your question about...")
 - Be specific with dollar amounts when possible
 - Explain tradeoffs honestly
 - Focus on sustainable changes, not extreme cuts
-- Consider the user's optimization focus preference
+- Consider the user's risk tolerance and financial philosophy when applicable
+
+Profile-aware suggestions:
+- If user is conservative → emphasize safety, stability, emergency fund
+- If user is aggressive → can mention growth-oriented options with appropriate caveats
+- If user follows r/personalfinance → follow flowchart priorities
+- If user follows money_guy → follow their order of operations
 
 Financial frameworks:
 - r/personalfinance: Follow the subreddit flowchart priorities (emergency fund → employer match → high-interest debt → max tax-advantaged → taxable investing)
@@ -112,7 +123,12 @@ CRITICAL: Suggestions should be educational and thought-provoking. Never guarant
 
 Return structured JSON matching the provided function schema exactly."""
 
-USER_PROMPT_TEMPLATE = """Analyze this household budget and generate optimization suggestions.
+USER_PROMPT_TEMPLATE = """## USER'S QUESTION (Generate suggestions that answer this)
+"{user_query}"
+
+{user_profile_section}
+
+Generate suggestions that directly address their question above.
 
 ## Financial Summary
 - Total Monthly Income: ${total_income:,.2f}
@@ -138,7 +154,8 @@ Total Monthly Debt Service: ${total_debt_payments:,.2f}
 ## Financial Framework
 {framework_description}
 
-Generate 3-6 prioritized suggestions. Order by impact and alignment with the user's framework preference."""
+Generate 3-6 prioritized suggestions that answer: "{user_query}"
+Lead with suggestions most relevant to their question. Reference their question in your rationale."""
 
 
 def _format_income_section(model: UnifiedBudgetModel) -> str:
@@ -212,12 +229,53 @@ def _get_framework_description(framework: str) -> str:
     return descriptions.get(framework, descriptions["neutral"])
 
 
+def _build_user_profile_section(context: Dict[str, Any]) -> str:
+    """Build the user profile section for the prompt."""
+    user_profile = context.get("user_profile", {})
+    if not user_profile:
+        return ""
+    
+    lines = ["## User Profile (Personalize based on this)"]
+    
+    philosophy = user_profile.get("financial_philosophy")
+    if philosophy:
+        lines.append(f"- Financial Philosophy: {philosophy}")
+    
+    risk = user_profile.get("risk_tolerance")
+    if risk:
+        lines.append(f"- Risk Tolerance: {risk}")
+    
+    goal = user_profile.get("primary_goal")
+    if goal:
+        lines.append(f"- Primary Goal: {goal}")
+    
+    timeline = user_profile.get("goal_timeline")
+    if timeline:
+        lines.append(f"- Goal Timeline: {timeline}")
+    
+    concerns = user_profile.get("financial_concerns")
+    if concerns:
+        lines.append(f"- Concerns: {', '.join(concerns)}")
+    
+    return "\n".join(lines) if len(lines) > 1 else ""
+
+
 def _build_user_prompt(model: UnifiedBudgetModel, summary: Summary, context: Dict[str, Any]) -> str:
     framework = context.get("framework", "neutral")
     total_debt_payments = sum(d.min_payment for d in model.debts)
     surplus_ratio = summary.surplus / summary.total_income if summary.total_income > 0 else 0
 
+    # Get user query from context
+    user_query = context.get("user_query", "")
+    if not user_query:
+        user_query = "Help me optimize my budget and improve my financial situation"
+    
+    # Build user profile section
+    user_profile_section = _build_user_profile_section(context)
+
     return USER_PROMPT_TEMPLATE.format(
+        user_query=user_query,
+        user_profile_section=user_profile_section,
         total_income=summary.total_income,
         total_expenses=summary.total_expenses,
         surplus=summary.surplus,

@@ -45,10 +45,19 @@ PRIMARY_INCOME_STABILITY_VALUES = {"stable", "variable", "seasonal"}
 PRIMARY_INCOME_FLAG_METADATA_KEY = "net_or_gross"
 TRUE_STRINGS = {"true", "1", "yes", "y", "essential", "needed"}
 FALSE_STRINGS = {"false", "0", "no", "n", "nonessential", "flexible"}
+
+# Profile field validation
+VALID_FINANCIAL_PHILOSOPHIES = {"r_personalfinance", "money_guy", "neutral", "custom"}
+VALID_RISK_TOLERANCES = {"conservative", "moderate", "aggressive"}
+VALID_GOAL_TIMELINES = {"immediate", "short_term", "medium_term", "long_term"}
 SUPPORTED_SIMPLE_FIELD_IDS = {
     "optimization_focus",
     "primary_income_type",
     "primary_income_stability",
+    # Profile fields for adaptive personalization
+    "financial_philosophy",
+    "risk_tolerance",
+    "goal_timeline",
 }
 DEBT_FIELD_SUFFIXES: Tuple[Tuple[str, str], ...] = (
     ("_rate_change_new_rate", "rate_change_new_rate"),
@@ -228,6 +237,19 @@ def apply_answers_to_model(model: UnifiedBudgetModel, answers: Dict[str, Any]) -
             _apply_primary_income_stability(primary_income, raw_value)
             continue
 
+        # Profile fields for adaptive personalization
+        if field_id == "financial_philosophy":
+            _apply_profile_field(model, "financial_philosophy", raw_value, VALID_FINANCIAL_PHILOSOPHIES)
+            continue
+
+        if field_id == "risk_tolerance":
+            _apply_profile_field(model, "risk_tolerance", raw_value, VALID_RISK_TOLERANCES)
+            continue
+
+        if field_id == "goal_timeline":
+            _apply_profile_field(model, "goal_timeline", raw_value, VALID_GOAL_TIMELINES)
+            continue
+
         debt_target = parse_debt_field_id(field_id)
         if debt_target:
             debt_id, attribute = debt_target
@@ -286,6 +308,35 @@ def _apply_primary_income_stability(primary_income: Income | None, raw_value: An
     normalized = _normalize_string(raw_value)
     if normalized in PRIMARY_INCOME_STABILITY_VALUES:
         primary_income.stability = normalized  # type: ignore[assignment]
+
+
+def _apply_profile_field(model: UnifiedBudgetModel, field_name: str, raw_value: Any, valid_values: set) -> None:
+    """
+    Apply a profile field value to the model's user_profile.
+    
+    Creates the user_profile if it doesn't exist.
+    """
+    from budget_model import UserProfile
+    
+    # Normalize the value - handle dropdown values like "conservative - I prefer..."
+    normalized = _normalize_string(raw_value)
+    if normalized is None:
+        return
+    
+    # Extract just the key if it's a formatted option (e.g., "conservative - description")
+    if " - " in normalized:
+        normalized = normalized.split(" - ")[0].strip()
+    
+    # Validate against allowed values
+    if normalized not in valid_values:
+        return
+    
+    # Ensure user_profile exists
+    if model.user_profile is None:
+        model.user_profile = UserProfile()
+    
+    # Set the field dynamically
+    setattr(model.user_profile, field_name, normalized)
 
 
 def _coerce_to_bool(value: Any) -> bool | None:
