@@ -2,7 +2,7 @@ import logging
 import os
 import sys
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 from uuid import uuid4
 
 import httpx
@@ -19,6 +19,28 @@ if str(SRC_DIR) not in sys.path:
 SERVICES_ROOT = SRC_DIR.parents[1]
 if str(SERVICES_ROOT) not in sys.path:
     sys.path.insert(0, str(SERVICES_ROOT))
+
+
+def _get_provider_env(key: str) -> str:
+    """Read provider configuration for metadata surfacing."""
+    return os.getenv(key, "deterministic")
+
+
+def _build_provider_metadata() -> Dict[str, Any]:
+    """
+    Construct provider metadata to include in API responses.
+
+    This allows the UI to show appropriate disclaimers when AI-generated
+    content is being served (e.g., "AI-generated via ChatGPT").
+    """
+    clarification_provider = _get_provider_env("CLARIFICATION_PROVIDER")
+    suggestion_provider = _get_provider_env("SUGGESTION_PROVIDER")
+
+    return {
+        "clarification_provider": clarification_provider,
+        "suggestion_provider": suggestion_provider,
+        "ai_enabled": clarification_provider == "openai" or suggestion_provider == "openai",
+    }
 
 from http_client import ResilientHttpClient
 from persistence.database import get_session, init_db
@@ -333,6 +355,7 @@ async def clarification_questions(
         source_ip=_client_ip(request),
         details={"question_count": len(questions), "request_id": request_id},
     )
+    provider_metadata = _build_provider_metadata()
     logger.info(
         {
             "event": "clarification_questions",
@@ -341,6 +364,7 @@ async def clarification_questions(
             "question_count": len(questions),
             "upstream_latency_ms": metrics.latency_ms,
             "attempts": metrics.attempts,
+            "provider": provider_metadata["clarification_provider"],
         }
     )
     return {
@@ -348,6 +372,7 @@ async def clarification_questions(
         "needs_clarification": clarification_data.get("needs_clarification"),
         "questions": questions,
         "partial_model": partial_model,
+        "provider_metadata": provider_metadata,
     }
 
 
@@ -519,6 +544,7 @@ async def summary_and_suggestions(
     optimization_data: Dict[str, Any] = optimization_response.json()
 
     summary_data = optimization_data.get("summary")
+    provider_metadata = _build_provider_metadata()
     logger.info(
         {
             "event": "summary_and_suggestions",
@@ -527,6 +553,7 @@ async def summary_and_suggestions(
             "upstream_latency_ms": metrics.latency_ms,
             "attempts": metrics.attempts,
             "surplus": summary_data.get("surplus") if summary_data else None,
+            "provider": provider_metadata["suggestion_provider"],
         }
     )
     return {
@@ -534,4 +561,5 @@ async def summary_and_suggestions(
         "summary": summary_data,
         "category_shares": optimization_data.get("category_shares"),
         "suggestions": optimization_data.get("suggestions"),
+        "provider_metadata": provider_metadata,
     }

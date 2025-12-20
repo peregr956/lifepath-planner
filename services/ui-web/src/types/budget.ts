@@ -147,9 +147,20 @@ export type BudgetSuggestion = {
   tradeoffs: string;
 };
 
+export type ProviderMetadata = {
+  clarificationProvider: string;
+  suggestionProvider: string;
+  aiEnabled: boolean;
+};
+
+export type ClarificationQuestionsResponseWithMeta = ClarificationQuestionsResponse & {
+  providerMetadata?: ProviderMetadata;
+};
+
 export type SummaryAndSuggestionsResponse = {
   budgetId: string;
   summary: BudgetSummary;
   categoryShares: Record<string, number>;
   suggestions: BudgetSuggestion[];
+  providerMetadata?: ProviderMetadata;
 };

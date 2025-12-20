@@ -121,5 +121,84 @@ When adding new AI/LLM adapters:
 - **Change service label**: `OTEL_SERVICE_NAME=optimization-service-staging`.
 - **Switch collector**: update `OTEL_EXPORTER_OTLP_ENDPOINT` (supports HTTP or gRPC endpoints from the OpenTelemetry exporter package).
 
+## ChatGPT Provider Monitoring
+
+### Key log events
+
+Both OpenAI providers emit structured logs for monitoring:
+
+| Event | Provider | Description |
+| --- | --- | --- |
+| `openai_clarification_request` | clarification | Emitted before calling OpenAI; includes `prompt_hash`, `model_hash` |
+| `openai_clarification_response` | clarification | Emitted on success; includes `question_count`, `response_hash` |
+| `openai_clarification_error` | clarification | Emitted on API error; includes `error_type`, `error_message` |
+| `openai_fallback_to_deterministic` | clarification | Emitted when falling back after failure |
+| `openai_suggestion_request` | optimization | Emitted before calling OpenAI; includes `prompt_hash`, `budget_model_hash`, `summary_hash` |
+| `openai_suggestion_response` | optimization | Emitted on success; includes `suggestion_count`, `response_hash` |
+| `openai_suggestion_error` | optimization | Emitted on API error; includes `error_type`, `error_message` |
+
+### Monitoring queries
+
+Sample log queries for common monitoring scenarios:
+
+```
+# OpenAI error rate (last hour)
+event:openai_*_error | stats count by error_type
+
+# Fallback frequency
+event:openai_fallback_to_deterministic | timechart count
+
+# Response latency distribution (requires span data)
+service_name:clarification-service span_name:openai_chat_completion | stats avg(duration_ms), p95(duration_ms)
+
+# Provider usage by type
+event:*_provider_output | stats count by provider
+```
+
+### Quota monitoring
+
+OpenAI enforces rate limits and token quotas. Monitor for these patterns:
+
+1. **Rate limit hits** – Log events with `error_type: RateLimitError` indicate quota exhaustion.
+   - Action: Reduce `GATEWAY_RATE_LIMIT_PER_MIN` to throttle inbound requests.
+   - Consider caching repeated clarification/suggestion calls per session.
+
+2. **Token budget overruns** – Large prompts or verbose responses may exceed `max_tokens`.
+   - Tune `CLARIFICATION_PROVIDER_MAX_TOKENS` / `SUGGESTION_PROVIDER_MAX_TOKENS`.
+   - Review prompt templates if truncation becomes frequent.
+
+3. **Billing spikes** – Cross-reference OpenAI dashboard with telemetry `request_id`s.
+   - Identify high-volume users/sessions from gateway audit logs.
+   - Implement per-user rate limiting if abuse is suspected.
+
+### Fallback behavior
+
+When OpenAI calls fail, both providers automatically fall back to deterministic heuristics:
+
+- **Clarification**: Returns rule-based questions from `question_generator.py`
+- **Suggestions**: Returns heuristic suggestions from `generate_suggestions.py`
+
+Fallback ensures the user flow continues even during API outages, but the quality
+of questions/suggestions may be reduced. Monitor `openai_fallback_to_deterministic`
+events and alert if the rate exceeds 5% over a 15-minute window.
+
+### Testing without real API calls
+
+Run the mocked test suites to exercise OpenAI provider logic:
+
+```bash
+# Clarification provider tests (mocked)
+pytest services/clarification-service/tests/test_openai_clarification_provider.py
+
+# Suggestion provider tests (mocked)
+pytest services/optimization-service/tests/test_openai_suggestion_provider.py
+```
+
+To run the full pipeline with stubbed OpenAI responses, set providers to `mock`:
+
+```bash
+CLARIFICATION_PROVIDER=mock SUGGESTION_PROVIDER=mock pytest tests/test_deterministic_pipeline.py
+```
+
 Document any deviations or production overrides directly in this file to keep the runbook authoritative.
 

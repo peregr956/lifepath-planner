@@ -14,7 +14,7 @@ import json
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, List, Protocol, runtime_checkable
+from typing import Any, Dict, List, Optional, Protocol, runtime_checkable
 
 from budget_model import UnifiedBudgetModel
 from question_generator import QuestionSpec, generate_clarification_questions
@@ -140,7 +140,11 @@ def _deserialize_question(item: Dict[str, Any]) -> QuestionSpec:
     )
 
 
-def build_clarification_provider(name: str | None) -> ClarificationQuestionProvider:
+def build_clarification_provider(
+    name: str | None,
+    *,
+    settings: Optional[Any] = None,
+) -> ClarificationQuestionProvider:
     """
     Factory that instantiates the requested clarification provider.
 
@@ -153,6 +157,10 @@ def build_clarification_provider(name: str | None) -> ClarificationQuestionProvi
         return DeterministicClarificationProvider()
     if normalized == "mock":
         return MockClarificationProvider()
+    if normalized == "openai":
+        # Import lazily to avoid circular dependencies and path issues
+        from providers.openai_clarification import OpenAIClarificationProvider
+        return OpenAIClarificationProvider(settings=settings)
 
     raise ValueError(f"Unsupported clarification provider '{name}'")
 
