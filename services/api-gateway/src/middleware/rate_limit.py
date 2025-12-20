@@ -56,3 +56,4 @@ def build_default_rate_limiter() -> SimpleRateLimiter:
     burst = int(os.getenv("GATEWAY_RATE_LIMIT_BURST", "20"))
     return SimpleRateLimiter(max_requests=per_minute, window_seconds=60, burst=burst)
 
+

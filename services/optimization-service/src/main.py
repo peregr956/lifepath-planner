@@ -3,14 +3,20 @@ Optimization Service summarizes unified household budgets and emits deterministi
 suggestions that downstream products can display or refine with AI.
 """
 
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 import logging
-import os
+from pathlib import Path
+import sys
 
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from typing_extensions import Literal
+
+SERVICE_SRC = Path(__file__).resolve().parent
+SERVICES_ROOT = SERVICE_SRC.parents[1]
+if str(SERVICES_ROOT) not in sys.path:
+    sys.path.append(str(SERVICES_ROOT))
 
 from .budget_model import (
     Debt,
@@ -23,9 +29,49 @@ from .budget_model import (
 )
 from .compute_summary import compute_category_shares, compute_summary_for_model
 from .suggestion_provider import SuggestionProviderRequest, build_suggestion_provider
+from provider_settings import ProviderSettings, ProviderSettingsError, load_provider_settings
 
 app = FastAPI(title="Optimization Service")
 logger = logging.getLogger(__name__)
+
+def _load_suggestion_provider_settings() -> ProviderSettings:
+    return load_provider_settings(
+        provider_env="SUGGESTION_PROVIDER",
+        timeout_env="SUGGESTION_PROVIDER_TIMEOUT_SECONDS",
+        temperature_env="SUGGESTION_PROVIDER_TEMPERATURE",
+        max_tokens_env="SUGGESTION_PROVIDER_MAX_TOKENS",
+    )
+
+
+try:
+    SUGGESTION_PROVIDER_SETTINGS = _load_suggestion_provider_settings()
+except ProviderSettingsError as exc:
+    logger.error("Failed to load suggestion provider settings: %s", exc)
+    raise
+
+
+def _initialize_suggestion_provider():
+    provider_name = SUGGESTION_PROVIDER_SETTINGS.provider_name
+    try:
+        return build_suggestion_provider(provider_name, settings=SUGGESTION_PROVIDER_SETTINGS)
+    except ValueError as exc:
+        logger.error("Unsupported suggestion provider '%s'", provider_name)
+        raise RuntimeError(f"Unsupported suggestion provider '{provider_name}'") from exc
+
+
+SUGGESTION_PROVIDER = _initialize_suggestion_provider()
+
+
+def reload_suggestion_provider_for_tests() -> None:
+    """
+    Refresh suggestion provider wiring after tests mutate environment variables.
+    """
+
+    global SUGGESTION_PROVIDER_SETTINGS
+    global SUGGESTION_PROVIDER
+
+    SUGGESTION_PROVIDER_SETTINGS = _load_suggestion_provider_settings()
+    SUGGESTION_PROVIDER = _initialize_suggestion_provider()
 
 
 class RateChangeModel(BaseModel):
@@ -130,23 +176,33 @@ class SummarizeAndOptimizeResponseModel(BaseModel):
     suggestions: List[SuggestionModel]
 
 
+def _provider_call_context(settings: ProviderSettings) -> Dict[str, Any]:
+    context: Dict[str, Any] = {
+        "provider_name": settings.provider_name,
+        "timeout_seconds": settings.timeout_seconds,
+        "temperature": settings.temperature,
+        "max_output_tokens": settings.max_output_tokens,
+    }
+    if settings.openai:
+        context["openai"] = {
+            "model": settings.openai.model,
+            "api_base": settings.openai.api_base,
+        }
+    return context
+
+
 def _build_suggestions(model: UnifiedBudgetModel, summary: Summary) -> List[SuggestionModel]:
     """
     Invoke the configured suggestion provider and convert its output into Pydantic models.
     """
 
-    provider_name = os.getenv("SUGGESTION_PROVIDER", "deterministic")
+    request_context = _provider_call_context(SUGGESTION_PROVIDER_SETTINGS)
+    request = SuggestionProviderRequest(model=model, summary=summary, context=request_context)
     try:
-        provider = build_suggestion_provider(provider_name)
-    except ValueError as exc:
-        logger.error("Unsupported suggestion provider '%s'", provider_name)
-        raise HTTPException(
-            status_code=500,
-            detail=f"Unsupported suggestion provider '{provider_name}'",
-        ) from exc
-
-    request = SuggestionProviderRequest(model=model, summary=summary)
-    response = provider.generate(request)
+        response = SUGGESTION_PROVIDER.generate(request)
+    except NotImplementedError as exc:
+        logger.error("Suggestion provider '%s' is not ready: %s", SUGGESTION_PROVIDER_SETTINGS.provider_name, exc)
+        raise HTTPException(status_code=501, detail=str(exc)) from exc
 
     return [
         SuggestionModel(

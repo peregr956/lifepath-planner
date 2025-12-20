@@ -15,7 +15,7 @@ import os
 import sys
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from typing import Any, Dict, List, Protocol, runtime_checkable
+from typing import Any, Dict, List, Optional, Protocol, runtime_checkable
 
 SERVICE_SRC = Path(__file__).resolve().parent
 if str(SERVICE_SRC) not in sys.path:
@@ -149,7 +149,11 @@ def _deserialize_suggestion(item: Dict[str, Any]) -> Suggestion:
     )
 
 
-def build_suggestion_provider(name: str | None) -> SuggestionProvider:
+def build_suggestion_provider(
+    name: str | None,
+    *,
+    settings: Optional[Any] = None,
+) -> SuggestionProvider:
     """
     Factory that instantiates the requested suggestion provider implementation.
     """
@@ -159,6 +163,10 @@ def build_suggestion_provider(name: str | None) -> SuggestionProvider:
         return DeterministicSuggestionProvider()
     if normalized == "mock":
         return MockSuggestionProvider()
+    if normalized == "openai":
+        # Import lazily to avoid circular dependencies and path issues
+        from providers.openai_suggestions import OpenAISuggestionProvider
+        return OpenAISuggestionProvider(settings=settings)
 
     raise ValueError(f"Unsupported suggestion provider '{name}'")
 

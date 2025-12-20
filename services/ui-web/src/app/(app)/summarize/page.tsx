@@ -43,7 +43,10 @@ export default function SummarizePage() {
       {summaryQuery.data ? (
         <div className="grid gap-4 lg:grid-cols-2">
           <SummaryView summary={summaryQuery.data.summary} categoryShares={summaryQuery.data.categoryShares} />
-          <SuggestionsList suggestions={summaryQuery.data.suggestions} />
+          <SuggestionsList 
+            suggestions={summaryQuery.data.suggestions} 
+            providerMetadata={summaryQuery.data.providerMetadata}
+          />
         </div>
       ) : (
         <div className="card">

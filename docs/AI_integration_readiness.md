@@ -1,8 +1,7 @@
 # AI Integration Readiness
 
-This document summarizes the current state of the deterministic stack, the guardrails now
-in place, and the remaining backlog items that must be addressed (or explicitly deferred)
-before wiring ChatGPT into the flow.
+This document summarizes the current state of the ChatGPT integration, the guardrails in
+place, and operational guidance for running with AI providers enabled.
 
 ## Current State
 
@@ -14,10 +13,62 @@ before wiring ChatGPT into the flow.
   hashing are documented in `docs/operations.md`. Every service emits structured logs with
   `request_id` correlation.
 - **Provider abstraction** – `docs/llm_adapter.md` defines the Clarification/Suggestion provider
-  contract. Deterministic + mock implementations ship today; future LLM-backed providers plug in
-  via environment variables.
+  contract. Deterministic, mock, and OpenAI implementations are all available.
 - **UI alignment** – The Next.js UI (`services/ui-web`) is the single supported surface; the
   deprecated Streamlit app was removed to avoid skew between clients.
+
+## ChatGPT Integration Status
+
+### openai-clarification-provider
+
+✅ `services/clarification-service/src/providers/openai_clarification.py` implements the
+`ClarificationQuestionProvider` protocol using ChatGPT function calling. Features:
+- Prompt construction from `UnifiedBudgetModel` gaps and user framework preference
+- Structured outputs via OpenAI function calling with `QuestionSpec` JSON schema
+- Automatic fallback to `DeterministicClarificationProvider` on API errors/timeouts
+- Privacy-safe logging (prompt/response hashes via `observability/privacy.py`)
+- Mocked tests in `services/clarification-service/tests/test_openai_clarification_provider.py`
+
+### openai-suggestion-provider
+
+✅ `services/optimization-service/src/providers/openai_suggestions.py` implements the
+`SuggestionProvider` protocol using ChatGPT function calling. Features:
+- Prompt includes clarified budget model, computed summary, and financial framework
+- Structured outputs via function calling with `Suggestion` JSON schema
+- Validation/sanitization of response fields (caps string lengths, validates impact values)
+- Automatic fallback to `DeterministicSuggestionProvider` on errors
+- Telemetry logging with hashed payloads
+- Mocked tests in `services/optimization-service/tests/test_openai_suggestion_provider.py`
+
+### secret-management
+
+✅ Documented in `README.md` and `docs/operations.md`:
+- `.env.example` shipped with placeholder values for `OPENAI_API_KEY`, `OPENAI_MODEL`, `OPENAI_API_BASE`
+- 1Password CLI workflow for local development
+- GitHub Actions secret sync instructions
+- Key rotation policy and guardrails
+
+### provider-configuration
+
+✅ Both services honor environment-driven provider selection:
+- `CLARIFICATION_PROVIDER=openai` / `SUGGESTION_PROVIDER=openai` enables ChatGPT
+- Fail-fast startup when OpenAI env vars are missing
+- Tuning via `*_TIMEOUT_SECONDS`, `*_TEMPERATURE`, `*_MAX_TOKENS` env vars
+- Documented in service READMEs and `docs/llm_adapter.md`
+
+### gateway-provider-metadata
+
+✅ API gateway includes `provider_metadata` in clarification and summary responses:
+- `clarification_provider` / `suggestion_provider` (deterministic, mock, or openai)
+- `ai_enabled` boolean flag
+- UI displays "AI-generated via ChatGPT" badge and disclaimer when enabled
+
+### ui-ai-disclaimers
+
+✅ `SuggestionsList` component shows:
+- "ChatGPT" badge when `suggestionProvider === 'openai'`
+- Yellow disclaimer box explaining educational-only nature and limitations
+- Clear statement that AI does not access bank accounts or make transactions
 
 ## Outstanding Work
 

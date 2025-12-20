@@ -17,7 +17,7 @@ for candidate in (SERVICE_SRC, INGESTION_SRC, OPTIMIZATION_SRC):
     if candidate.exists() and candidate_str not in sys.path:
         sys.path.append(candidate_str)
 
-from main import app  # noqa: E402
+from main import app, reload_clarification_provider_for_tests  # noqa: E402
 
 
 client = TestClient(app)
@@ -55,6 +55,7 @@ def _load_mock_questions() -> Dict[str, Any]:
 
 def test_clarify_uses_deterministic_provider(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("CLARIFICATION_PROVIDER", "deterministic")
+    reload_clarification_provider_for_tests()
     response = client.post("/clarify", json=_draft_payload())
 
     assert response.status_code == 200
@@ -65,6 +66,7 @@ def test_clarify_uses_deterministic_provider(monkeypatch: pytest.MonkeyPatch) ->
 
 def test_clarify_uses_mock_provider(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("CLARIFICATION_PROVIDER", "mock")
+    reload_clarification_provider_for_tests()
     response = client.post("/clarify", json=_draft_payload())
 
     assert response.status_code == 200

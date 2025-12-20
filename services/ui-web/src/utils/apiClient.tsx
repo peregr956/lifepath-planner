@@ -19,6 +19,7 @@ import type {
   DebtEntry,
   ExpenseEntry,
   IncomeEntry,
+  ProviderMetadata,
   RateChange,
   SubmitAnswersResponse,
   SummaryAndSuggestionsResponse,
@@ -457,11 +458,18 @@ type RawSubmitAnswersResponse = {
   status: string;
 };
 
+type RawProviderMetadata = {
+  clarification_provider: string;
+  suggestion_provider: string;
+  ai_enabled: boolean;
+};
+
 type RawSummaryAndSuggestionsResponse = {
   budget_id: string;
   summary?: RawBudgetSummary | null;
   category_shares?: Record<string, number> | null;
   suggestions?: RawBudgetSuggestion[] | null;
+  provider_metadata?: RawProviderMetadata | null;
 };
 
 type RawIncomeEntry = {
@@ -629,6 +637,13 @@ function normalizeSummaryAndSuggestionsResponse(
     summary: normalizeBudgetSummary(raw.summary),
     categoryShares: raw.category_shares ?? {},
     suggestions: normalizeSuggestions(raw.suggestions),
+    providerMetadata: raw.provider_metadata
+      ? {
+          clarificationProvider: raw.provider_metadata.clarification_provider,
+          suggestionProvider: raw.provider_metadata.suggestion_provider,
+          aiEnabled: raw.provider_metadata.ai_enabled,
+        }
+      : undefined,
   };
 }
 
