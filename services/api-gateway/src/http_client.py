@@ -18,7 +18,8 @@ if str(SERVICES_ROOT) not in sys.path:
 from observability.telemetry import CORRELATION_ID_HEADER, ensure_request_id
 
 logger = logging.getLogger(__name__)
-DEFAULT_TIMEOUT = httpx.Timeout(30.0, connect=5.0, read=30.0, write=15.0, pool=5.0)
+# Increased read timeout to accommodate OpenAI API calls which can take longer
+DEFAULT_TIMEOUT = httpx.Timeout(90.0, connect=5.0, read=90.0, write=15.0, pool=5.0)
 DEFAULT_MAX_ATTEMPTS = 3
 DEFAULT_BACKOFF_FACTOR = 0.5
 RETRYABLE_STATUS_CODES = {408, 425, 429, 500, 502, 503, 504}

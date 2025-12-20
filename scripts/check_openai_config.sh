@@ -11,7 +11,9 @@ echo ""
 # Check .env file
 if [[ -f "$ROOT_DIR/.env" ]]; then
     echo "✓ .env file exists"
+    set -a  # Automatically export all variables
     source "$ROOT_DIR/.env"
+    set +a  # Stop automatically exporting
 else
     echo "✗ .env file not found"
     exit 1

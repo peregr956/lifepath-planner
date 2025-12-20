@@ -26,6 +26,7 @@ import type {
   UnifiedBudgetModel,
   UploadBudgetResponse,
   ClarificationQuestionsResponse,
+  UserQueryResponse,
 } from '@/types';
 
 const DEFAULT_HOST_PORTS: Array<[string, number]> = [
@@ -292,15 +293,36 @@ export class ApiClient {
     return normalizeUploadBudgetResponse(response);
   }
 
-  async fetchClarificationQuestions(budgetId: string): Promise<ClarificationQuestionsResponse> {
+  async submitUserQuery(budgetId: string, query: string): Promise<UserQueryResponse> {
+    if (!budgetId) {
+      throw new Error('budgetId is required to submit a user query.');
+    }
+    if (!query.trim()) {
+      throw new Error('Query cannot be empty.');
+    }
+    const response = await this.request<RawUserQueryResponse>('/user-query', {
+      method: 'POST',
+      body: JSON.stringify({
+        budget_id: budgetId,
+        query: query.trim(),
+      }),
+    });
+    return normalizeUserQueryResponse(response);
+  }
+
+  async fetchClarificationQuestions(budgetId: string, userQuery?: string): Promise<ClarificationQuestionsResponse> {
     if (!budgetId) {
       throw new Error('budgetId is required to fetch clarification questions.');
+    }
+    const query: QueryParams = { budget_id: budgetId };
+    if (userQuery) {
+      query.user_query = userQuery;
     }
     const response = await this.request<RawClarificationQuestionsResponse>(
       '/clarification-questions',
       {
         method: 'GET',
-        query: { budget_id: budgetId },
+        query,
       }
     );
     return normalizeClarificationQuestionsResponse(response);
@@ -356,7 +378,12 @@ export class ApiClient {
       });
       const payload = await this.parsePayload(response);
       if (!response.ok) {
-        throw new ApiError(this.describeError(response, payload), response.status, payload);
+        const errorMessage = this.describeError(response, payload);
+        // For 400 errors with validation details, include the full payload
+        if (response.status === 400 && payload && typeof payload === 'object' && 'invalid_fields' in payload) {
+          throw new ApiError(errorMessage, response.status, payload);
+        }
+        throw new ApiError(errorMessage, response.status, payload);
       }
       return payload as T;
     } catch (error) {
@@ -428,8 +455,10 @@ export class ApiClient {
 export const apiClient = new ApiClient();
 
 export const uploadBudget = (file: File) => apiClient.uploadBudget(file);
-export const fetchClarificationQuestions = (budgetId: string) =>
-  apiClient.fetchClarificationQuestions(budgetId);
+export const submitUserQuery = (budgetId: string, query: string) =>
+  apiClient.submitUserQuery(budgetId, query);
+export const fetchClarificationQuestions = (budgetId: string, userQuery?: string) =>
+  apiClient.fetchClarificationQuestions(budgetId, userQuery);
 export const submitClarificationAnswers = (budgetId: string, answers: ClarificationAnswers) =>
   apiClient.submitClarificationAnswers(budgetId, answers);
 export const fetchSummaryAndSuggestions = (budgetId: string) =>
@@ -456,6 +485,13 @@ type RawClarificationQuestionsResponse = {
 type RawSubmitAnswersResponse = {
   budget_id: string;
   status: string;
+  ready_for_summary?: boolean;
+};
+
+type RawUserQueryResponse = {
+  budget_id: string;
+  query: string;
+  status: string;
 };
 
 type RawProviderMetadata = {
@@ -470,6 +506,7 @@ type RawSummaryAndSuggestionsResponse = {
   category_shares?: Record<string, number> | null;
   suggestions?: RawBudgetSuggestion[] | null;
   provider_metadata?: RawProviderMetadata | null;
+  user_query?: string | null;
 };
 
 type RawIncomeEntry = {
@@ -626,6 +663,15 @@ function normalizeSubmitAnswersResponse(raw: RawSubmitAnswersResponse): SubmitAn
   return {
     budgetId: raw.budget_id,
     status: raw.status,
+    readyForSummary: raw.ready_for_summary ?? (raw.status === 'ready_for_summary'),
+  };
+}
+
+function normalizeUserQueryResponse(raw: RawUserQueryResponse): UserQueryResponse {
+  return {
+    budgetId: raw.budget_id,
+    query: raw.query,
+    status: raw.status,
   };
 }
 
@@ -644,6 +690,7 @@ function normalizeSummaryAndSuggestionsResponse(
           aiEnabled: raw.provider_metadata.ai_enabled,
         }
       : undefined,
+    userQuery: raw.user_query ?? null,
   };
 }
 

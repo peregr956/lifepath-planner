@@ -286,11 +286,60 @@ async def upload_budget(
     }
 
 
+class UserQueryPayload(BaseModel):
+    budget_id: str
+    query: str
+
+
+@app.post("/user-query", response_model=None)
+async def submit_user_query(
+    payload: UserQueryPayload,
+    request: Request,
+    db: Session = Depends(get_session),
+) -> Dict[str, Any] | JSONResponse:
+    """Store the user's initial question/query for personalized guidance."""
+    request_id = ensure_request_id(request)
+    repo = BudgetSessionRepository(db)
+    budget_session = repo.get_session(payload.budget_id)
+    if not budget_session:
+        return error_response(404, "budget_session_not_found", "Budget session not found.")
+
+    query = payload.query.strip()
+    if not query:
+        return error_response(400, "query_empty", "Query cannot be empty.")
+
+    if len(query) > 1000:
+        return error_response(400, "query_too_long", "Query must be 1000 characters or less.")
+
+    repo.store_user_query(
+        budget_session,
+        query,
+        source_ip=_client_ip(request),
+        details={"request_id": request_id},
+    )
+
+    logger.info(
+        {
+            "event": "user_query_submitted",
+            "request_id": request_id,
+            "budget_id": payload.budget_id,
+            "query_length": len(query),
+        }
+    )
+
+    return {
+        "budget_id": payload.budget_id,
+        "query": query,
+        "status": "stored",
+    }
+
+
 @app.get("/clarification-questions", response_model=None)
 async def clarification_questions(
     budget_id: str,
     request: Request,
     db: Session = Depends(get_session),
+    user_query: Optional[str] = None,
 ) -> Dict[str, Any] | JSONResponse:
     """Sends stored draft data to clarification service /clarify to generate questions and a partial model."""
     repo = BudgetSessionRepository(db)
@@ -308,11 +357,24 @@ async def clarification_questions(
 
     request_id = ensure_request_id(request)
 
+    # Get user context (query + profile) from session
+    user_context = repo.get_user_context(budget_session)
+    
+    # Use the query parameter if provided, otherwise fall back to stored query
+    effective_user_query = user_query or user_context.get("user_query")
+
+    # Add user context to the payload for clarification service
+    clarify_payload = {
+        **draft_payload,
+        "user_query": effective_user_query,
+        "user_profile": user_context.get("user_profile"),
+    }
+
     clarify_url = f"{CLARIFICATION_BASE}/clarify"
     try:
         clarification_response, metrics = await http_client.post(
             clarify_url,
-            json=draft_payload,
+            json=clarify_payload,
             request_id=request_id,
         )
     except httpx.HTTPStatusError as exc:
@@ -424,6 +486,32 @@ async def submit_answers(
             request_id=request_id,
         )
     except httpx.HTTPStatusError as exc:
+        # For 400 errors, try to extract and pass through validation error details
+        if exc.response.status_code == 400:
+            try:
+                error_body = exc.response.json()
+                if error_body.get("error") == "invalid_field_ids":
+                    invalid_fields = error_body.get("invalid_fields", [])
+                    logger.error(
+                        {
+                            "event": "submit_answers_validation_error",
+                            "request_id": request_id,
+                            "url": apply_answers_url,
+                            "invalid_fields": invalid_fields,
+                        }
+                    )
+                    # Pass through the validation error details
+                    return JSONResponse(
+                        status_code=400,
+                        content={
+                            "error": "invalid_field_ids",
+                            "details": "Some field IDs in your answers are not supported.",
+                            "invalid_fields": invalid_fields,
+                        },
+                    )
+            except Exception:
+                pass  # Fall through to generic error handling
+        
         logger.error(
             {
                 "event": "submit_answers_upstream_error",
@@ -456,6 +544,7 @@ async def submit_answers(
     apply_data: Dict[str, Any] = clarification_response.json()
 
     updated_model = apply_data.get("updated_model")
+    ready_for_summary = apply_data.get("ready_for_summary", True)
     repo.update_final(
         budget_session,
         updated_model,
@@ -471,14 +560,14 @@ async def submit_answers(
             "answer_count": len(payload.answers or {}),
             "upstream_latency_ms": metrics.latency_ms,
             "attempts": metrics.attempts,
+            "ready_for_summary": ready_for_summary,
         }
     )
 
-    # TODO(ready-for-summary-contract): surface the clarification service readiness flag when the contract stabilizes.
-    # Tracked in docs/AI_integration_readiness.md#ready-for-summary-contract.
     return {
         "budget_id": payload.budget_id,
-        "status": "ready_for_summary",
+        "status": "ready_for_summary" if ready_for_summary else "clarified",
+        "ready_for_summary": ready_for_summary,
     }
 
 
@@ -504,11 +593,21 @@ async def summary_and_suggestions(
 
     request_id = ensure_request_id(request)
 
+    # Get user context (query + profile) from session
+    user_context = repo.get_user_context(budget_session)
+    
+    # Add user context to the payload for optimization service
+    optimize_payload = {
+        **final_model,
+        "user_query": user_context.get("user_query"),
+        "user_profile": user_context.get("user_profile"),
+    }
+
     optimize_url = f"{OPTIMIZATION_BASE}/summarize-and-optimize"
     try:
         optimization_response, metrics = await http_client.post(
             optimize_url,
-            json=final_model,
+            json=optimize_payload,
             request_id=request_id,
         )
     except httpx.HTTPStatusError as exc:
@@ -554,6 +653,7 @@ async def summary_and_suggestions(
             "attempts": metrics.attempts,
             "surplus": summary_data.get("surplus") if summary_data else None,
             "provider": provider_metadata["suggestion_provider"],
+            "has_user_query": bool(user_context.get("user_query")),
         }
     )
     return {
@@ -562,4 +662,5 @@ async def summary_and_suggestions(
         "category_shares": optimization_data.get("category_shares"),
         "suggestions": optimization_data.get("suggestions"),
         "provider_metadata": provider_metadata,
+        "user_query": user_context.get("user_query"),
     }
