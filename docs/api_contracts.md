@@ -69,6 +69,10 @@ For the MVP, contracts are intentionally simple and focused on a single budget â
 - **Body fields:**
   - `budget_id` (string)
   - `questions` (list of question objects)
+  - `provider_metadata` (object, optional): indicates which provider generated the questions
+    - `clarification_provider` (string): `deterministic`, `mock`, or `openai`
+    - `suggestion_provider` (string): `deterministic`, `mock`, or `openai`
+    - `ai_enabled` (boolean): `true` if either provider is `openai`
 
 Each question object includes:
 
@@ -182,6 +186,10 @@ This indicates that ingestion/interpretation already produced a sufficiently com
   - `budget_id` (string)
   - `summary` (object)
   - `suggestions` (list)
+  - `provider_metadata` (object, optional): indicates which provider generated the suggestions
+    - `clarification_provider` (string): `deterministic`, `mock`, or `openai`
+    - `suggestion_provider` (string): `deterministic`, `mock`, or `openai`
+    - `ai_enabled` (boolean): `true` if either provider is `openai`
 
 Summary object shape:
 
@@ -283,3 +291,21 @@ Internal contracts can evolve, but they should remain consistent with:
 - All APIs use JSON responses for non-file data.
 - Error handling should be explicit and descriptive but not overly complex.
 - The gateway is the only public API. Direct calls to underlying services are internal.
+
+## 7. Provider Configuration Settings
+
+Clarification and optimization now ship the same knobs for selecting and tuning AI providers. Each service reads the provider choice plus timeout, temperature, and token limits on startup so misconfiguration is caught before the first request.
+
+| Service               | Provider env var           | Timeout env var                                | Temperature env var                               | Max token env var                                 |
+| --------------------- | -------------------------- | ---------------------------------------------- | ------------------------------------------------- | ------------------------------------------------- |
+| Clarification Service | `CLARIFICATION_PROVIDER`   | `CLARIFICATION_PROVIDER_TIMEOUT_SECONDS`       | `CLARIFICATION_PROVIDER_TEMPERATURE`              | `CLARIFICATION_PROVIDER_MAX_TOKENS`              |
+| Optimization Service  | `SUGGESTION_PROVIDER`      | `SUGGESTION_PROVIDER_TIMEOUT_SECONDS`          | `SUGGESTION_PROVIDER_TEMPERATURE`                 | `SUGGESTION_PROVIDER_MAX_TOKENS`                 |
+
+Defaults:
+
+- Provider: `deterministic`
+- Timeout: `10` seconds
+- Temperature: `0.2`
+- Max output tokens: `512`
+
+Supported provider values are `deterministic`, `mock`, and `openai`. Selecting `openai` reserves the upcoming LLM adapter slot and now requires the shared environment variables `OPENAI_API_KEY`, `OPENAI_MODEL`, and `OPENAI_API_BASE`. Both services terminate during startup if any of those values are missing so deployments can catch misconfigurations early.
