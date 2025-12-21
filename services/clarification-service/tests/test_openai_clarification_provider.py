@@ -261,14 +261,14 @@ class TestOpenAIClarificationProvider:
                     "components": [
                         {
                             "component": "toggle",
-                            "field_id": "valid_field",
-                            "label": "Valid label",
-                            "binding": "valid.path",
+                            "field_id": "essential_expense-1",
+                            "label": "Is Housing essential?",
+                            "binding": "expenses.expense-1.essential",
                         },
                         {
-                            # Missing required fields
+                            # Missing required fields (label)
                             "component": "toggle",
-                            "field_id": "incomplete_field",
+                            "field_id": "essential_expense-2",
                         },
                     ],
                 }
