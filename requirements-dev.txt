@@ -28,6 +28,9 @@ python-json-logger==2.0.7
 # AI providers
 openai==1.40.0
 
+# Database drivers for production
+psycopg2-binary==2.9.9
+
 # Install the lifepath-planner package in editable mode
 # This enables proper imports of shared code without sys.path manipulation
 -e .
