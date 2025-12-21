@@ -11,8 +11,9 @@ This roadmap outlines the phased delivery plan for the LifePath Planner MVP, ens
 - Deterministic pipeline snapshots (`tests/test_deterministic_pipeline.py`) provide regression coverage before ChatGPT integration.
 - The legacy Streamlit UI has been removed; Next.js (`services/ui-web`) is the canonical client going forward.
 - Repository structure has been cleaned up: `sys.path` manipulation removed, proper package imports via `conftest.py` files, and `pyproject.toml` configuration for IDE support.
-- Test coverage audit completed (December 2024) — gaps documented in Phase 6 below.
+- Test coverage audit completed (December 2024) — gaps documented in Phase 7 below.
 - **CI/CD pipeline implemented** (December 2024) — GitHub Actions workflow with linting (ruff, pyright, ESLint, Prettier), Python 3.11+ test matrix, and deterministic pipeline validation. See `docs/development.md` for local commands and `.github/workflows/ci.yml` for the workflow definition.
+- **Technical debt cleanup** (December 2024) — API gateway now validates answers before upstream calls; binding-style field IDs implemented; AI-related TODOs documented as future work. See Phase 6 for details.
 
 The remaining work before wiring ChatGPT is limited to the forthcoming AI integration epic.
 
@@ -101,32 +102,52 @@ The remaining work before wiring ChatGPT is limited to the forthcoming AI integr
 
 ## Phase 6 — Clarification Service Enhancements
 
-The following clarification service features are documented but not yet implemented. Tests for these features are currently skipped.
-
 ### Binding-Style Answer Format
-**Status:** Not implemented
-**Tests:** Skipped in `test_normalization.py`, `test_apply_answers_endpoint.py`
+**Status:** ✅ Complete (December 2024)
+**Tests:** Passing in `test_normalization.py`, `test_apply_answers_endpoint.py`
 
-Support for dot-path field IDs in answer payloads (e.g., `income.income-1.metadata.net_or_gross`, `expenses.rent.essential`). This would allow more flexible answer mapping from AI-generated questions.
+Support for dot-path field IDs in answer payloads (e.g., `income.income-1.metadata.net_or_gross`, `expenses.rent.essential`). This allows flexible answer mapping from AI-generated questions.
 
-**Implementation notes:**
-- Parse dot-path field IDs in `apply_answers_to_model()`
-- Map to appropriate model fields dynamically
-- Fixture exists: `tests/fixtures/ai_answers_payload.json`
+**Implementation:**
+- `parse_binding_style_field_id()` in `normalization.py` parses dot-path field IDs
+- `_apply_binding_style_field()` maps parsed bindings to appropriate model fields
+- Validation in `main.py` via `_validate_binding_style_field()`
+- Fixture: `tests/fixtures/ai_answers_payload.json`
+
+Supported formats:
+- `expenses.<expense_id>.essential` → expense essential flag
+- `preferences.optimization_focus` → preference update
+- `income.<income_id>.stability` → income stability
+- `income.<income_id>.metadata.<key>` → income metadata
+- `debts.<debt_id>.<attribute>` → debt fields (balance, interest_rate, min_payment, priority, approximate)
+- `debts.<debt_id>.rate_changes.0.date/new_rate` → debt rate change
+
+### API Gateway Answer Validation
+**Status:** ✅ Complete (December 2024)
+**Tests:** Passing in `test_gateway_submit_answers.py`, `test_gateway_smoke.py`
+
+The API gateway now validates answers **before** making upstream calls to the clarification service:
+- Import `validate_answers` from `answer_validation.py`
+- Returns 400 with structured error details (`error: "invalid_answers"`, `issues: [...]`)
+- Prevents unnecessary network calls for invalid payloads
+- Enhanced logging for validation failures
 
 ### AI-Based Model Enrichment
-**Status:** Partially implemented (defaults only)
-**Tests:** Skipped in `test_normalization.py`
+**Status:** Documented as future work
+**Tests:** Skipped in `test_normalization.py` (2 tests)
 
 Currently `draft_to_initial_unified()` uses sign-based rules only:
 - All income defaults to `type="earned"`, `stability="stable"`
 - All expenses default to `essential=None`
 - No automatic debt detection
 
-**Remaining work:**
+The following AI-based enrichment features are documented as future work in `normalization.py`:
 - [ ] AI-based income classification (passive vs earned vs transfer)
 - [ ] AI-based essential expense detection (housing, utilities → essential)
 - [ ] AI-based debt detection from expense patterns (e.g., "Student Loan Payment" → Debt entry)
+- [ ] AI-based income stability inference from historical patterns
+
+See the documentation block at the top of `services/clarification-service/src/normalization.py` for full details.
 
 ---
 
@@ -150,7 +171,7 @@ The following modules have been identified as lacking dedicated test coverage. A
 |--------|---------|-------------|
 | `provider_settings.py` | shared | Provider configuration loading and validation |
 | `observability/privacy.py` | shared | `hash_payload` and `redact_fields` privacy utilities |
-| `answer_validation.py` | api-gateway | Input validation for answer field IDs |
+| ~~`answer_validation.py`~~ | ~~api-gateway~~ | ✅ Now integrated into `/submit-answers` endpoint (December 2024) |
 | `budget_normalization.py` | clarification-service | AI-enhanced normalization orchestration |
 
 ### Lower Priority (Infrastructure & Endpoints)

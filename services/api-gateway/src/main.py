@@ -33,6 +33,7 @@ def _build_provider_metadata() -> dict[str, Any]:
     }
 
 
+from answer_validation import validate_answers
 from http_client import ResilientHttpClient
 from middleware.rate_limit import SimpleRateLimiter, build_default_rate_limiter
 from persistence.database import get_session, init_db
@@ -472,8 +473,27 @@ async def submit_answers(
         "answers": payload.answers,
     }
 
-    # TODO(ai-answer-validation): validate answers schema and enhance downstream error handling/logging.
-    # Tracked in docs/AI_integration_readiness.md#ai-answer-validation.
+    # Validate answers locally before making upstream call
+    validation_issues = validate_answers(partial_model, payload.answers)
+    if validation_issues:
+        logger.warning(
+            {
+                "event": "submit_answers_validation_failed",
+                "request_id": request_id,
+                "budget_id": payload.budget_id,
+                "issue_count": len(validation_issues),
+                "issues": validation_issues,
+            }
+        )
+        return JSONResponse(
+            status_code=400,
+            content={
+                "error": "invalid_answers",
+                "details": "Some answers failed validation.",
+                "issues": validation_issues,
+            },
+        )
+
     apply_answers_url = f"{CLARIFICATION_BASE}/apply-answers"
     try:
         clarification_response, metrics = await http_client.post(

@@ -167,7 +167,6 @@ def test_submit_answers_ready_flag_false_updates_status(client: TestClient, sess
     assert payload == {"budget_id": budget_id, "status": "clarified", "ready_for_summary": False}
 
 
-@pytest.mark.skip(reason="TODO: Fix answer validation to reject unknown field IDs")
 def test_submit_answers_validation_failure_returns_400(client: TestClient, session_factory, monkeypatch) -> None:
     async def fail_post(*args, **kwargs):
         raise AssertionError("Upstream call should not run when validation fails.")
@@ -176,8 +175,8 @@ def test_submit_answers_validation_failure_returns_400(client: TestClient, sessi
 
     budget_id = _seed_budget_session(session_factory)
     answers = {
-        "essential_expense-draft-1-1": "maybe",
-        "mystery_field": "value",
+        "essential_expense-draft-1-1": "maybe",  # Invalid: should be boolean
+        "mystery_field": "value",  # Invalid: unknown field ID
     }
 
     response = client.post(
@@ -190,5 +189,6 @@ def test_submit_answers_validation_failure_returns_400(client: TestClient, sessi
     assert payload["error"] == "invalid_answers"
     assert "issues" in payload
     reasons = {issue["reason"] for issue in payload["issues"]}
-    assert "invalid_boolean" in reasons
+    # answer_validation.py returns "invalid_type" for type errors and "unsupported_field_id" for unknown fields
+    assert "invalid_type" in reasons
     assert "unsupported_field_id" in reasons

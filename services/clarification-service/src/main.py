@@ -29,6 +29,7 @@ from normalization import (
     SUPPORTED_SIMPLE_FIELD_IDS,
     apply_answers_to_model,
     draft_to_initial_unified,
+    parse_binding_style_field_id,
     parse_debt_field_id,
 )
 from pydantic import BaseModel, Field
@@ -511,7 +512,7 @@ def normalize_budget(request: Request, payload: DraftBudgetPayload) -> Normaliza
     response_model=ClarifyResponseModel,
     response_model_exclude_none=True,
 )
-def clarify_budget(request: Request, payload: DraftBudgetPayload) -> ClarifyResponseModel:
+def clarify_budget(request: Request, payload: DraftBudgetPayload) -> ClarifyResponseModel | JSONResponse:
     """
     Generate adaptive clarification questions based on budget data and user query.
 
@@ -635,6 +636,7 @@ def _validate_answer_field_ids(model: UnifiedBudgetModel, answers: dict[str, Any
         return []
 
     expense_ids = _collect_ids(model.expenses)
+    income_ids = _collect_ids(model.income)
     debt_ids = _collect_ids(model.debts)
     invalid_entries: list[dict[str, str]] = []
 
@@ -690,6 +692,14 @@ def _validate_answer_field_ids(model: UnifiedBudgetModel, answers: dict[str, Any
             )
             continue
 
+        # Check for binding-style field IDs (dot-path format like income.id.field)
+        binding = parse_binding_style_field_id(field_id)
+        if binding:
+            error = _validate_binding_style_field(binding, field_id, expense_ids, income_ids, debt_ids)
+            if error:
+                invalid_entries.append(error)
+            continue
+
         invalid_entries.append(
             {
                 "field_id": field_id,
@@ -699,6 +709,54 @@ def _validate_answer_field_ids(model: UnifiedBudgetModel, answers: dict[str, Any
         )
 
     return invalid_entries
+
+
+def _validate_binding_style_field(
+    binding: dict[str, Any],
+    field_id: str,
+    expense_ids: set[str],
+    income_ids: set[str],
+    debt_ids: set[str],
+) -> dict[str, str] | None:
+    """
+    Validate a parsed binding-style field ID against the model.
+    Returns an error dict if invalid, None if valid.
+    """
+    collection = binding["collection"]
+    target_id = binding["target_id"]
+
+    if collection == "preferences":
+        # Preferences are always valid if parsed successfully
+        return None
+
+    if collection == "expenses":
+        if target_id and target_id in expense_ids:
+            return None
+        return {
+            "field_id": field_id,
+            "reason": "unknown_expense",
+            "detail": f"Expense '{target_id or '<missing>'}' is not present in the partial model.",
+        }
+
+    if collection == "income":
+        if target_id and target_id in income_ids:
+            return None
+        return {
+            "field_id": field_id,
+            "reason": "unknown_income",
+            "detail": f"Income '{target_id or '<missing>'}' is not present in the partial model.",
+        }
+
+    if collection == "debts":
+        # Debts can be created on-the-fly (e.g., from expense-to-debt promotion)
+        # so we allow unknown debt IDs - they'll be created during application
+        return None
+
+    return {
+        "field_id": field_id,
+        "reason": "unsupported_field_id",
+        "detail": "No known mapping exists for this field_id.",
+    }
 
 
 def _collect_ids(entries: Sequence[Any]) -> set[str]:
