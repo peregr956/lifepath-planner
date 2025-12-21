@@ -119,7 +119,6 @@ def test_apply_answers_accepts_valid_field_ids():
     assert body.updated_model.summary.total_income == 6000.0
 
 
-@pytest.mark.skip(reason="TODO: Binding-style answer format (e.g., income.id.field) not yet implemented")
 def test_apply_answers_accepts_binding_style_fields():
     fixture = _load_fixture("ai_answers_payload.json")
     payload = {
