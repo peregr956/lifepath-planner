@@ -43,9 +43,9 @@ export function FlowShell({ children }: { children: ReactNode }) {
       return clarificationsDone;
     };
     return steps.map((step, index) => {
-      const prevStep = steps[index - 1];
+      const prevStep = index > 0 ? steps[index - 1] : undefined;
       const isActive =
-        pathname === step.href || (step.href !== '/' && pathname.startsWith(`${step.href}/`));
+        pathname === step.href || (step.href !== '/upload' && pathname.startsWith(`${step.href}/`));
       const isComplete = getCompletion(step.key);
       const isUnlocked = !prevStep || getCompletion(prevStep.key as StepKey);
       return {
@@ -139,7 +139,22 @@ export function FlowShell({ children }: { children: ReactNode }) {
       <section>{children}</section>
 
       {/* Developer panel - floating, only visible in dev mode */}
-      <DeveloperPanel session={session} onClearSession={clearSession} />
+      <DeveloperPanel
+        session={
+          session
+            ? {
+                ...session,
+                detectedFormat:
+                  session.detectedFormat === null ? undefined : session.detectedFormat,
+                summaryPreview:
+                  session.summaryPreview === null ? undefined : session.summaryPreview,
+                userQuery:
+                  session.userQuery === null ? undefined : session.userQuery,
+              }
+            : null
+        }
+        onClearSession={clearSession}
+      />
     </main>
   );
 }
