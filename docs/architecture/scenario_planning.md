@@ -1,5 +1,8 @@
 # Scenario Planning System Architecture
 
+> **Status: Future Planning** — This system has NOT been implemented.
+> This document describes a proposed feature for future development.
+
 ## Overview
 
 The Scenario Planning System enables "What If" analysis, allowing users to model alternative financial futures and compare outcomes. This is a key differentiator from ChatGPT, which cannot maintain multiple model states or perform structured comparisons.

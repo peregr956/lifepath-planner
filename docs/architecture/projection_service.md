@@ -1,5 +1,8 @@
 # Multi-Year Projection Service Architecture
 
+> **Status: Future Planning** — This service has NOT been implemented.
+> This document describes a proposed feature for future development.
+
 ## Overview
 
 The Projection Service provides deterministic financial modeling capabilities that differentiate LifePath Planner from ChatGPT. It computes reliable multi-year projections for net worth, debt payoff, savings growth, and retirement readiness using mathematical formulas rather than LLM inference.

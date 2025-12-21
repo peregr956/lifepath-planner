@@ -1,5 +1,8 @@
 # Goal Tracking & Progress Monitoring System Architecture
 
+> **Status: Future Planning** — This system has NOT been implemented.
+> This document describes a proposed feature for future development.
+
 ## Overview
 
 The Goal Tracking System enables users to set specific financial objectives and monitor progress over time. This is a critical differentiator from ChatGPT, which cannot maintain persistent state or track progress across sessions.

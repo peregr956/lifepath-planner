@@ -36,7 +36,7 @@ for path in OTHER_SERVICE_PATHS:
     if path.exists() and path_str not in sys.path:
         sys.path.append(path_str)
 
-from observability.telemetry import bind_request_context, ensure_request_id, reset_request_context, setup_telemetry
+from shared.observability.telemetry import bind_request_context, ensure_request_id, reset_request_context, setup_telemetry
 
 from models.raw_budget import DraftBudgetModel, RawBudgetLine  # noqa: E402
 from budget_model import (  # noqa: E402
@@ -59,7 +59,7 @@ from normalization import (
 from question_generator import QuestionSpec
 from ui_schema_builder import build_initial_ui_schema
 from clarification_provider import ClarificationProviderRequest, build_clarification_provider
-from provider_settings import ProviderSettings, ProviderSettingsError, load_provider_settings
+from shared.provider_settings import ProviderSettings, ProviderSettingsError, load_provider_settings
 from budget_normalization import normalize_draft_budget_with_ai, NormalizationResult
 
 app = FastAPI(title="Clarification Service")

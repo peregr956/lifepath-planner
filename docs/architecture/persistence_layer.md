@@ -2,13 +2,15 @@
 
 ## Overview
 
-This document describes the architecture for extending LifePath Planner's persistence layer to support budget history tracking, trend analysis, and user accounts. These features enable differentiation from ChatGPT by providing persistent state that spans sessions.
+This document describes the persistence layer architecture for LifePath Planner, including both implemented features and future extensions for budget history tracking, trend analysis, and user accounts.
 
 ---
 
-## 1. Current State
+## Part 1: Implemented Features
 
-### Existing Models
+> **Status:** These models are implemented and in production use.
+
+### BudgetSession Model
 
 Located in `services/api-gateway/src/persistence/models.py`:
 
@@ -35,7 +37,16 @@ class AuditEvent(Base):
     created_at: datetime
 ```
 
-### Limitations
+See `services/api-gateway/README.md` for usage documentation.
+
+---
+
+## Part 2: Future Planning
+
+> **Status:** The following sections describe proposed extensions that have NOT been implemented.
+> These designs enable differentiation from ChatGPT by providing persistent state across sessions.
+
+### Current Limitations (To Be Addressed)
 
 1. **No user identity** - Sessions are anonymous, no way to link multiple budgets to one user
 2. **No budget history** - Each session is isolated, no tracking over time

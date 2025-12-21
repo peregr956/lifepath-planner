@@ -37,7 +37,7 @@ from budget_model import (
 )
 from clarification_provider import ClarificationProviderRequest, ClarificationProviderResponse
 from openai_clarification import OpenAIClarificationProvider
-from provider_settings import OpenAIConfig, ProviderSettings
+from shared.provider_settings import OpenAIConfig, ProviderSettings
 
 
 @pytest.fixture

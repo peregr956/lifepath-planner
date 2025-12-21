@@ -2,24 +2,26 @@
 
 ## Overview
 
-This directory contains the architecture designs for LifePath Planner's differentiation features. These designs address the core question: **What value does LifePath Planner provide that users can't get by uploading their budget directly to ChatGPT?**
+This directory contains architecture designs for LifePath Planner, including both implemented features and future differentiation plans. These designs address the core question: **What value does LifePath Planner provide that users can't get by uploading their budget directly to ChatGPT?**
 
 ---
 
-## The Differentiation Problem
+## Current Implementation Status
 
-### Current State
+### What's Implemented
 
-The MVP is essentially a structured wrapper around ChatGPT with:
-- Better UX (forms instead of chat)
-- Reliable deterministic math
-- Pre-configured financial frameworks
+The MVP includes:
+- Multi-service architecture (Gateway, Ingestion, Clarification, Optimization)
+- Budget session persistence with audit trails (BudgetSession, AuditEvent)
+- AI-powered clarification and suggestions via OpenAI
+- Deterministic calculations for reliable math
+- Next.js UI with dynamic form generation
 
-**The problem:** Most current features can be replicated by a knowledgeable user prompting ChatGPT directly.
+See `docs/roadmap.md` for the detailed implementation history.
 
-### The Solution
+### Future Planning
 
-To justify a standalone product, LifePath must offer capabilities that **ChatGPT fundamentally cannot provide**:
+The documents below describe features designed to differentiate from ChatGPT:
 
 1. **Persistent State** - Track budgets over time (ChatGPT has no memory)
 2. **Complex Modeling** - Multi-year projections (ChatGPT math is unreliable)
@@ -36,62 +38,78 @@ To justify a standalone product, LifePath must offer capabilities that **ChatGPT
 |----------|---------|
 | [differentiation_analysis.md](../differentiation_analysis.md) | Analysis of current capabilities vs ChatGPT |
 
-### Differentiation Features
+### Feature Documentation
 
 | Document | Key Value | Status |
 |----------|-----------|--------|
-| [persistence_layer.md](persistence_layer.md) | Budget history & trend analysis | Designed |
-| [projection_service.md](projection_service.md) | Multi-year financial projections | Designed |
-| [scenario_planning.md](scenario_planning.md) | "What if" analysis & comparison | Designed |
-| [goal_tracking.md](goal_tracking.md) | Goal setting & progress monitoring | Designed |
+| [persistence_layer.md](persistence_layer.md) | Budget sessions & audit (implemented); User accounts, history & trends (future) | Partial |
+| [projection_service.md](projection_service.md) | Multi-year financial projections | Future |
+| [scenario_planning.md](scenario_planning.md) | "What if" analysis & comparison | Future |
+| [goal_tracking.md](goal_tracking.md) | Goal setting & progress monitoring | Future |
 
 ---
 
 ## System Architecture
+
+### Currently Implemented
 
 ```
 ┌────────────────────────────────────────────────────────────────────────────┐
 │                              Client Layer                                   │
 │  ┌──────────────────────────────────────────────────────────────────────┐ │
 │  │                        Next.js UI (Port 3000)                         │ │
-│  │  • Budget Upload    • Goal Dashboard    • Scenario Builder           │ │
-│  │  • Clarification    • Progress Tracker  • Projection Views           │ │
+│  │  • Budget Upload    • Clarification UI   • Summary View              │ │
 │  └──────────────────────────────────────────────────────────────────────┘ │
 └────────────────────────────────────────────────────────────────────────────┘
                                       │
                                       ▼
 ┌────────────────────────────────────────────────────────────────────────────┐
 │                            API Gateway (Port 8000)                          │
+│  ┌────────────────┐  ┌────────────────────────────────────────────────┐   │
+│  │ Budget Routes  │  │ Persistence: BudgetSessions + AuditEvents      │   │
+│  └────────────────┘  └────────────────────────────────────────────────┘   │
+└────────────────────────────────────────────────────────────────────────────┘
+          │                    │                    │
+          ▼                    ▼                    ▼
+┌─────────────────┐ ┌─────────────────┐ ┌─────────────────┐
+│    Ingestion    │ │  Clarification  │ │  Optimization   │
+│   (Port 8001)   │ │   (Port 8002)   │ │   (Port 8003)   │
+│                 │ │                 │ │                 │
+│ • CSV Parser    │ │ • AI Normalize  │ │ • Suggestions   │
+│ • XLSX Parser   │ │ • Question Gen  │ │ • Heuristics    │
+│ • Format Detect │ │ • Normalization │ │ • OpenAI Prov.  │
+│                 │ │ • OpenAI Prov.  │ │                 │
+└─────────────────┘ └─────────────────┘ └─────────────────┘
+```
+
+### Future Architecture (Proposed)
+
+```
+┌────────────────────────────────────────────────────────────────────────────┐
+│  API Gateway + Persistence Layer (Extended)                                │
 │  ┌────────────────┐  ┌────────────────┐  ┌────────────────┐              │
-│  │ Budget Routes  │  │ User Routes    │  │ Goal Routes    │              │
+│  │ User Routes    │  │ Goal Routes    │  │ Scenario Routes│              │
 │  └────────────────┘  └────────────────┘  └────────────────┘              │
-│  ┌────────────────┐  ┌────────────────┐  ┌────────────────┐              │
-│  │ Scenario Routes│  │ Snapshot Routes│  │ Alert Routes   │              │
-│  └────────────────┘  └────────────────┘  └────────────────┘              │
-│                                                                            │
 │  ┌──────────────────────────────────────────────────────────────────────┐ │
-│  │                       Persistence Layer                               │ │
-│  │  • Users    • BudgetSessions    • BudgetSnapshots                   │ │
-│  │  • Goals    • GoalProgress      • Scenarios                         │ │
+│  │  • Users    • BudgetSnapshots   • Goals    • Scenarios               │ │
 │  └──────────────────────────────────────────────────────────────────────┘ │
 └────────────────────────────────────────────────────────────────────────────┘
-          │                    │                    │                    │
-          ▼                    ▼                    ▼                    ▼
-┌─────────────────┐ ┌─────────────────┐ ┌─────────────────┐ ┌─────────────────┐
-│    Ingestion    │ │  Clarification  │ │  Optimization   │ │   Projection    │
-│   (Port 8001)   │ │   (Port 8002)   │ │   (Port 8003)   │ │   (Port 8004)   │
-│                 │ │                 │ │                 │ │                 │
-│ • CSV Parser    │ │ • AI Normalize  │ │ • Suggestions   │ │ • Debt Payoff   │
-│ • XLSX Parser   │ │ • Question Gen  │ │ • Heuristics    │ │ • Savings       │
-│ • Format Detect │ │ • Normalization │ │ • OpenAI Prov.  │ │ • Net Worth     │
-│                 │ │ • OpenAI Prov.  │ │                 │ │ • Retirement    │
-│                 │ │                 │ │                 │ │ • Scenarios     │
-└─────────────────┘ └─────────────────┘ └─────────────────┘ └─────────────────┘
+                                      │
+                                      ▼
+                        ┌─────────────────────────────┐
+                        │    Projection Service       │
+                        │       (Port 8004)           │
+                        │                             │
+                        │ • Debt Payoff   • Savings   │
+                        │ • Net Worth     • Scenarios │
+                        └─────────────────────────────┘
 ```
 
 ---
 
-## Implementation Roadmap
+## Future Implementation Roadmap
+
+> **Note:** The phases below describe future work that has NOT been implemented.
 
 ### Phase 1: Foundation (Weeks 1-4)
 
@@ -176,9 +194,12 @@ To justify a standalone product, LifePath must offer capabilities that **ChatGPT
 
 ---
 
-## Data Model Summary
+## Data Model Summary (Future)
 
-### New Entities
+> **Note:** These entities are proposed additions that have NOT been implemented.
+> Currently implemented: `BudgetSession`, `AuditEvent` (see `services/api-gateway/src/persistence/models.py`)
+
+### Proposed Entities
 
 ```
 User
