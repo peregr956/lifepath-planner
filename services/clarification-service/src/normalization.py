@@ -4,6 +4,38 @@ from __future__ import annotations
 Deterministic normalization utilities that convert a draft budget into the
 baseline UnifiedBudgetModel the clarification service can reason about before
 invoking any AI-driven refinement.
+
+Future Work (AI-Based Enrichment)
+==================================
+The following AI-based enrichment features are documented as future work and are
+tracked in the roadmap (Phase 6 - Clarification Service Enhancements). These
+features would enhance the automatic classification of budget data:
+
+1. AI-Based Income Classification (TODO: ai-income-classification)
+   - Automatically detect passive vs transfer income based on source patterns
+   - Currently defaults all income to type="earned", stability="stable"
+   - See: docs/AI_integration_readiness.md#model-enrichment-backlog
+
+2. AI-Based Essential Expense Detection (TODO: ai-essentiality)
+   - Predict essential vs discretionary spending based on category patterns
+   - Categories like "Housing", "Utilities" would auto-detect as essential
+   - Currently defaults all expenses to essential=None for clarification
+
+3. AI-Based Debt Detection (TODO: ai-debt-detection)
+   - Identify loan/credit payments that should become Debt entries
+   - Detect patterns like "Student Loan Payment", "Credit Card" in expenses
+   - Currently no automatic debt detection from expense lines
+
+4. AI-Based Income Stability Inference (TODO: ai-income-stability)
+   - Infer income stability from historical cadence and patterns
+   - Variable income from irregular amounts, seasonal from recurring patterns
+   - Currently defaults all income to stability="stable"
+
+Tests for these features are skipped in test_normalization.py pending implementation:
+  - test_draft_to_initial_unified_splits_income_and_expenses (expects essential auto-detection)
+  - test_draft_to_initial_unified_detects_debt_candidates (expects debt detection)
+
+See docs/roadmap.md Phase 6 for the full enhancement plan.
 """
 
 from collections.abc import Iterable
@@ -20,7 +52,7 @@ from budget_model import (
 )
 from models.raw_budget import DraftBudgetModel, RawBudgetLine
 
-__all__ = ["draft_to_initial_unified", "apply_answers_to_model", "parse_debt_field_id"]
+__all__ = ["draft_to_initial_unified", "apply_answers_to_model", "parse_debt_field_id", "parse_binding_style_field_id"]
 
 ESSENTIAL_PREFIX = "essential_"
 VALID_OPTIMIZATION_FOCUS = {"debt", "savings", "balanced"}
@@ -53,6 +85,127 @@ DEBT_FIELD_SUFFIXES: tuple[tuple[str, str], ...] = (
     ("_approximate", "approximate"),
 )
 VALID_DEBT_PRIORITIES = {"high", "medium", "low"}
+
+# Binding-style field ID support (dot-path format)
+BINDING_STYLE_COLLECTIONS = {"income", "expenses", "debts", "preferences"}
+BINDING_STYLE_DEBT_ATTRIBUTES = {
+    "balance",
+    "interest_rate",
+    "min_payment",
+    "priority",
+    "approximate",
+}
+
+
+def parse_binding_style_field_id(field_id: str) -> dict[str, Any] | None:
+    """
+    Parse a binding-style field ID (dot-path format) into its components.
+
+    Supported formats:
+        - expenses.<expense_id>.essential
+        - preferences.optimization_focus
+        - income.<income_id>.metadata.<key>
+        - income.<income_id>.stability
+        - income.<income_id>.type
+        - debts.<debt_id>.balance
+        - debts.<debt_id>.interest_rate
+        - debts.<debt_id>.min_payment
+        - debts.<debt_id>.priority
+        - debts.<debt_id>.approximate
+        - debts.<debt_id>.rate_changes.0.date
+        - debts.<debt_id>.rate_changes.0.new_rate
+
+    Returns:
+        A dictionary with parsed components, or None if not a valid binding-style field.
+        The dictionary contains:
+            - collection: The top-level collection (income, expenses, debts, preferences)
+            - target_id: The item ID within the collection (None for preferences)
+            - attribute: The attribute to update
+            - path: Additional path components (e.g., for metadata or rate_changes)
+    """
+    if "." not in field_id:
+        return None
+
+    parts = [p.strip() for p in field_id.split(".") if p.strip()]
+    if len(parts) < 2:
+        return None
+
+    collection = parts[0]
+    if collection not in BINDING_STYLE_COLLECTIONS:
+        return None
+
+    if collection == "preferences":
+        # preferences.optimization_focus, etc.
+        if len(parts) < 2:
+            return None
+        return {
+            "collection": "preferences",
+            "target_id": None,
+            "attribute": parts[1],
+            "path": tuple(parts[2:]) if len(parts) > 2 else (),
+        }
+
+    if len(parts) < 3:
+        return None
+
+    target_id = parts[1]
+    attribute = parts[2]
+
+    if collection == "expenses":
+        # expenses.<expense_id>.essential
+        if attribute == "essential":
+            return {
+                "collection": "expenses",
+                "target_id": target_id,
+                "attribute": "essential",
+                "path": (),
+            }
+        return None
+
+    if collection == "income":
+        # income.<income_id>.stability
+        # income.<income_id>.type
+        # income.<income_id>.metadata.<key>
+        if attribute in {"stability", "type"}:
+            return {
+                "collection": "income",
+                "target_id": target_id,
+                "attribute": attribute,
+                "path": (),
+            }
+        if attribute == "metadata" and len(parts) >= 4:
+            return {
+                "collection": "income",
+                "target_id": target_id,
+                "attribute": "metadata",
+                "path": tuple(parts[3:]),
+            }
+        return None
+
+    if collection == "debts":
+        # debts.<debt_id>.balance, etc.
+        if attribute in BINDING_STYLE_DEBT_ATTRIBUTES:
+            return {
+                "collection": "debts",
+                "target_id": target_id,
+                "attribute": attribute,
+                "path": (),
+            }
+        # debts.<debt_id>.rate_changes.0.date
+        # debts.<debt_id>.rate_changes.0.new_rate
+        if attribute == "rate_changes" and len(parts) >= 5:
+            # parts[3] is the index (e.g., "0"), parts[4] is the field (date or new_rate)
+            rate_change_field = parts[4]
+            if rate_change_field in {"date", "new_rate"}:
+                return {
+                    "collection": "debts",
+                    "target_id": target_id,
+                    "attribute": f"rate_change_{rate_change_field}",
+                    "path": (),
+                }
+        return None
+
+    return None
 
 
 def draft_to_initial_unified(draft: DraftBudgetModel) -> UnifiedBudgetModel:
@@ -199,6 +352,9 @@ def apply_answers_to_model(model: UnifiedBudgetModel, answers: dict[str, Any]) -
     expense_lookup: dict[str, Expense] = {
         expense.id: expense for expense in model.expenses if getattr(expense, "id", None)
     }
+    income_lookup: dict[str, Income] = {
+        income.id: income for income in model.income if getattr(income, "id", None)
+    }
     primary_income = model.income[0] if model.income else None
     debt_lookup: dict[str, Debt] = {debt.id: debt for debt in model.debts if getattr(debt, "id", None)}
     pending_rate_changes: dict[str, dict[str, Any]] = {}
@@ -243,8 +399,19 @@ def apply_answers_to_model(model: UnifiedBudgetModel, answers: dict[str, Any]) -
             _apply_debt_field(debt, attribute, raw_value, pending_rate_changes)
             continue
 
-        # TODO(answer-mapping): Support additional field_ids as the question catalog grows.
-        # Tracked in docs/AI_integration_readiness.md#ai-answer-application.
+        # Try binding-style field IDs (dot-path format like income.id.field)
+        binding = parse_binding_style_field_id(field_id)
+        if binding:
+            _apply_binding_style_field(
+                model,
+                binding,
+                raw_value,
+                expense_lookup,
+                income_lookup,
+                debt_lookup,
+                pending_rate_changes,
+            )
+            continue
 
     _finalize_rate_changes(debt_lookup, pending_rate_changes)
     return model
@@ -325,6 +492,80 @@ def _apply_profile_field(model: UnifiedBudgetModel, field_name: str, raw_value: 
     setattr(model.user_profile, field_name, normalized)
 
 
+def _apply_binding_style_field(
+    model: UnifiedBudgetModel,
+    binding: dict[str, Any],
+    raw_value: Any,
+    expense_lookup: dict[str, Expense],
+    income_lookup: dict[str, Income],
+    debt_lookup: dict[str, Debt],
+    pending_rate_changes: dict[str, dict[str, Any]],
+) -> None:
+    """
+    Apply a binding-style field value to the model.
+
+    Handles dot-path field IDs like:
+        - expenses.expense_id.essential
+        - preferences.optimization_focus
+        - income.income_id.stability
+        - income.income_id.metadata.net_or_gross
+        - debts.debt_id.balance
+        - debts.debt_id.rate_changes.0.date
+    """
+    collection = binding["collection"]
+    target_id = binding["target_id"]
+    attribute = binding["attribute"]
+    path = binding.get("path", ())
+
+    if collection == "preferences":
+        if attribute == "optimization_focus":
+            _apply_optimization_focus(model.preferences, raw_value)
+        return
+
+    if collection == "expenses":
+        if attribute == "essential" and target_id:
+            expense = expense_lookup.get(target_id)
+            if expense:
+                essential_value = _coerce_to_bool(raw_value)
+                if essential_value is not None:
+                    expense.essential = essential_value
+        return
+
+    if collection == "income":
+        if not target_id:
+            return
+        income = income_lookup.get(target_id)
+        if not income:
+            return
+
+        if attribute == "stability":
+            normalized = _normalize_string(raw_value)
+            if normalized in PRIMARY_INCOME_STABILITY_VALUES:
+                income.stability = normalized  # type: ignore[assignment]
+        elif attribute == "type":
+            normalized = _normalize_string(raw_value)
+            if normalized in {"earned", "passive", "transfer"}:
+                income.type = normalized  # type: ignore[assignment]
+        elif attribute == "metadata" and path:
+            metadata_key = path[0]
+            metadata = _ensure_metadata_dict(income)
+            if metadata_key == "net_or_gross":
+                normalized = _normalize_string(raw_value)
+                if normalized in PRIMARY_INCOME_TYPE_FLAGS:
+                    metadata[metadata_key] = normalized
+            else:
+                # Store other metadata fields as-is
+                metadata[metadata_key] = raw_value
+        return
+
+    if collection == "debts":
+        if not target_id:
+            return
+        debt = _ensure_debt_entry(model, debt_lookup, target_id)
+        _apply_debt_field(debt, attribute, raw_value, pending_rate_changes)
+        return
+
+
 def _coerce_to_bool(value: Any) -> bool | None:
     if isinstance(value, bool):
         return value
@@ -362,7 +603,7 @@ def _ensure_metadata_dict(entry: Income) -> dict[str, Any]:
         metadata = {}
     elif not isinstance(metadata, dict):
         metadata = dict(metadata)
-    entry.metadata = metadata
+    entry.metadata = metadata  # type: ignore[attr-defined]
     return metadata
 
 

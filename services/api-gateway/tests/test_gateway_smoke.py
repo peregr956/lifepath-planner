@@ -153,14 +153,13 @@ def test_clarification_questions_stores_partial_model(client: TestClient, stub_h
     assert payload["partial_model"] is not None
 
 
-@pytest.mark.skip(reason="TODO: Fix answer validation to reject unknown field IDs")
 def test_submit_answers_validates_and_propagates_readiness(
     client: TestClient, stub_http_client: StubHttpClient
 ) -> None:
     _bootstrap_upload(client, stub_http_client)
     _bootstrap_clarification(client, stub_http_client, needs_clarification=True)
 
-    # Validation should fail for unknown debt
+    # Validation should fail for unknown field IDs
     budget_id = _latest_budget_id()
     response = client.post(
         "/submit-answers",
@@ -178,9 +177,10 @@ def test_submit_answers_validates_and_propagates_readiness(
         },
     )
 
+    # Valid answer using simple field ID format (essential_<expense_id>)
     response = client.post(
         "/submit-answers",
-        json={"budget_id": budget_id, "answers": {"expenses.rent.essential": True}},
+        json={"budget_id": budget_id, "answers": {"essential_rent": True}},
     )
     assert response.status_code == 200
     payload = response.json()
