@@ -15,7 +15,7 @@ SERVICES_ROOT = SRC_DIR.parents[1]
 if str(SERVICES_ROOT) not in sys.path:
     sys.path.insert(0, str(SERVICES_ROOT))
 
-from observability.telemetry import CORRELATION_ID_HEADER, ensure_request_id
+from shared.observability.telemetry import CORRELATION_ID_HEADER, ensure_request_id
 
 logger = logging.getLogger(__name__)
 # Increased read timeout to accommodate OpenAI API calls which can take longer

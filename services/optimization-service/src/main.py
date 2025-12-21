@@ -29,7 +29,7 @@ from .budget_model import (
 )
 from .compute_summary import compute_category_shares, compute_summary_for_model
 from .suggestion_provider import SuggestionProviderRequest, build_suggestion_provider
-from provider_settings import ProviderSettings, ProviderSettingsError, load_provider_settings
+from shared.provider_settings import ProviderSettings, ProviderSettingsError, load_provider_settings
 
 app = FastAPI(title="Optimization Service")
 logger = logging.getLogger(__name__)

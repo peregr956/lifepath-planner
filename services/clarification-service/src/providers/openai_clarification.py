@@ -29,7 +29,7 @@ from openai import OpenAI, APIError, APITimeoutError
 
 from budget_model import UnifiedBudgetModel
 from question_generator import QuestionSpec
-from observability.privacy import hash_payload
+from shared.observability.privacy import hash_payload
 
 logger = logging.getLogger(__name__)
 

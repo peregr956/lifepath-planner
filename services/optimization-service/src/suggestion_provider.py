@@ -24,7 +24,7 @@ SERVICES_ROOT = SERVICE_SRC.parents[1]
 if str(SERVICES_ROOT) not in sys.path:
     sys.path.append(str(SERVICES_ROOT))
 
-from observability.privacy import hash_payload, redact_fields
+from shared.observability.privacy import hash_payload, redact_fields
 
 from .budget_model import Summary, UnifiedBudgetModel
 from .generate_suggestions import Suggestion, generate_suggestions
