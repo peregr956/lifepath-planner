@@ -11,18 +11,22 @@ from __future__ import annotations
 import json
 import logging
 from dataclasses import asdict
-from typing import Any, Dict, List, Optional
-
-from openai import OpenAI, APIError, APITimeoutError
-from shared.observability.privacy import hash_payload
 
 # Inline dataclass definition to avoid circular import issues
 from dataclasses import dataclass as _dataclass
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from suggestion_provider import SuggestionProviderRequest, SuggestionProviderResponse
+
+from openai import APIError, APITimeoutError, OpenAI
+from shared.observability.privacy import hash_payload
 
 
 @_dataclass
 class Suggestion:
     """Budget optimization suggestion (mirrors generate_suggestions.Suggestion)."""
+
     id: str
     title: str
     description: str
@@ -220,38 +224,38 @@ def _get_framework_description(framework: str) -> str:
     return descriptions.get(framework, descriptions["neutral"])
 
 
-def _build_user_profile_section(context: Dict[str, Any]) -> str:
+def _build_user_profile_section(context: dict[str, Any]) -> str:
     """Build the user profile section for the prompt."""
     user_profile = context.get("user_profile", {})
     if not user_profile:
         return ""
-    
+
     lines = ["## User Profile (Personalize based on this)"]
-    
+
     philosophy = user_profile.get("financial_philosophy")
     if philosophy:
         lines.append(f"- Financial Philosophy: {philosophy}")
-    
+
     risk = user_profile.get("risk_tolerance")
     if risk:
         lines.append(f"- Risk Tolerance: {risk}")
-    
+
     goal = user_profile.get("primary_goal")
     if goal:
         lines.append(f"- Primary Goal: {goal}")
-    
+
     timeline = user_profile.get("goal_timeline")
     if timeline:
         lines.append(f"- Goal Timeline: {timeline}")
-    
+
     concerns = user_profile.get("financial_concerns")
     if concerns:
         lines.append(f"- Concerns: {', '.join(concerns)}")
-    
+
     return "\n".join(lines) if len(lines) > 1 else ""
 
 
-def _build_user_prompt(model: UnifiedBudgetModel, summary: Summary, context: Dict[str, Any]) -> str:
+def _build_user_prompt(model: UnifiedBudgetModel, summary: Summary, context: dict[str, Any]) -> str:
     framework = context.get("framework", "neutral")
     total_debt_payments = sum(d.min_payment for d in model.debts)
     surplus_ratio = summary.surplus / summary.total_income if summary.total_income > 0 else 0
@@ -260,7 +264,7 @@ def _build_user_prompt(model: UnifiedBudgetModel, summary: Summary, context: Dic
     user_query = context.get("user_query", "")
     if not user_query:
         user_query = "Help me optimize my budget and improve my financial situation"
-    
+
     # Build user profile section
     user_profile_section = _build_user_profile_section(context)
 
@@ -295,7 +299,7 @@ class OpenAISuggestionProvider:
 
     name = "openai"
 
-    def __init__(self, settings: Optional[Any] = None):
+    def __init__(self, settings: Any | None = None):
         self._settings = settings
         if settings and settings.openai:
             self._client = OpenAI(
@@ -312,20 +316,18 @@ class OpenAISuggestionProvider:
             self._temperature = 0.3
             self._max_tokens = 1024
 
-    def generate(self, request: "SuggestionProviderRequest") -> "SuggestionProviderResponse":
+    def generate(self, request: SuggestionProviderRequest) -> SuggestionProviderResponse:
         # Use try/except to handle different import contexts (test vs runtime)
         try:
             from src.suggestion_provider import (
+                DeterministicSuggestionProvider,
                 SuggestionProviderRequest,
                 SuggestionProviderResponse,
-                DeterministicSuggestionProvider,
                 _log_suggestion_metrics,
             )
         except ImportError:
             from suggestion_provider import (
-                SuggestionProviderRequest,
                 SuggestionProviderResponse,
-                DeterministicSuggestionProvider,
                 _log_suggestion_metrics,
             )
 
@@ -414,9 +416,9 @@ class OpenAISuggestionProvider:
             )
             return self._fallback_to_deterministic(request)
 
-    def _parse_suggestions(self, parsed: Dict[str, Any]) -> List[Suggestion]:
+    def _parse_suggestions(self, parsed: dict[str, Any]) -> list[Suggestion]:
         """Convert OpenAI response into validated Suggestion objects."""
-        suggestions: List[Suggestion] = []
+        suggestions: list[Suggestion] = []
         raw_suggestions = parsed.get("suggestions", [])
 
         for item in raw_suggestions:
@@ -476,4 +478,3 @@ class OpenAISuggestionProvider:
         logger.info({"event": "openai_fallback_to_deterministic", "provider": self.name})
         fallback = DeterministicSuggestionProvider()
         return fallback.generate(request)
-

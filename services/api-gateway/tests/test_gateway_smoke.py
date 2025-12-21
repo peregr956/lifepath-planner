@@ -4,7 +4,6 @@ from typing import Any, Dict, List
 import httpx
 import pytest
 from fastapi.testclient import TestClient
-
 from http_client import RequestMetrics
 from main import CLARIFICATION_BASE, INGESTION_BASE, OPTIMIZATION_BASE, app
 from persistence.database import SessionLocal
@@ -13,9 +12,9 @@ from persistence.models import AuditEvent, BudgetSession
 
 class StubHttpClient:
     def __init__(self) -> None:
-        self._routes: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
+        self._routes: dict[str, list[dict[str, Any]]] = defaultdict(list)
 
-    def add_json_response(self, url: str, payload: Dict[str, Any], status_code: int = 200) -> None:
+    def add_json_response(self, url: str, payload: dict[str, Any], status_code: int = 200) -> None:
         self._routes[url].append({"payload": payload, "status_code": status_code})
 
     async def post(self, url: str, **_: Any):
@@ -28,11 +27,11 @@ class StubHttpClient:
 
 
 class _FakeResponse:
-    def __init__(self, payload: Dict[str, Any], status_code: int = 200) -> None:
+    def __init__(self, payload: dict[str, Any], status_code: int = 200) -> None:
         self._payload = payload
         self.status_code = status_code
 
-    def json(self) -> Dict[str, Any]:
+    def json(self) -> dict[str, Any]:
         return self._payload
 
     def raise_for_status(self) -> None:
@@ -208,7 +207,16 @@ def test_summary_and_suggestions_returns_payload(client: TestClient, stub_http_c
         {
             "summary": {"total_income": 5000, "total_expenses": 2000, "surplus": 3000},
             "category_shares": {"Rent": 0.36},
-            "suggestions": [{"id": "cut_dining", "title": "Trim dining", "description": "Reduce takeout.", "expected_monthly_impact": 50, "rationale": "Dining is flexible", "tradeoffs": "Fewer meals out"}],
+            "suggestions": [
+                {
+                    "id": "cut_dining",
+                    "title": "Trim dining",
+                    "description": "Reduce takeout.",
+                    "expected_monthly_impact": 50,
+                    "rationale": "Dining is flexible",
+                    "tradeoffs": "Fewer meals out",
+                }
+            ],
         },
     )
 
@@ -232,7 +240,9 @@ def _bootstrap_upload(client: TestClient, stub: StubHttpClient) -> None:
             "format_hints": {"line_count": 2},
         },
     )
-    client.post("/upload-budget", files={"file": ("data.csv", b"category,amount\nSalary,5000\nRent,-1800\n", "text/csv")})
+    client.post(
+        "/upload-budget", files={"file": ("data.csv", b"category,amount\nSalary,5000\nRent,-1800\n", "text/csv")}
+    )
 
 
 def _bootstrap_clarification(client: TestClient, stub: StubHttpClient, *, needs_clarification: bool) -> None:

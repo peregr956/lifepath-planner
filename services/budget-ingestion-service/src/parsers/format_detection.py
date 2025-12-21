@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass
 from statistics import median
-from typing import Any, Dict, Iterable, List, Tuple
+from typing import Any
 
 from models.raw_budget import RawBudgetLine
 
@@ -14,14 +15,14 @@ class HeaderSignals:
     has_balance_column: bool = False
 
 
-def detect_format(lines: List[RawBudgetLine], header_signals: HeaderSignals) -> Tuple[str, Dict[str, Any]]:
+def detect_format(lines: list[RawBudgetLine], header_signals: HeaderSignals) -> tuple[str, dict[str, Any]]:
     """
     Determine whether uploaded rows resemble a ledger or categorical budget.
 
     Returns a tuple of (detected_format, hints) where hints describe the heuristics observed.
     """
 
-    hints: Dict[str, Any] = {
+    hints: dict[str, Any] = {
         "has_debit_column": header_signals.has_debit_column,
         "has_credit_column": header_signals.has_credit_column,
         "has_balance_column": header_signals.has_balance_column,
@@ -74,4 +75,3 @@ def _has_dense_date_cadence(lines: Iterable[RawBudgetLine]) -> bool:
         return False
     typical_gap = median(differences)
     return typical_gap <= 7
-

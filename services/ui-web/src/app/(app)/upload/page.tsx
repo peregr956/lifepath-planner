@@ -64,7 +64,8 @@ export default function UploadPage() {
         <div>
           <h2 className="text-2xl font-semibold text-white">Upload your budget</h2>
           <p className="mt-1 text-sm text-white/70">
-            Share the spreadsheet you already use to track your finances. We&apos;ll analyze it and help you make better decisions.
+            Share the spreadsheet you already use to track your finances. We&apos;ll analyze it and
+            help you make better decisions.
           </p>
         </div>
 
@@ -95,7 +96,9 @@ export default function UploadPage() {
         </label>
 
         {errors.file && (
-          <p className="rounded bg-red-500/20 px-3 py-2 text-sm text-red-100">{errors.file.message}</p>
+          <p className="rounded bg-red-500/20 px-3 py-2 text-sm text-red-100">
+            {errors.file.message}
+          </p>
         )}
 
         {mutation.error && (
@@ -119,4 +122,3 @@ export default function UploadPage() {
     </div>
   );
 }
-

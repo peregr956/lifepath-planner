@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from typing import List
-
 from budget_model import Debt, Expense, UnifiedBudgetModel
 
 _PRIORITY_LEVELS = {"low": 0, "medium": 1, "high": 2}
@@ -40,7 +38,7 @@ def classify_debt_priority(debt: Debt) -> str:
     return rate_priority
 
 
-def find_flexible_expenses(model: UnifiedBudgetModel) -> List[Expense]:
+def find_flexible_expenses(model: UnifiedBudgetModel) -> list[Expense]:
     """
     Return expenses flagged as non-essential (flexible) in the model.
     """

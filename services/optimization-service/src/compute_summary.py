@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from typing import Dict
-
 from budget_model import Summary, UnifiedBudgetModel
 
 
@@ -27,7 +25,7 @@ def compute_summary_for_model(model: UnifiedBudgetModel) -> Summary:
     )
 
 
-def compute_category_shares(model: UnifiedBudgetModel) -> Dict[str, float]:
+def compute_category_shares(model: UnifiedBudgetModel) -> dict[str, float]:
     """
     Derive each expense category's share of the household's total expenses.
 
@@ -42,14 +40,11 @@ def compute_category_shares(model: UnifiedBudgetModel) -> Dict[str, float]:
     if total_expenses == 0:
         return {}
 
-    category_totals: Dict[str, float] = {}
+    category_totals: dict[str, float] = {}
     for expense in model.expenses:
         category_totals[expense.category] = category_totals.get(expense.category, 0.0) + expense.monthly_amount
 
-    return {
-        category: amount / total_expenses
-        for category, amount in category_totals.items()
-    }
+    return {category: amount / total_expenses for category, amount in category_totals.items()}
 
 
 def attach_summary_to_model(model: UnifiedBudgetModel) -> UnifiedBudgetModel:
@@ -71,6 +66,6 @@ def attach_summary_to_model(model: UnifiedBudgetModel) -> UnifiedBudgetModel:
     model.summary.surplus = summary.surplus
 
     if hasattr(model.summary, "category_shares"):
-        setattr(model.summary, "category_shares", category_shares)
+        model.summary.category_shares = category_shares
 
     return model

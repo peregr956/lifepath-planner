@@ -34,7 +34,7 @@ export function QueryInput({
       if (!trimmedQuery) return;
       await onSubmit(trimmedQuery);
     },
-    [query, onSubmit]
+    [query, onSubmit],
   );
 
   const handleExampleClick = useCallback((example: string) => {
@@ -50,12 +50,10 @@ export function QueryInput({
       <div className="rounded-2xl border border-white/10 bg-gradient-to-br from-indigo-900/20 to-purple-900/20 p-6 shadow-lg shadow-indigo-500/5">
         <div className="flex flex-col gap-4">
           <div className="flex flex-col gap-2">
-            <h2 className="text-xl font-semibold text-white">
-              What would you like help with?
-            </h2>
+            <h2 className="text-xl font-semibold text-white">What would you like help with?</h2>
             <p className="text-sm text-white/70">
-              Tell us your financial question or concern, and we&apos;ll ask only the
-              relevant follow-up questions to give you personalized guidance.
+              Tell us your financial question or concern, and we&apos;ll ask only the relevant
+              follow-up questions to give you personalized guidance.
             </p>
           </div>
 
@@ -98,7 +96,7 @@ export function QueryInput({
               <button
                 type="button"
                 onClick={() => setShowExamples(!showExamples)}
-                className="text-sm text-indigo-300 hover:text-indigo-200 underline-offset-2 hover:underline"
+                className="text-sm text-indigo-300 underline-offset-2 hover:text-indigo-200 hover:underline"
                 disabled={isDisabled}
               >
                 {showExamples ? 'Hide examples' : 'Show example questions'}
@@ -165,10 +163,9 @@ export function QueryInput({
       </div>
 
       <p className="text-xs text-white/50">
-        Your question helps us personalize the experience. We&apos;ll only ask
-        follow-up questions that are relevant to your specific situation.
+        Your question helps us personalize the experience. We&apos;ll only ask follow-up questions
+        that are relevant to your specific situation.
       </p>
     </div>
   );
 }
-

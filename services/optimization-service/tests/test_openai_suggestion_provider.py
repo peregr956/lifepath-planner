@@ -12,7 +12,6 @@ from typing import Any, Dict
 from unittest.mock import MagicMock, patch
 
 import pytest
-
 from budget_model import (
     Debt,
     Expense,
@@ -21,9 +20,9 @@ from budget_model import (
     Summary,
     UnifiedBudgetModel,
 )
-from suggestion_provider import SuggestionProviderRequest, SuggestionProviderResponse
 from providers.openai_suggestions import OpenAISuggestionProvider
 from shared.provider_settings import OpenAIConfig, ProviderSettings
+from suggestion_provider import SuggestionProviderRequest, SuggestionProviderResponse
 
 
 @pytest.fixture
@@ -97,7 +96,7 @@ def mock_settings() -> ProviderSettings:
 
 
 @pytest.fixture
-def mock_openai_response() -> Dict[str, Any]:
+def mock_openai_response() -> dict[str, Any]:
     """Sample OpenAI function call response with budget suggestions."""
     return {
         "suggestions": [
@@ -137,7 +136,7 @@ class TestOpenAISuggestionProvider:
         sample_model: UnifiedBudgetModel,
         sample_summary: Summary,
         mock_settings: ProviderSettings,
-        mock_openai_response: Dict[str, Any],
+        mock_openai_response: dict[str, Any],
     ):
         """Verify provider parses OpenAI function call response correctly."""
         provider = OpenAISuggestionProvider(settings=mock_settings)
@@ -174,8 +173,8 @@ class TestOpenAISuggestionProvider:
         mock_settings: ProviderSettings,
     ):
         """Verify provider falls back to deterministic on OpenAI API errors."""
+        from httpx import Request, Response
         from openai import APIStatusError
-        from httpx import Response, Request
 
         provider = OpenAISuggestionProvider(settings=mock_settings)
 
@@ -333,7 +332,7 @@ class TestOpenAISuggestionProvider:
         sample_model: UnifiedBudgetModel,
         sample_summary: Summary,
         mock_settings: ProviderSettings,
-        mock_openai_response: Dict[str, Any],
+        mock_openai_response: dict[str, Any],
     ):
         """Verify framework preference is included in the prompt."""
         provider = OpenAISuggestionProvider(settings=mock_settings)
@@ -382,4 +381,3 @@ class TestOpenAISuggestionProviderWithoutSettings:
 
         with pytest.raises(RuntimeError, match="OpenAI client not configured"):
             provider.generate(request)
-

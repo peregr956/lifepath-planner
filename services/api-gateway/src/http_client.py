@@ -2,13 +2,12 @@ import asyncio
 import logging
 import random
 import time
+from collections.abc import Mapping, MutableMapping
 from dataclasses import dataclass
-from typing import Any, Mapping, MutableMapping, Optional, Tuple
+from typing import Any
 
 import httpx
-from fastapi import Request
-
-from shared.observability.telemetry import CORRELATION_ID_HEADER, ensure_request_id
+from shared.observability.telemetry import CORRELATION_ID_HEADER
 
 logger = logging.getLogger(__name__)
 # Increased read timeout to accommodate OpenAI API calls which can take longer
@@ -34,8 +33,8 @@ class ResilientHttpClient:
         max_attempts: int = DEFAULT_MAX_ATTEMPTS,
         backoff_factor: float = DEFAULT_BACKOFF_FACTOR,
         correlation_header: str = CORRELATION_ID_HEADER,
-        retry_status_codes: Optional[set[int]] = None,
-        transport: Optional[httpx.AsyncBaseTransport] = None,
+        retry_status_codes: set[int] | None = None,
+        transport: httpx.AsyncBaseTransport | None = None,
     ) -> None:
         self._timeout = timeout
         self._max_attempts = max(1, max_attempts)
@@ -50,10 +49,10 @@ class ResilientHttpClient:
         url: str,
         *,
         request_id: str,
-        headers: Optional[Mapping[str, str]] = None,
+        headers: Mapping[str, str] | None = None,
         timeout: httpx.Timeout | float | None = None,
         **kwargs: Any,
-    ) -> Tuple[httpx.Response, RequestMetrics]:
+    ) -> tuple[httpx.Response, RequestMetrics]:
         attempts = 0
         start_time = time.perf_counter()
         last_exc: Exception | None = None
@@ -88,10 +87,10 @@ class ResilientHttpClient:
         url: str,
         *,
         request_id: str,
-        headers: Optional[Mapping[str, str]] = None,
+        headers: Mapping[str, str] | None = None,
         timeout: httpx.Timeout | float | None = None,
         **kwargs: Any,
-    ) -> Tuple[httpx.Response, RequestMetrics]:
+    ) -> tuple[httpx.Response, RequestMetrics]:
         return await self.request(
             "POST",
             url,
@@ -106,10 +105,10 @@ class ResilientHttpClient:
         url: str,
         *,
         request_id: str,
-        headers: Optional[Mapping[str, str]] = None,
+        headers: Mapping[str, str] | None = None,
         timeout: httpx.Timeout | float | None = None,
         **kwargs: Any,
-    ) -> Tuple[httpx.Response, RequestMetrics]:
+    ) -> tuple[httpx.Response, RequestMetrics]:
         return await self.request(
             "GET",
             url,
@@ -121,7 +120,7 @@ class ResilientHttpClient:
 
     def _build_headers(
         self,
-        headers: Optional[Mapping[str, str]],
+        headers: Mapping[str, str] | None,
         request_id: str,
     ) -> MutableMapping[str, str]:
         merged: MutableMapping[str, str] = {}
@@ -209,4 +208,3 @@ class ResilientHttpClient:
                 "error": str(exc),
             }
         )
-

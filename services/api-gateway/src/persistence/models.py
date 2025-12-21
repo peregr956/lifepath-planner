@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any
 
-from sqlalchemy import DateTime, ForeignKey, Integer, JSON, String, func
+from sqlalchemy import JSON, DateTime, ForeignKey, Integer, String, func
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
@@ -21,15 +21,15 @@ class BudgetSession(Base):
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
     stage: Mapped[str] = mapped_column(String(32), default="draft", nullable=False)
 
-    draft: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSON, nullable=True)
-    partial: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSON, nullable=True)
-    final: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSON, nullable=True)
+    draft: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
+    partial: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
+    final: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
 
     # User's initial query/question that drives personalized guidance
-    user_query: Mapped[Optional[str]] = mapped_column(String(1000), nullable=True)
+    user_query: Mapped[str | None] = mapped_column(String(1000), nullable=True)
 
     # User profile data collected through adaptive questioning
-    user_profile: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSON, nullable=True)
+    user_profile: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
@@ -43,7 +43,7 @@ class BudgetSession(Base):
         nullable=False,
     )
 
-    audit_events: Mapped[List["AuditEvent"]] = relationship(
+    audit_events: Mapped[list[AuditEvent]] = relationship(
         back_populates="session",
         cascade="all, delete-orphan",
         order_by="AuditEvent.id",
@@ -62,10 +62,10 @@ class AuditEvent(Base):
         nullable=False,
     )
     action: Mapped[str] = mapped_column(String(64), nullable=False)
-    source_ip: Mapped[Optional[str]] = mapped_column(String(45), nullable=True)
-    from_stage: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
-    to_stage: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
-    details: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSON, nullable=True)
+    source_ip: Mapped[str | None] = mapped_column(String(45), nullable=True)
+    from_stage: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    to_stage: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    details: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
@@ -73,5 +73,4 @@ class AuditEvent(Base):
         nullable=False,
     )
 
-    session: Mapped["BudgetSession"] = relationship(back_populates="audit_events")
-
+    session: Mapped[BudgetSession] = relationship(back_populates="audit_events")

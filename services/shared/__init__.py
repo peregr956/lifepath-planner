@@ -7,11 +7,11 @@ This package contains code shared across multiple services:
 """
 
 from .provider_settings import (
-    SUPPORTED_PROVIDERS,
     REQUIRED_OPENAI_ENV_VARS,
-    ProviderSettingsError,
+    SUPPORTED_PROVIDERS,
     OpenAIConfig,
     ProviderSettings,
+    ProviderSettingsError,
     load_provider_settings,
 )
 
@@ -23,4 +23,3 @@ __all__ = [
     "ProviderSettings",
     "load_provider_settings",
 ]
-

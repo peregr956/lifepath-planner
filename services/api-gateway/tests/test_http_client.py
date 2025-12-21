@@ -1,6 +1,5 @@
 import httpx
 import pytest
-
 from http_client import CORRELATION_ID_HEADER, ResilientHttpClient
 
 
@@ -57,4 +56,3 @@ async def test_resilient_http_client_raises_after_request_errors() -> None:
 
     with pytest.raises(httpx.RequestError):
         await client.post("https://example.org/fail", request_id="req-789")
-

@@ -12,7 +12,6 @@ timeouts, temperature, and token limits without duplicating parsing logic.
 
 import os
 from dataclasses import dataclass
-from typing import Optional
 
 SUPPORTED_PROVIDERS = frozenset({"deterministic", "mock", "openai"})
 REQUIRED_OPENAI_ENV_VARS = ("OPENAI_API_KEY", "OPENAI_MODEL", "OPENAI_API_BASE")
@@ -35,7 +34,7 @@ class ProviderSettings:
     timeout_seconds: float
     temperature: float
     max_output_tokens: int
-    openai: Optional[OpenAIConfig] = None
+    openai: OpenAIConfig | None = None
 
 
 def load_provider_settings(
@@ -51,7 +50,7 @@ def load_provider_settings(
 ) -> ProviderSettings:
     """
     Construct ProviderSettings for a service-specific provider stack.
-    
+
     Note: For OpenAI providers, consider using a longer timeout (60+ seconds)
     as API calls can take longer for complex requests.
 
@@ -68,7 +67,7 @@ def load_provider_settings(
     temperature = _parse_float(os.getenv(temperature_env), default_temperature, temperature_env)
     max_output_tokens = _parse_int(os.getenv(max_tokens_env), default_max_tokens, max_tokens_env)
 
-    openai_config: Optional[OpenAIConfig] = None
+    openai_config: OpenAIConfig | None = None
     if provider_name == "openai":
         openai_config = _build_openai_config(provider_env)
 
@@ -81,7 +80,7 @@ def load_provider_settings(
     )
 
 
-def _normalize_provider(raw_value: Optional[str]) -> str:
+def _normalize_provider(raw_value: str | None) -> str:
     candidate = (raw_value or "").strip().lower()
     if not candidate:
         candidate = "deterministic"
@@ -91,7 +90,7 @@ def _normalize_provider(raw_value: Optional[str]) -> str:
     return candidate
 
 
-def _parse_float(raw_value: Optional[str], default: float, env_key: str) -> float:
+def _parse_float(raw_value: str | None, default: float, env_key: str) -> float:
     if raw_value is None or raw_value.strip() == "":
         return default
 
@@ -101,7 +100,7 @@ def _parse_float(raw_value: Optional[str], default: float, env_key: str) -> floa
         raise ProviderSettingsError(f"{env_key} must be numeric (received '{raw_value}')") from exc
 
 
-def _parse_int(raw_value: Optional[str], default: int, env_key: str) -> int:
+def _parse_int(raw_value: str | None, default: int, env_key: str) -> int:
     if raw_value is None or raw_value.strip() == "":
         return default
 
@@ -115,13 +114,10 @@ def _build_openai_config(provider_env: str) -> OpenAIConfig:
     missing = [env_key for env_key in REQUIRED_OPENAI_ENV_VARS if not os.getenv(env_key)]
     if missing:
         formatted_missing = ", ".join(missing)
-        raise ProviderSettingsError(
-            f"{provider_env}=openai requires the following env vars: {formatted_missing}"
-        )
+        raise ProviderSettingsError(f"{provider_env}=openai requires the following env vars: {formatted_missing}")
 
     return OpenAIConfig(
         api_key=os.environ["OPENAI_API_KEY"].strip(),
         model=os.environ["OPENAI_MODEL"].strip(),
         api_base=os.environ["OPENAI_API_BASE"].strip(),
     )
-

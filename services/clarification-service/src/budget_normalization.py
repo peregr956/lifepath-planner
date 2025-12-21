@@ -12,15 +12,13 @@ that any budget format can be processed reliably.
 from __future__ import annotations
 
 import logging
-from typing import Any, Dict, Optional
+from typing import Any
 
 from models.raw_budget import DraftBudgetModel
-
 from providers.openai_budget_normalization import (
-    OpenAIBudgetNormalizationProvider,
     DeterministicBudgetNormalizationProvider,
     NormalizationProviderRequest,
-    NormalizationProviderResponse,
+    OpenAIBudgetNormalizationProvider,
 )
 
 logger = logging.getLogger(__name__)
@@ -34,7 +32,7 @@ __all__ = [
 
 class NormalizationResult:
     """Result of budget normalization including metadata about the process."""
-    
+
     def __init__(
         self,
         draft: DraftBudgetModel,
@@ -54,22 +52,22 @@ class NormalizationResult:
         self.success = success
 
 
-def create_normalization_provider(settings: Optional[Any] = None) -> Any:
+def create_normalization_provider(settings: Any | None = None) -> Any:
     """
     Create the appropriate normalization provider based on settings.
-    
+
     Args:
         settings: ProviderSettings object with provider configuration.
-        
+
     Returns:
         A normalization provider instance (OpenAI or Deterministic).
     """
     if settings is None:
         logger.info({"event": "create_normalization_provider", "provider": "deterministic", "reason": "no_settings"})
         return DeterministicBudgetNormalizationProvider()
-    
+
     provider_name = getattr(settings, "provider_name", "deterministic")
-    
+
     if provider_name == "openai":
         if settings.openai is None:
             logger.warning(
@@ -80,36 +78,36 @@ def create_normalization_provider(settings: Optional[Any] = None) -> Any:
                 }
             )
             return DeterministicBudgetNormalizationProvider()
-        
+
         logger.info({"event": "create_normalization_provider", "provider": "openai"})
         return OpenAIBudgetNormalizationProvider(settings)
-    
+
     logger.info({"event": "create_normalization_provider", "provider": "deterministic"})
     return DeterministicBudgetNormalizationProvider()
 
 
 def normalize_draft_budget_with_ai(
     draft: DraftBudgetModel,
-    settings: Optional[Any] = None,
-    context: Optional[Dict[str, Any]] = None,
+    settings: Any | None = None,
+    context: dict[str, Any] | None = None,
 ) -> NormalizationResult:
     """
     Normalize a draft budget using AI to correctly classify income vs expenses.
-    
+
     This function analyzes the raw budget data and returns a normalized version
     where amounts are correctly signed:
     - Income: positive amounts
     - Expenses: negative amounts
     - Debt payments: negative amounts
-    
+
     Args:
         draft: The raw DraftBudgetModel from the ingestion service.
         settings: Optional ProviderSettings for AI provider configuration.
         context: Optional context dict with additional metadata.
-        
+
     Returns:
         NormalizationResult containing the normalized draft and metadata.
-        
+
     Note:
         If AI normalization fails, falls back to deterministic behavior
         (passthrough - amounts unchanged) to ensure the pipeline continues.
@@ -122,13 +120,13 @@ def normalize_draft_budget_with_ai(
             notes="Empty budget - no normalization needed",
             success=True,
         )
-    
+
     provider = create_normalization_provider(settings)
     request = NormalizationProviderRequest(draft, context or {})
-    
+
     try:
         response = provider.normalize(request)
-        
+
         logger.info(
             {
                 "event": "normalize_draft_budget",
@@ -139,7 +137,7 @@ def normalize_draft_budget_with_ai(
                 "debt_count": response.debt_count,
             }
         )
-        
+
         return NormalizationResult(
             draft=response.normalized_draft,
             provider_used=provider.name,
@@ -149,7 +147,7 @@ def normalize_draft_budget_with_ai(
             notes=response.notes,
             success=True,
         )
-        
+
     except Exception as exc:
         logger.error(
             {
@@ -160,11 +158,11 @@ def normalize_draft_budget_with_ai(
                 "error_message": str(exc),
             }
         )
-        
+
         # Fallback to deterministic provider
         fallback = DeterministicBudgetNormalizationProvider()
         fallback_response = fallback.normalize(request)
-        
+
         return NormalizationResult(
             draft=fallback_response.normalized_draft,
             provider_used=f"{provider.name}_fallback_to_deterministic",
@@ -179,25 +177,24 @@ def normalize_draft_budget_with_ai(
 def should_normalize_with_ai(draft: DraftBudgetModel) -> bool:
     """
     Determine if AI normalization should be applied to this budget.
-    
+
     AI normalization is recommended when:
     - All amounts are positive (likely needs expense negation)
     - No clear sign pattern is detected
     - The format hints suggest ambiguous data
-    
+
     Args:
         draft: The raw DraftBudgetModel to analyze.
-        
+
     Returns:
         True if AI normalization is recommended, False otherwise.
     """
     if not draft.lines:
         return False
-    
+
     positive_count = sum(1 for line in draft.lines if line.amount > 0)
     negative_count = sum(1 for line in draft.lines if line.amount < 0)
-    total = len(draft.lines)
-    
+
     # If all amounts are positive and we have multiple lines, likely needs normalization
     if negative_count == 0 and positive_count > 1:
         logger.info(
@@ -209,7 +206,7 @@ def should_normalize_with_ai(draft: DraftBudgetModel) -> bool:
             }
         )
         return True
-    
+
     # If we have a mix but very few negatives, might need normalization
     if negative_count > 0 and positive_count > 0:
         # This looks like a properly signed budget
@@ -223,7 +220,7 @@ def should_normalize_with_ai(draft: DraftBudgetModel) -> bool:
             }
         )
         return True
-    
+
     logger.info(
         {
             "event": "should_normalize_with_ai",
@@ -234,4 +231,3 @@ def should_normalize_with_ai(draft: DraftBudgetModel) -> bool:
         }
     )
     return False
-
