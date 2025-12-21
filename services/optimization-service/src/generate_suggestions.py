@@ -3,8 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import List
 
-from .budget_model import Summary, UnifiedBudgetModel
-from .heuristics import (
+from budget_model import Summary, UnifiedBudgetModel
+from heuristics import (
     classify_debt_priority,
     compute_total_flexible_spend,
     find_flexible_expenses,

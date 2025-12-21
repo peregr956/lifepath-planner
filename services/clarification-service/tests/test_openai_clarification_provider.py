@@ -8,24 +8,10 @@ and fallback behavior without making real API calls.
 from __future__ import annotations
 
 import json
-import sys
-from pathlib import Path
 from typing import Any, Dict
 from unittest.mock import MagicMock, patch
 
 import pytest
-
-SERVICE_ROOT = Path(__file__).resolve().parents[1]
-SERVICE_SRC = SERVICE_ROOT / "src"
-SERVICES_ROOT = SERVICE_ROOT.parent
-INGESTION_SRC = SERVICES_ROOT / "budget-ingestion-service" / "src"
-OPTIMIZATION_SRC = SERVICES_ROOT / "optimization-service" / "src"
-PROVIDERS_SRC = SERVICE_SRC / "providers"
-
-for candidate in (SERVICE_SRC, SERVICES_ROOT, INGESTION_SRC, OPTIMIZATION_SRC, PROVIDERS_SRC):
-    candidate_str = str(candidate)
-    if candidate.exists() and candidate_str not in sys.path:
-        sys.path.insert(0, candidate_str)
 
 from budget_model import (
     Debt,
@@ -36,7 +22,7 @@ from budget_model import (
     UnifiedBudgetModel,
 )
 from clarification_provider import ClarificationProviderRequest, ClarificationProviderResponse
-from openai_clarification import OpenAIClarificationProvider
+from providers.openai_clarification import OpenAIClarificationProvider
 from shared.provider_settings import OpenAIConfig, ProviderSettings
 
 

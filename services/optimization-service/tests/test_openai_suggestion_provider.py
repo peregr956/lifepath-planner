@@ -8,27 +8,12 @@ and fallback behavior without making real API calls.
 from __future__ import annotations
 
 import json
-import sys
-from pathlib import Path
 from typing import Any, Dict
 from unittest.mock import MagicMock, patch
 
 import pytest
 
-SERVICE_ROOT = Path(__file__).resolve().parents[1]
-SERVICE_SRC = SERVICE_ROOT / "src"
-SERVICES_ROOT = SERVICE_ROOT.parent
-PROVIDERS_SRC = SERVICE_SRC / "providers"
-
-# Add SERVICE_ROOT first so we can import from src module
-if str(SERVICE_ROOT) not in sys.path:
-    sys.path.insert(0, str(SERVICE_ROOT))
-if str(SERVICES_ROOT) not in sys.path:
-    sys.path.insert(0, str(SERVICES_ROOT))
-if str(PROVIDERS_SRC) not in sys.path:
-    sys.path.insert(0, str(PROVIDERS_SRC))
-
-from src.budget_model import (
+from budget_model import (
     Debt,
     Expense,
     Income,
@@ -36,8 +21,8 @@ from src.budget_model import (
     Summary,
     UnifiedBudgetModel,
 )
-from src.suggestion_provider import SuggestionProviderRequest, SuggestionProviderResponse
-from openai_suggestions import OpenAISuggestionProvider
+from suggestion_provider import SuggestionProviderRequest, SuggestionProviderResponse
+from providers.openai_suggestions import OpenAISuggestionProvider
 from shared.provider_settings import OpenAIConfig, ProviderSettings
 
 

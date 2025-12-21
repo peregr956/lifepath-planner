@@ -1,19 +1,12 @@
 import asyncio
 import logging
 import random
-import sys
 import time
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Any, Mapping, MutableMapping, Optional, Tuple
 
 import httpx
 from fastapi import Request
-
-SRC_DIR = Path(__file__).resolve().parent
-SERVICES_ROOT = SRC_DIR.parents[1]
-if str(SERVICES_ROOT) not in sys.path:
-    sys.path.insert(0, str(SERVICES_ROOT))
 
 from shared.observability.telemetry import CORRELATION_ID_HEADER, ensure_request_id
 

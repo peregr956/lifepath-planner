@@ -7,7 +7,7 @@ from typing import Any, Dict, Optional
 
 from sqlalchemy.orm import Session
 
-from .models import AuditEvent, BudgetSession
+from persistence.models import AuditEvent, BudgetSession
 
 
 class SessionStage(str, Enum):

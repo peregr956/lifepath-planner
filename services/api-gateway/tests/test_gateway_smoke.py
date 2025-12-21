@@ -1,22 +1,14 @@
-import sys
 from collections import defaultdict
-from pathlib import Path
 from typing import Any, Dict, List
 
 import httpx
 import pytest
 from fastapi.testclient import TestClient
 
-
-ROOT_DIR = Path(__file__).resolve().parents[1]
-SRC_DIR = ROOT_DIR / "src"
-if str(SRC_DIR) not in sys.path:
-    sys.path.insert(0, str(SRC_DIR))
-
-from http_client import RequestMetrics  # noqa: E402
-from main import CLARIFICATION_BASE, INGESTION_BASE, OPTIMIZATION_BASE, app  # noqa: E402
-from persistence.database import SessionLocal  # noqa: E402
-from persistence.models import AuditEvent, BudgetSession  # noqa: E402
+from http_client import RequestMetrics
+from main import CLARIFICATION_BASE, INGESTION_BASE, OPTIMIZATION_BASE, app
+from persistence.database import SessionLocal
+from persistence.models import AuditEvent, BudgetSession
 
 
 class StubHttpClient:

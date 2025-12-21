@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import List
 
-from .budget_model import Debt, Expense, UnifiedBudgetModel
+from budget_model import Debt, Expense, UnifiedBudgetModel
 
 _PRIORITY_LEVELS = {"low": 0, "medium": 1, "high": 2}
 
