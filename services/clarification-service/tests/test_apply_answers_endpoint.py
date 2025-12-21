@@ -3,7 +3,6 @@ from pathlib import Path
 from typing import Any, Dict
 
 import pytest
-
 from budget_model import (
     Debt,
     Expense,
