@@ -101,11 +101,28 @@ The normalization step runs before `draft_to_initial_unified()` in both `/normal
 
 ### ai-answer-application
 
-✅ Clarification service binding logic supports dot-path field IDs, nested debt metadata, and automatic promotion of debt-like expenses. Tests load fixtures in `tests/fixtures/ai_answers_payload.json` to ensure AI-formatted payloads round-trip.
+⚠️ **Partially complete** — Basic answer application works for simple field IDs (`essential_<expense_id>`, `optimization_focus`, `primary_income_type`, `<debt_id>_balance`, etc.). However, the following are **not yet implemented**:
+- Binding-style/dot-path field IDs (e.g., `income.income-1.metadata.net_or_gross`)
+- Automatic promotion of debt-like expenses to the debts array
+
+Tests for binding-style payloads are currently skipped pending implementation:
+- `test_apply_answers_handles_binding_style_payloads` in `test_normalization.py`
+- `test_apply_answers_accepts_binding_style_fields` in `test_apply_answers_endpoint.py`
 
 ### model-enrichment-backlog
 
-✅ `normalization.py` now infers income type/stability, flags essential expenses, and detects debts based on heuristics. The new logic is covered by expanded `test_normalization.py` cases.
+⚠️ **Partially complete** — The deterministic `draft_to_initial_unified()` function provides basic normalization:
+- Positive amounts → Income (type="earned", stability="stable" as defaults)
+- Negative amounts → Expenses (with `essential=None` for later clarification)
+
+The following enrichment features are **not yet implemented** (marked with TODO comments in `normalization.py`):
+- AI-based income classification (passive vs transfer income)
+- AI-based essential expense detection (currently always `None`)
+- AI-based debt detection from loan-like expense patterns (e.g., "Student Loan" → Debt)
+
+Tests for these features are currently skipped pending implementation:
+- `test_draft_to_initial_unified_splits_income_and_expenses` (expects `essential=True` auto-detection)
+- `test_draft_to_initial_unified_detects_debt_candidates` (expects debt detection from category labels)
 
 ### ingestion-ledger-detection
 

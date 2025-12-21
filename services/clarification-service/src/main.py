@@ -8,7 +8,7 @@ from __future__ import annotations
 import logging
 from collections.abc import Sequence
 from datetime import date
-from typing import Any, Literal
+from typing import Any, Literal, Optional
 
 from budget_model import (
     Debt,
@@ -151,9 +151,9 @@ async def request_context_middleware(request: Request, call_next):
 
 class RawBudgetLinePayload(BaseModel):
     source_row_index: int
-    date: date | None = None
+    date: Optional[date] = None
     category_label: str
-    description: str | None
+    description: Optional[str] = None
     amount: float
     metadata: dict[str, Any] = Field(default_factory=dict)
 

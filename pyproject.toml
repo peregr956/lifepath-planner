@@ -54,6 +54,7 @@ typeCheckingMode = "basic"
 [tool.pytest.ini_options]
 markers = [
     "integration: deterministic multi-service pipeline tests",
+    "anyio: marks tests as async (deselect with '-m \"not anyio\"')",
 ]
 pythonpath = [
     "services",
