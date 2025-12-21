@@ -1,4 +1,4 @@
-import { act, render, screen, waitFor, within } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { ClarificationForm } from '../ClarificationForm';
 import type { ClarificationQuestion } from '@/types';
@@ -102,12 +102,8 @@ describe('ClarificationForm', () => {
     const form = screen.getByRole('form', { name: /clarification/i });
     const input = within(form).getByRole('spinbutton', { name: /monthly amount/i });
 
-    await act(async () => {
-      await user.type(input, '123');
-    });
-    await act(async () => {
-      await user.click(screen.getByRole('button', { name: /continue/i }));
-    });
+    await user.type(input, '123');
+    await user.click(screen.getByRole('button', { name: /continue/i }));
 
     expect(handleSubmit).toHaveBeenCalledWith({ monthly_amount: 123 });
   });
@@ -118,9 +114,7 @@ describe('ClarificationForm', () => {
 
     render(<ClarificationForm questions={groupedQuestions} onSubmit={handleSubmit} />);
 
-    await act(async () => {
-      await user.click(screen.getByRole('button', { name: /continue/i }));
-    });
+    await user.click(screen.getByRole('button', { name: /continue/i }));
 
     expect(await screen.findByText(/current balance must be a number/i)).toBeInTheDocument();
     expect(await screen.findByText(/set a priority must be selected/i)).toBeInTheDocument();
@@ -134,12 +128,8 @@ describe('ClarificationForm', () => {
     render(<ClarificationForm questions={groupedQuestionsWithDefaults} onSubmit={handleSubmit} />);
 
     const balanceInput = screen.getByRole('spinbutton', { name: /current balance/i });
-    await act(async () => {
-      await user.type(balanceInput, '6400');
-    });
-    await act(async () => {
-      await user.click(screen.getByRole('button', { name: /continue/i }));
-    });
+    await user.type(balanceInput, '6400');
+    await user.click(screen.getByRole('button', { name: /continue/i }));
 
     expect(handleSubmit).toHaveBeenCalledWith({ balance: 6400, priority: 'high' });
   });
