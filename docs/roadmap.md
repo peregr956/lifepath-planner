@@ -11,7 +11,7 @@ This roadmap outlines the phased delivery plan for the LifePath Planner MVP, ens
 - Deterministic pipeline snapshots (`tests/test_deterministic_pipeline.py`) provide regression coverage before ChatGPT integration.
 - The legacy Streamlit UI has been removed; Next.js (`services/ui-web`) is the canonical client going forward.
 - Repository structure has been cleaned up: `sys.path` manipulation removed, proper package imports via `conftest.py` files, and `pyproject.toml` configuration for IDE support.
-- Test coverage audit completed (December 2024) — gaps documented in Phase 7 below.
+- **Test coverage expansion** (December 2024) — High-priority test coverage completed for all core business logic modules: `heuristics.py`, `generate_suggestions.py`, `format_detection.py`, `query_analyzer.py`, and `adaptive_questioning.py`. All modules now have ≥80% line coverage. See Phase 7 for remaining gaps.
 - **CI/CD pipeline implemented** (December 2024) — GitHub Actions workflow with linting (ruff, pyright, ESLint, Prettier), Python 3.11+ test matrix, and deterministic pipeline validation. See `docs/development.md` for local commands and `.github/workflows/ci.yml` for the workflow definition.
 - **Technical debt cleanup** (December 2024) — API gateway now validates answers before upstream calls; binding-style field IDs implemented; AI-related TODOs documented as future work. See Phase 6 for details.
 
@@ -155,15 +155,15 @@ See the documentation block at the top of `services/clarification-service/src/no
 
 The following modules have been identified as lacking dedicated test coverage. Addressing these will improve reliability and regression safety.
 
-### High Priority (Core Business Logic)
+### High Priority (Core Business Logic) ✅ Complete
 
-| Module | Service | Description |
-|--------|---------|-------------|
-| `heuristics.py` | optimization-service | Financial rules that drive suggestions (debt ratios, savings targets, emergency fund thresholds) |
-| `generate_suggestions.py` | optimization-service | Core suggestion generation and ranking logic |
-| `format_detection.py` | budget-ingestion-service | Ledger vs categorical budget detection heuristics |
-| `query_analyzer.py` | clarification-service | User query intent analysis for personalization |
-| `adaptive_questioning.py` | clarification-service | Adaptive question flow and follow-up logic |
+| Module | Service | Description | Status |
+|--------|---------|-------------|--------|
+| `heuristics.py` | optimization-service | Financial rules that drive suggestions (debt ratios, savings targets, emergency fund thresholds) | ✅ Complete (December 2024) — Tests in `services/optimization-service/tests/test_heuristics.py` |
+| `generate_suggestions.py` | optimization-service | Core suggestion generation and ranking logic | ✅ Complete (December 2024) — Tests in `services/optimization-service/tests/test_generate_suggestions.py` |
+| `format_detection.py` | budget-ingestion-service | Ledger vs categorical budget detection heuristics | ✅ Complete (December 2024) — Tests in `services/budget-ingestion-service/tests/test_format_detection.py` |
+| `query_analyzer.py` | clarification-service | User query intent analysis for personalization | ✅ Complete (December 2024) — Tests in `services/clarification-service/tests/test_query_analyzer.py` |
+| `adaptive_questioning.py` | clarification-service | Adaptive question flow and follow-up logic | ✅ Complete (December 2024) — Tests in `services/clarification-service/tests/test_adaptive_questioning.py` |
 
 ### Medium Priority (Stability & Reliability)
 
@@ -193,7 +193,7 @@ The following modules have been identified as lacking dedicated test coverage. A
 
 **Acceptance Criteria**
 
-- Each high-priority module has ≥80% line coverage.
+- ✅ Each high-priority module has ≥80% line coverage (completed December 2024).
 - Medium-priority modules have at least happy-path and primary error-case tests.
 - Integration test suite can run against local Docker Compose stack.
 
