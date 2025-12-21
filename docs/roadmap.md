@@ -99,7 +99,38 @@ The remaining work before wiring ChatGPT is limited to the forthcoming AI integr
 
 ---
 
-## Phase 6 — Test Coverage Expansion
+## Phase 6 — Clarification Service Enhancements
+
+The following clarification service features are documented but not yet implemented. Tests for these features are currently skipped.
+
+### Binding-Style Answer Format
+**Status:** Not implemented
+**Tests:** Skipped in `test_normalization.py`, `test_apply_answers_endpoint.py`
+
+Support for dot-path field IDs in answer payloads (e.g., `income.income-1.metadata.net_or_gross`, `expenses.rent.essential`). This would allow more flexible answer mapping from AI-generated questions.
+
+**Implementation notes:**
+- Parse dot-path field IDs in `apply_answers_to_model()`
+- Map to appropriate model fields dynamically
+- Fixture exists: `tests/fixtures/ai_answers_payload.json`
+
+### AI-Based Model Enrichment
+**Status:** Partially implemented (defaults only)
+**Tests:** Skipped in `test_normalization.py`
+
+Currently `draft_to_initial_unified()` uses sign-based rules only:
+- All income defaults to `type="earned"`, `stability="stable"`
+- All expenses default to `essential=None`
+- No automatic debt detection
+
+**Remaining work:**
+- [ ] AI-based income classification (passive vs earned vs transfer)
+- [ ] AI-based essential expense detection (housing, utilities → essential)
+- [ ] AI-based debt detection from expense patterns (e.g., "Student Loan Payment" → Debt entry)
+
+---
+
+## Phase 7 — Test Coverage Expansion
 
 The following modules have been identified as lacking dedicated test coverage. Addressing these will improve reliability and regression safety.
 
@@ -147,7 +178,7 @@ The following modules have been identified as lacking dedicated test coverage. A
 
 ---
 
-## Phase 7 — Post-MVP Enhancements (Ongoing)
+## Phase 8 — Post-MVP Enhancements (Ongoing)
 
 - Collect user feedback and prioritize:
   - Multi-year projections.
