@@ -69,7 +69,7 @@ export function BudgetSessionProvider({ children }: { children: ReactNode }) {
       }
       const query = params.toString();
       const nextUrl = query.length ? `${pathname}?${query}` : pathname;
-      router.replace(nextUrl, { scroll: false });
+      router.replace(nextUrl as any, { scroll: false });
     },
     [pathname, router, searchParams]
   );
