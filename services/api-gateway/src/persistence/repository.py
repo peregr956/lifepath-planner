@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from enum import Enum
-from typing import Any, Dict, Optional
+from typing import Any
 
 from sqlalchemy.orm import Session
 
@@ -27,10 +27,10 @@ class BudgetSessionRepository:
     def create_session(
         self,
         session_id: str,
-        draft_payload: Dict[str, Any],
+        draft_payload: dict[str, Any],
         *,
-        source_ip: Optional[str] = None,
-        details: Optional[Dict[str, Any]] = None,
+        source_ip: str | None = None,
+        details: dict[str, Any] | None = None,
     ) -> BudgetSession:
         record = BudgetSession(
             id=session_id,
@@ -50,16 +50,16 @@ class BudgetSessionRepository:
         self._db.refresh(record)
         return record
 
-    def get_session(self, session_id: str) -> Optional[BudgetSession]:
+    def get_session(self, session_id: str) -> BudgetSession | None:
         return self._db.get(BudgetSession, session_id)
 
     def update_partial(
         self,
         session: BudgetSession,
-        partial_model: Optional[Dict[str, Any]],
+        partial_model: dict[str, Any] | None,
         *,
-        source_ip: Optional[str] = None,
-        details: Optional[Dict[str, Any]] = None,
+        source_ip: str | None = None,
+        details: dict[str, Any] | None = None,
     ) -> BudgetSession:
         previous_stage = session.stage
         session.partial = partial_model
@@ -80,10 +80,10 @@ class BudgetSessionRepository:
     def update_final(
         self,
         session: BudgetSession,
-        final_model: Optional[Dict[str, Any]],
+        final_model: dict[str, Any] | None,
         *,
-        source_ip: Optional[str] = None,
-        details: Optional[Dict[str, Any]] = None,
+        source_ip: str | None = None,
+        details: dict[str, Any] | None = None,
     ) -> BudgetSession:
         previous_stage = session.stage
         session.final = final_model
@@ -106,8 +106,8 @@ class BudgetSessionRepository:
         session: BudgetSession,
         query: str,
         *,
-        source_ip: Optional[str] = None,
-        details: Optional[Dict[str, Any]] = None,
+        source_ip: str | None = None,
+        details: dict[str, Any] | None = None,
     ) -> BudgetSession:
         """Store the user's initial question/query for personalized guidance."""
         session.user_query = query
@@ -127,10 +127,10 @@ class BudgetSessionRepository:
     def store_user_profile(
         self,
         session: BudgetSession,
-        profile_data: Dict[str, Any],
+        profile_data: dict[str, Any],
         *,
-        source_ip: Optional[str] = None,
-        details: Optional[Dict[str, Any]] = None,
+        source_ip: str | None = None,
+        details: dict[str, Any] | None = None,
     ) -> BudgetSession:
         """Store user profile data collected through adaptive questioning."""
         # Merge with existing profile if any
@@ -150,7 +150,7 @@ class BudgetSessionRepository:
         self._db.refresh(session)
         return session
 
-    def get_user_context(self, session: BudgetSession) -> Dict[str, Any]:
+    def get_user_context(self, session: BudgetSession) -> dict[str, Any]:
         """Retrieve user query and profile data for use in question/suggestion generation."""
         return {
             "user_query": session.user_query,
@@ -162,10 +162,10 @@ class BudgetSessionRepository:
         *,
         action: str,
         session: BudgetSession,
-        source_ip: Optional[str],
-        from_stage: Optional[str],
-        to_stage: Optional[str],
-        details: Optional[Dict[str, Any]],
+        source_ip: str | None,
+        from_stage: str | None,
+        to_stage: str | None,
+        details: dict[str, Any] | None,
     ) -> None:
         event = AuditEvent(
             session_id=session.id,
@@ -176,4 +176,3 @@ class BudgetSessionRepository:
             details=details,
         )
         self._db.add(event)
-

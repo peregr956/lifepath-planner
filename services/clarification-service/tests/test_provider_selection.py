@@ -4,7 +4,6 @@ from typing import Any, Dict
 
 import pytest
 from fastapi.testclient import TestClient
-
 from main import app, reload_clarification_provider_for_tests
 
 SERVICE_ROOT = Path(__file__).resolve().parents[1]
@@ -13,7 +12,7 @@ SERVICE_ROOT = Path(__file__).resolve().parents[1]
 client = TestClient(app)
 
 
-def _draft_payload() -> Dict[str, Any]:
+def _draft_payload() -> dict[str, Any]:
     return {
         "lines": [
             {
@@ -38,7 +37,7 @@ def _draft_payload() -> Dict[str, Any]:
     }
 
 
-def _load_mock_questions() -> Dict[str, Any]:
+def _load_mock_questions() -> dict[str, Any]:
     fixture_path = SERVICE_ROOT / "tests" / "fixtures" / "mock_clarification_provider.json"
     return json.loads(fixture_path.read_text())
 
@@ -63,4 +62,3 @@ def test_clarify_uses_mock_provider(monkeypatch: pytest.MonkeyPatch) -> None:
     body = response.json()
     mock_payload = _load_mock_questions()
     assert body["questions"] == mock_payload["questions"]
-

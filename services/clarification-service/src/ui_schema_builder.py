@@ -2,7 +2,8 @@ from __future__ import annotations
 
 """Deterministic UI schema builder for the clarification service."""
 
-from typing import Any, Dict, List, Optional, Sequence, TYPE_CHECKING
+from collections.abc import Sequence
+from typing import TYPE_CHECKING, Any
 
 from normalization import ESSENTIAL_PREFIX, PRIMARY_INCOME_FLAG_METADATA_KEY
 
@@ -22,20 +23,20 @@ _UNSET = object()
 def build_number_input(
     field_id: str,
     label: str,
-    min_value: Optional[float] = None,
-    max_value: Optional[float] = None,
-    unit: Optional[str] = None,
-    step: Optional[float] = None,
+    min_value: float | None = None,
+    max_value: float | None = None,
+    unit: str | None = None,
+    step: float | None = None,
     *,
-    binding: Optional[str] = None,
+    binding: str | None = None,
     default: Any = _UNSET,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Build a descriptor for a numeric input UI component following the spec in
     docs/ui_components_spec.md.
     """
 
-    constraints: Dict[str, Any] = {}
+    constraints: dict[str, Any] = {}
     if min_value is not None:
         constraints["minimum"] = min_value
     if max_value is not None:
@@ -47,7 +48,7 @@ def build_number_input(
     if default is not _UNSET:
         constraints["default"] = default
 
-    component: Dict[str, Any] = {
+    component: dict[str, Any] = {
         "field_id": field_id,
         "component": "number_input",
         "label": label,
@@ -62,22 +63,22 @@ def build_number_input(
 def build_dropdown(
     field_id: str,
     label: str,
-    options: List[str],
+    options: list[str],
     *,
-    binding: Optional[str] = None,
+    binding: str | None = None,
     default: Any = _UNSET,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Build a descriptor for a dropdown UI component.
     """
 
-    component: Dict[str, Any] = {
+    component: dict[str, Any] = {
         "field_id": field_id,
         "component": "dropdown",
         "label": label,
         "options": list(options),
     }
-    constraints: Dict[str, Any] = {}
+    constraints: dict[str, Any] = {}
     if default is not _UNSET:
         constraints["default"] = default
     if constraints:
@@ -91,19 +92,19 @@ def build_toggle(
     field_id: str,
     label: str,
     *,
-    binding: Optional[str] = None,
+    binding: str | None = None,
     default: Any = _UNSET,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Build a descriptor for a toggle UI component.
     """
 
-    component: Dict[str, Any] = {
+    component: dict[str, Any] = {
         "field_id": field_id,
         "component": "toggle",
         "label": label,
     }
-    constraints: Dict[str, Any] = {}
+    constraints: dict[str, Any] = {}
     if default is not _UNSET:
         constraints["default"] = default
     if constraints:
@@ -113,7 +114,7 @@ def build_toggle(
     return component
 
 
-def build_initial_ui_schema(model: "UnifiedBudgetModel") -> Dict[str, Any]:
+def build_initial_ui_schema(model: UnifiedBudgetModel) -> dict[str, Any]:
     """
     Generate structured UI sections aligned with docs/ui_components_spec.md so
     the frontend can render clarification steps deterministically.
@@ -134,10 +135,10 @@ def build_initial_ui_schema(model: "UnifiedBudgetModel") -> Dict[str, Any]:
     }
 
 
-def _build_income_section(incomes: Sequence["Income"]) -> Dict[str, Any]:
+def _build_income_section(incomes: Sequence[Income]) -> dict[str, Any]:
     primary_income = _select_primary_income(incomes)
     description = "Review your current income sources and clarify the primary one."
-    components: List[Dict[str, Any]] = []
+    components: list[dict[str, Any]] = []
 
     if primary_income:
         net_gross_binding = f"income.{primary_income.id}.metadata.{PRIMARY_INCOME_FLAG_METADATA_KEY}"
@@ -170,11 +171,9 @@ def _build_income_section(incomes: Sequence["Income"]) -> Dict[str, Any]:
     }
 
 
-def _build_expenses_section(expenses: Sequence["Expense"]) -> Dict[str, Any]:
+def _build_expenses_section(expenses: Sequence[Expense]) -> dict[str, Any]:
     description = "Classify spending categories as essential or flexible."
-    pending_classifications = [
-        expense for expense in expenses if getattr(expense, "essential", None) is None
-    ]
+    pending_classifications = [expense for expense in expenses if getattr(expense, "essential", None) is None]
 
     components = [
         build_toggle(
@@ -196,7 +195,7 @@ def _build_expenses_section(expenses: Sequence["Expense"]) -> Dict[str, Any]:
         for expense in expenses
     ]
 
-    summary: Dict[str, Any] = {
+    summary: dict[str, Any] = {
         "entries": summary_entries,
         "pending_classifications": len(pending_classifications),
     }
@@ -216,7 +215,7 @@ def _build_expenses_section(expenses: Sequence["Expense"]) -> Dict[str, Any]:
     }
 
 
-def _build_preferences_section(preferences: "Preferences") -> Dict[str, Any]:
+def _build_preferences_section(preferences: Preferences) -> dict[str, Any]:
     description = "Pick the focus that best fits your current plan."
     components = [
         build_dropdown(
@@ -248,7 +247,7 @@ def _build_preferences_section(preferences: "Preferences") -> Dict[str, Any]:
     }
 
 
-def _build_global_summary(summary: "Summary") -> Dict[str, Any]:
+def _build_global_summary(summary: Summary) -> dict[str, Any]:
     return {
         "total_income": _format_value(summary.total_income),
         "total_expenses": _format_value(summary.total_expenses),
@@ -256,13 +255,11 @@ def _build_global_summary(summary: "Summary") -> Dict[str, Any]:
     }
 
 
-def _format_value(value: float) -> Dict[str, Any]:
+def _format_value(value: float) -> dict[str, Any]:
     return {"raw": value, "formatted": _format_currency(value)}
 
 
-def _summarize_income(
-    incomes: Sequence["Income"], primary_income: Optional["Income"]
-) -> Dict[str, Any]:
+def _summarize_income(incomes: Sequence[Income], primary_income: Income | None) -> dict[str, Any]:
     entries = [
         {
             "id": income.id,
@@ -274,7 +271,7 @@ def _summarize_income(
         for income in incomes
     ]
 
-    summary: Dict[str, Any] = {
+    summary: dict[str, Any] = {
         "entries": entries,
         "income_count": len(entries),
     }
@@ -284,13 +281,13 @@ def _summarize_income(
     return summary
 
 
-def _select_primary_income(incomes: Sequence["Income"]) -> Optional["Income"]:
+def _select_primary_income(incomes: Sequence[Income]) -> Income | None:
     if not incomes:
         return None
     return max(incomes, key=lambda entry: entry.monthly_amount)
 
 
-def _extract_primary_income_type(income: "Income") -> Optional[str]:
+def _extract_primary_income_type(income: Income) -> str | None:
     metadata = getattr(income, "metadata", None)
     if not isinstance(metadata, dict):
         return None
@@ -314,4 +311,3 @@ def _format_percentage(value: float) -> str:
     if percentage.is_integer():
         return f"{int(percentage)}%"
     return f"{percentage:.1f}%"
-

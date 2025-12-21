@@ -136,8 +136,102 @@ pytest services/clarification-service/tests
 
 **Integration tests:**
 ```bash
-pytest tests/test_deterministic_pipeline.py
+pytest tests/test_deterministic_pipeline.py -m integration
 ```
+
+## CI/CD Pipeline
+
+The project uses GitHub Actions for continuous integration. The workflow is defined in `.github/workflows/ci.yml`.
+
+### Workflow Overview
+
+The CI pipeline runs on:
+- Push to `main` branch
+- Pull requests targeting `main`
+
+**Jobs:**
+
+| Job | Description |
+|-----|-------------|
+| `lint-python` | Runs ruff (format + lint) and pyright type checking |
+| `lint-ui` | Runs ESLint, Prettier, and TypeScript type check for UI |
+| `test-python` | Runs pytest for all Python services (Python 3.11, 3.12, 3.13 matrix) |
+| `test-ui` | Runs vitest for the UI service |
+| `test-deterministic-pipeline` | Runs the integration test suite |
+| `ci-success` | Final check that all jobs passed |
+
+### Running Linting Locally
+
+**Python linting:**
+```bash
+# Check formatting (will fail if files need reformatting)
+ruff format --check .
+
+# Auto-fix formatting
+ruff format .
+
+# Run linter
+ruff check .
+
+# Auto-fix linter issues where possible
+ruff check --fix .
+
+# Run type checking
+pyright
+```
+
+**UI linting:**
+```bash
+cd services/ui-web
+
+# Run ESLint
+npm run lint
+
+# Check formatting
+npm run format
+
+# Auto-fix formatting
+npm run format:write
+
+# Type check
+npm run type-check
+```
+
+### Running All Tests Locally
+
+**Python services:**
+```bash
+# All services
+pytest services/api-gateway/tests -v
+pytest services/budget-ingestion-service/tests -v
+pytest services/clarification-service/tests -v
+pytest services/optimization-service/tests -v
+
+# Integration tests
+pytest tests/test_deterministic_pipeline.py -v -m integration
+```
+
+**UI service:**
+```bash
+cd services/ui-web && npm run test
+```
+
+### OpenAI Secret Handling in CI
+
+Tests that require OpenAI API access are handled gracefully when secrets are unavailable:
+
+- The CI sets `SKIP_LLM_TESTS=1` when `OPENAI_API_KEY` is not configured
+- Tests using mocks (e.g., `test_openai_clarification_provider.py`) run regardless
+- To run LLM tests locally, configure `.env` with your OpenAI credentials (see `docs/operations.md`)
+
+### Branch Protection
+
+To enforce CI checks before merging:
+
+1. Go to Repository Settings → Branches → Branch protection rules
+2. Add rule for `main` branch
+3. Enable "Require status checks to pass before merging"
+4. Select required checks: `lint-python`, `lint-ui`, `test-python`, `test-ui`, `test-deterministic-pipeline`
 
 ## Adding a New Service
 

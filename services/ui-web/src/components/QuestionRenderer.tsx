@@ -35,10 +35,7 @@ export function QuestionRenderer<TFieldValues extends FieldValues>({
       <legend className="space-y-1 text-base font-semibold leading-tight text-white">
         <span>{question.prompt}</span>
         {question.description && (
-          <p
-            id={`${question.id}-description`}
-            className="text-sm font-normal text-white/70"
-          >
+          <p id={`${question.id}-description`} className="text-sm font-normal text-white/70">
             {question.description}
           </p>
         )}
@@ -74,17 +71,32 @@ type ComponentFieldProps = {
   onChange: (value: ClarificationAnswerValue | undefined) => void;
 };
 
-function ComponentField({ component, value, onChange, disabled, errorMessage }: ComponentFieldProps) {
+function ComponentField({
+  component,
+  value,
+  onChange,
+  disabled,
+  errorMessage,
+}: ComponentFieldProps) {
   const labelId = `${component.fieldId}-label`;
   const helperId = `${component.fieldId}-helper`;
   const errorId = `${component.fieldId}-error`;
   const descriptionId = component.description ? `${component.fieldId}-description` : undefined;
   const helperText = buildHelperText(component);
 
-  const describedBy = mergeIds([descriptionId, helperText ? helperId : undefined, errorMessage ? errorId : undefined]);
+  const describedBy = mergeIds([
+    descriptionId,
+    helperText ? helperId : undefined,
+    errorMessage ? errorId : undefined,
+  ]);
 
   return (
-    <div className="flex flex-col gap-2" role="group" aria-labelledby={labelId} aria-describedby={describedBy}>
+    <div
+      className="flex flex-col gap-2"
+      role="group"
+      aria-labelledby={labelId}
+      aria-describedby={describedBy}
+    >
       <div className="space-y-1">
         <p id={labelId} className="text-xs font-semibold uppercase tracking-wide text-white/70">
           {component.label}
@@ -128,7 +140,14 @@ type FieldPrimitiveProps = {
   onChange: (value: ClarificationAnswerValue | undefined) => void;
 };
 
-function FieldPrimitive({ component, value, disabled, ariaLabelledBy, ariaDescribedBy, onChange }: FieldPrimitiveProps) {
+function FieldPrimitive({
+  component,
+  value,
+  disabled,
+  ariaLabelledBy,
+  ariaDescribedBy,
+  onChange,
+}: FieldPrimitiveProps) {
   switch (component.component) {
     case 'number_input':
       return (
@@ -251,7 +270,7 @@ function DropdownField({
         id={triggerId}
         aria-labelledby={ariaLabelledBy}
         aria-describedby={ariaDescribedBy}
-        className="inline-flex w-full items-center justify-between gap-2 rounded-lg border border-white/20 bg-white/5 px-3 py-2 text-left text-sm text-white focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/40 data-[placeholder]:text-white/40 disabled:cursor-not-allowed disabled:opacity-60"
+        className="inline-flex w-full items-center justify-between gap-2 rounded-lg border border-white/20 bg-white/5 px-3 py-2 text-left text-sm text-white focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/40 disabled:cursor-not-allowed disabled:opacity-60 data-[placeholder]:text-white/40"
       >
         <Select.Value placeholder="Select an option" />
         <Select.Icon>
@@ -299,7 +318,7 @@ function ToggleField({
         checked={resolvedValue}
         onCheckedChange={(checked) => onChange(checked)}
         disabled={disabled}
-        className="relative inline-flex h-6 w-11 items-center rounded-full border border-white/30 bg-white/10 transition data-[state=checked]:bg-indigo-500 data-[state=unchecked]:bg-white/15 disabled:cursor-not-allowed disabled:opacity-60"
+        className="relative inline-flex h-6 w-11 items-center rounded-full border border-white/30 bg-white/10 transition disabled:cursor-not-allowed disabled:opacity-60 data-[state=checked]:bg-indigo-500 data-[state=unchecked]:bg-white/15"
       >
         <Switch.Thumb className="block h-5 w-5 translate-x-0.5 rounded-full bg-white shadow transition data-[state=checked]:translate-x-[22px]" />
       </Switch.Root>

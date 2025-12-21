@@ -14,7 +14,7 @@ import json
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Protocol, runtime_checkable
+from typing import Any, Protocol, runtime_checkable
 
 from budget_model import UnifiedBudgetModel
 from question_generator import QuestionSpec, generate_clarification_questions
@@ -38,7 +38,7 @@ class ClarificationProviderRequest:
 
     model: UnifiedBudgetModel
     max_questions: int = DEFAULT_MAX_QUESTIONS
-    context: Dict[str, Any] = field(default_factory=dict)
+    context: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass(slots=True)
@@ -52,7 +52,7 @@ class ClarificationProviderResponse:
             and JSON-serializable.
     """
 
-    questions: List[QuestionSpec] = field(default_factory=list)
+    questions: list[QuestionSpec] = field(default_factory=list)
 
 
 @runtime_checkable
@@ -108,9 +108,7 @@ class MockClarificationProvider:
 
         self._fixture_path = Path(candidate)
         if not self._fixture_path.exists():
-            raise FileNotFoundError(
-                f"Mock clarification provider fixture not found at {self._fixture_path}"
-            )
+            raise FileNotFoundError(f"Mock clarification provider fixture not found at {self._fixture_path}")
 
     def generate(self, request: ClarificationProviderRequest) -> ClarificationProviderResponse:
         payload = self._load_fixture()
@@ -118,13 +116,11 @@ class MockClarificationProvider:
         questions = [_deserialize_question(item) for item in question_payloads]
         return ClarificationProviderResponse(questions=questions[: request.max_questions])
 
-    def _load_fixture(self) -> Dict[str, Any]:
+    def _load_fixture(self) -> dict[str, Any]:
         try:
             return json.loads(self._fixture_path.read_text())
         except json.JSONDecodeError as exc:
-            raise ValueError(
-                f"Mock clarification provider fixture is not valid JSON: {self._fixture_path}"
-            ) from exc
+            raise ValueError(f"Mock clarification provider fixture is not valid JSON: {self._fixture_path}") from exc
 
 
 def _default_fixture_path() -> Path:
@@ -132,7 +128,7 @@ def _default_fixture_path() -> Path:
     return service_root / "tests" / "fixtures" / "mock_clarification_provider.json"
 
 
-def _deserialize_question(item: Dict[str, Any]) -> QuestionSpec:
+def _deserialize_question(item: dict[str, Any]) -> QuestionSpec:
     return QuestionSpec(
         question_id=item["question_id"],
         prompt=item["prompt"],
@@ -143,7 +139,7 @@ def _deserialize_question(item: Dict[str, Any]) -> QuestionSpec:
 def build_clarification_provider(
     name: str | None,
     *,
-    settings: Optional[Any] = None,
+    settings: Any | None = None,
 ) -> ClarificationQuestionProvider:
     """
     Factory that instantiates the requested clarification provider.
@@ -160,9 +156,7 @@ def build_clarification_provider(
     if normalized == "openai":
         # Import lazily to avoid circular dependencies and path issues
         from providers.openai_clarification import OpenAIClarificationProvider
+
         return OpenAIClarificationProvider(settings=settings)
 
     raise ValueError(f"Unsupported clarification provider '{name}'")
-
-
-

@@ -7,17 +7,15 @@ from typing import Dict
 import httpx
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
-
 from http_client import RequestMetrics
 from main import app
 from persistence.database import get_session
 from persistence.models import Base
 from persistence.repository import BudgetSessionRepository
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
 
-
-BASE_PARTIAL_MODEL: Dict[str, object] = {
+BASE_PARTIAL_MODEL: dict[str, object] = {
     "income": [
         {
             "id": "income-draft-1-1",
@@ -108,7 +106,7 @@ def _seed_budget_session(session_factory) -> str:
 def test_submit_answers_validation_success_proxies_upstream(client: TestClient, session_factory, monkeypatch) -> None:
     captured_calls = []
 
-    async def fake_post(url: str, *, json: Dict[str, object], request_id: str, **kwargs):
+    async def fake_post(url: str, *, json: dict[str, object], request_id: str, **kwargs):
         captured_calls.append({"url": url, "json": json, "request_id": request_id})
         return (
             httpx.Response(200, json={"updated_model": {"summary": {}}, "ready_for_summary": True}),
@@ -143,7 +141,7 @@ def test_submit_answers_validation_success_proxies_upstream(client: TestClient, 
 
 
 def test_submit_answers_ready_flag_false_updates_status(client: TestClient, session_factory, monkeypatch) -> None:
-    async def fake_post(url: str, *, json: Dict[str, object], request_id: str, **kwargs):
+    async def fake_post(url: str, *, json: dict[str, object], request_id: str, **kwargs):
         return (
             httpx.Response(200, json={"updated_model": {"summary": {}}, "ready_for_summary": False}),
             RequestMetrics(attempts=1, latency_ms=8.4),
@@ -193,4 +191,3 @@ def test_submit_answers_validation_failure_returns_400(client: TestClient, sessi
     reasons = {issue["reason"] for issue in payload["issues"]}
     assert "invalid_boolean" in reasons
     assert "unsupported_field_id" in reasons
-

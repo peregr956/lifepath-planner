@@ -9,7 +9,7 @@ from persistence.database import (
     get_engine,
     init_db,
 )
-from persistence.models import AuditEvent, BudgetSession, Base
+from persistence.models import AuditEvent, Base, BudgetSession
 
 __all__ = [
     "AuditEvent",
@@ -23,4 +23,3 @@ __all__ = [
     "get_engine",
     "init_db",
 ]
-

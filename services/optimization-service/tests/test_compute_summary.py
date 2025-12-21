@@ -1,5 +1,4 @@
 import pytest
-
 from budget_model import Expense, Income, Preferences, Summary, UnifiedBudgetModel
 from compute_summary import (
     attach_summary_to_model,

@@ -1,6 +1,6 @@
 import logging
 import os
-from typing import Any, Dict, List, Optional
+from typing import Any
 from uuid import uuid4
 
 import httpx
@@ -16,7 +16,7 @@ def _get_provider_env(key: str) -> str:
     return os.getenv(key, "deterministic")
 
 
-def _build_provider_metadata() -> Dict[str, Any]:
+def _build_provider_metadata() -> dict[str, Any]:
     """
     Construct provider metadata to include in API responses.
 
@@ -32,11 +32,17 @@ def _build_provider_metadata() -> Dict[str, Any]:
         "ai_enabled": clarification_provider == "openai" or suggestion_provider == "openai",
     }
 
+
 from http_client import ResilientHttpClient
+from middleware.rate_limit import SimpleRateLimiter, build_default_rate_limiter
 from persistence.database import get_session, init_db
 from persistence.repository import BudgetSessionRepository
-from middleware.rate_limit import SimpleRateLimiter, build_default_rate_limiter
-from shared.observability.telemetry import bind_request_context, ensure_request_id, reset_request_context, setup_telemetry
+from shared.observability.telemetry import (
+    bind_request_context,
+    ensure_request_id,
+    reset_request_context,
+    setup_telemetry,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -45,7 +51,7 @@ setup_telemetry(app, service_name="api-gateway")
 app.state.rate_limiter = build_default_rate_limiter()
 
 
-DEFAULT_CORS_ORIGINS: List[str] = [
+DEFAULT_CORS_ORIGINS: list[str] = [
     "http://localhost:3000",
     "http://127.0.0.1:3000",
     "http://localhost:4173",
@@ -60,7 +66,7 @@ CORS_ENV_KEYS = (
 )
 
 
-def _resolve_cors_origins() -> List[str]:
+def _resolve_cors_origins() -> list[str]:
     """
     Determine which origins are allowed to call the gateway.
 
@@ -168,7 +174,7 @@ async def upload_budget(
     request: Request,
     file: UploadFile = File(...),
     db: Session = Depends(get_session),
-) -> Dict[str, Any] | JSONResponse:
+) -> dict[str, Any] | JSONResponse:
     """Starts the pipeline by proxying uploads to the ingestion service's /ingest endpoint."""
     if file is None:
         return error_response(400, "file_required", "File upload is required.")
@@ -225,9 +231,9 @@ async def upload_budget(
             "Budget ingestion service is unavailable.",
         )
 
-    draft_budget: Dict[str, Any] = ingestion_response.json()
+    draft_budget: dict[str, Any] = ingestion_response.json()
 
-    lines: List[Dict[str, Any]] = draft_budget.get("lines") or []
+    lines: list[dict[str, Any]] = draft_budget.get("lines") or []
     detected_income_lines = 0
     detected_expense_lines = 0
     for line in lines:
@@ -286,7 +292,7 @@ async def submit_user_query(
     payload: UserQueryPayload,
     request: Request,
     db: Session = Depends(get_session),
-) -> Dict[str, Any] | JSONResponse:
+) -> dict[str, Any] | JSONResponse:
     """Store the user's initial question/query for personalized guidance."""
     request_id = ensure_request_id(request)
     repo = BudgetSessionRepository(db)
@@ -329,8 +335,8 @@ async def clarification_questions(
     budget_id: str,
     request: Request,
     db: Session = Depends(get_session),
-    user_query: Optional[str] = None,
-) -> Dict[str, Any] | JSONResponse:
+    user_query: str | None = None,
+) -> dict[str, Any] | JSONResponse:
     """Sends stored draft data to clarification service /clarify to generate questions and a partial model."""
     repo = BudgetSessionRepository(db)
     budget_session = repo.get_session(budget_id)
@@ -349,7 +355,7 @@ async def clarification_questions(
 
     # Get user context (query + profile) from session
     user_context = repo.get_user_context(budget_session)
-    
+
     # Use the query parameter if provided, otherwise fall back to stored query
     effective_user_query = user_query or user_context.get("user_query")
 
@@ -397,7 +403,7 @@ async def clarification_questions(
             "Clarification service is unavailable.",
         )
 
-    clarification_data: Dict[str, Any] = clarification_response.json()
+    clarification_data: dict[str, Any] = clarification_response.json()
 
     partial_model = clarification_data.get("partial_model")
     questions = clarification_data.get("questions", [])
@@ -430,7 +436,7 @@ async def clarification_questions(
 
 class SubmitAnswersPayload(BaseModel):
     budget_id: str
-    answers: Dict[str, Any]
+    answers: dict[str, Any]
 
 
 @app.post("/submit-answers", response_model=None)
@@ -438,7 +444,7 @@ async def submit_answers(
     payload: SubmitAnswersPayload,
     request: Request,
     db: Session = Depends(get_session),
-) -> Dict[str, Any] | JSONResponse:
+) -> dict[str, Any] | JSONResponse:
     """Calls clarification service /apply-answers to merge user answers into a final unified model."""
     request_id = ensure_request_id(request)
     logger.info(
@@ -501,7 +507,7 @@ async def submit_answers(
                     )
             except Exception:
                 pass  # Fall through to generic error handling
-        
+
         logger.error(
             {
                 "event": "submit_answers_upstream_error",
@@ -531,7 +537,7 @@ async def submit_answers(
             "Clarification service is unavailable.",
         )
 
-    apply_data: Dict[str, Any] = clarification_response.json()
+    apply_data: dict[str, Any] = clarification_response.json()
 
     updated_model = apply_data.get("updated_model")
     ready_for_summary = apply_data.get("ready_for_summary", True)
@@ -566,7 +572,7 @@ async def summary_and_suggestions(
     budget_id: str,
     request: Request,
     db: Session = Depends(get_session),
-) -> Dict[str, Any] | JSONResponse:
+) -> dict[str, Any] | JSONResponse:
     """Finishes the pipeline by calling optimization service /summarize-and-optimize for insights."""
     repo = BudgetSessionRepository(db)
     budget_session = repo.get_session(budget_id)
@@ -585,7 +591,7 @@ async def summary_and_suggestions(
 
     # Get user context (query + profile) from session
     user_context = repo.get_user_context(budget_session)
-    
+
     # Add user context to the payload for optimization service
     optimize_payload = {
         **final_model,
@@ -630,7 +636,7 @@ async def summary_and_suggestions(
             "Optimization service is unavailable.",
         )
 
-    optimization_data: Dict[str, Any] = optimization_response.json()
+    optimization_data: dict[str, Any] = optimization_response.json()
 
     summary_data = optimization_data.get("summary")
     provider_metadata = _build_provider_metadata()

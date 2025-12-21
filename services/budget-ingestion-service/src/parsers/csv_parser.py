@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 import csv
+from collections.abc import Iterable, Sequence
 from io import StringIO
-from typing import Dict, Iterable, List, Optional, Sequence
 
 from models.raw_budget import DraftBudgetModel, RawBudgetLine
 from parsers.format_detection import HeaderSignals, detect_format
@@ -34,13 +34,13 @@ def parse_csv_to_draft_model(file_bytes: bytes) -> DraftBudgetModel:
     date_key = _find_column(reader.fieldnames, DateHeaders)
     header_signals = _extract_header_signals(reader.fieldnames)
 
-    warnings: List[str] = []
+    warnings: list[str] = []
     if category_key is None:
         warnings.append("Category column not detected; leaving labels empty.")
     if amount_key is None:
         warnings.append("Amount column not detected; skipping lines without numeric value.")
 
-    lines: List[RawBudgetLine] = []
+    lines: list[RawBudgetLine] = []
     for row_index, row in enumerate(reader, start=2):  # Header is row 1.
         category_value = row.get(category_key, "").strip() if category_key else ""
         amount_value = row.get(amount_key) if amount_key else None
@@ -86,7 +86,7 @@ def _decode_bytes(file_bytes: bytes) -> str:
     return file_bytes.decode("utf-8", errors="ignore")
 
 
-def _find_column(headers: Sequence[str], candidates: Iterable[str]) -> Optional[str]:
+def _find_column(headers: Sequence[str], candidates: Iterable[str]) -> str | None:
     lowered = {header.lower().strip(): header for header in headers}
     for candidate in candidates:
         normalized = candidate.lower().strip()
@@ -125,7 +125,7 @@ def _parse_date(raw_value: object):
     return None
 
 
-def _build_metadata(row: Dict[str, object], kept_keys: Iterable[Optional[str]]) -> Dict[str, object]:
+def _build_metadata(row: dict[str, object], kept_keys: Iterable[str | None]) -> dict[str, object]:
     reserved = {key for key in kept_keys if key}
     return {key: value for key, value in row.items() if key not in reserved and value not in (None, "")}
 

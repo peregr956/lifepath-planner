@@ -1,33 +1,29 @@
 """End-to-end deterministic pipeline test for ingestion → clarification → optimization."""
+
 from __future__ import annotations
 
 import dataclasses
 import json
 import os
+from collections.abc import Sequence
 from pathlib import Path
-from typing import Dict, Sequence
+from typing import Dict
 
 import pytest
-
-# Imports using proper package paths configured via pyproject.toml
-from models.raw_budget import DraftBudgetModel, RawBudgetLine
-from parsers.csv_parser import parse_csv_to_draft_model
 from budget_model import Expense, UnifiedBudgetModel
 from compute_summary import compute_category_shares, compute_summary_for_model
 from generate_suggestions import Suggestion, generate_suggestions
+
+# Imports using proper package paths configured via pyproject.toml
+from models.raw_budget import DraftBudgetModel, RawBudgetLine
 from normalization import ESSENTIAL_PREFIX, apply_answers_to_model, draft_to_initial_unified
+from parsers.csv_parser import parse_csv_to_draft_model
 from question_generator import QuestionSpec, generate_clarification_questions
 from ui_schema_builder import build_initial_ui_schema
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SERVICES_ROOT = REPO_ROOT / "services"
-FIXTURE_CSV = (
-    SERVICES_ROOT
-    / "budget-ingestion-service"
-    / "tests"
-    / "fixtures"
-    / "household_sample.csv"
-)
+FIXTURE_CSV = SERVICES_ROOT / "budget-ingestion-service" / "tests" / "fixtures" / "household_sample.csv"
 SNAPSHOT_DIR = Path(__file__).parent / "snapshots"
 SNAPSHOT_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -77,11 +73,11 @@ def test_deterministic_pipeline_matches_snapshots() -> None:
     assert pytest.approx(summary.total_income - summary.total_expenses) == summary.surplus
 
 
-def _serialize_model(model: UnifiedBudgetModel) -> Dict[str, object]:
+def _serialize_model(model: UnifiedBudgetModel) -> dict[str, object]:
     return dataclasses.asdict(model)
 
 
-def _serialize_question(question: QuestionSpec) -> Dict[str, object]:
+def _serialize_question(question: QuestionSpec) -> dict[str, object]:
     return {
         "question_id": question.question_id,
         "prompt": question.prompt,
@@ -89,13 +85,13 @@ def _serialize_question(question: QuestionSpec) -> Dict[str, object]:
     }
 
 
-def _serialize_suggestion(suggestion: Suggestion) -> Dict[str, object]:
+def _serialize_suggestion(suggestion: Suggestion) -> dict[str, object]:
     return dataclasses.asdict(suggestion)
 
 
-def _build_answers(model: UnifiedBudgetModel, questions: Sequence[QuestionSpec]) -> Dict[str, object]:
+def _build_answers(model: UnifiedBudgetModel, questions: Sequence[QuestionSpec]) -> dict[str, object]:
     expense_lookup = {expense.id: expense for expense in model.expenses}
-    answers: Dict[str, object] = {}
+    answers: dict[str, object] = {}
 
     for question in questions:
         for component in question.components:
@@ -123,14 +119,14 @@ def _build_answers(model: UnifiedBudgetModel, questions: Sequence[QuestionSpec])
     return answers
 
 
-def _resolve_essential_value(expenses: Dict[str, Expense], expense_id: str) -> bool:
+def _resolve_essential_value(expenses: dict[str, Expense], expense_id: str) -> bool:
     expense = expenses.get(expense_id)
     if not expense:
         return DEFAULT_ESSENTIAL_FLAG
     return ESSENTIAL_CATEGORY_MAP.get(expense.category, DEFAULT_ESSENTIAL_FLAG)
 
 
-def _assert_matches_snapshot(name: str, payload: Dict[str, object]) -> None:
+def _assert_matches_snapshot(name: str, payload: dict[str, object]) -> None:
     normalized = _normalize_for_json(payload)
     snapshot_path = SNAPSHOT_DIR / f"{name}_snapshot.json"
     update_flag = os.getenv("UPDATE_SNAPSHOTS") == "1"

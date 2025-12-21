@@ -2,7 +2,6 @@ import asyncio
 import os
 import time
 from collections import defaultdict, deque
-from typing import Deque, Dict, Tuple
 
 
 class SimpleRateLimiter:
@@ -17,10 +16,10 @@ class SimpleRateLimiter:
         self._max_requests = max(1, max_requests)
         self._window_seconds = max(1, window_seconds)
         self._burst = max(0, burst)
-        self._buckets: Dict[str, Deque[float]] = defaultdict(deque)
+        self._buckets: dict[str, deque[float]] = defaultdict(deque)
         self._lock = asyncio.Lock()
 
-    async def allow(self, client_id: str) -> Tuple[bool, float]:
+    async def allow(self, client_id: str) -> tuple[bool, float]:
         """
         Returns (allowed, retry_after_seconds). When disallowed, retry_after_seconds
         represents how long the client should wait before retrying.
@@ -45,7 +44,7 @@ class SimpleRateLimiter:
             return self._max_requests + self._burst
         return max((self._max_requests + self._burst) - len(bucket), 0)
 
-    def _evict_old(self, bucket: Deque[float], now: float) -> None:
+    def _evict_old(self, bucket: deque[float], now: float) -> None:
         threshold = now - self._window_seconds
         while bucket and bucket[0] <= threshold:
             bucket.popleft()
@@ -55,5 +54,3 @@ def build_default_rate_limiter() -> SimpleRateLimiter:
     per_minute = int(os.getenv("GATEWAY_RATE_LIMIT_PER_MIN", "60"))
     burst = int(os.getenv("GATEWAY_RATE_LIMIT_BURST", "20"))
     return SimpleRateLimiter(max_requests=per_minute, window_seconds=60, burst=burst)
-
-

@@ -1,6 +1,7 @@
-import json
 import hashlib
-from typing import Any, Iterable, Mapping
+import json
+from collections.abc import Iterable, Mapping
+from typing import Any
 
 REDACTED = "[REDACTED]"
 
@@ -41,4 +42,3 @@ def redact_fields(payload: Mapping[str, Any], allowed_keys: Iterable[str]) -> di
         else:
             redacted[key] = REDACTED
     return redacted
-

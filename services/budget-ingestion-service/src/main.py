@@ -4,34 +4,32 @@ structured DraftBudgetModels so downstream services can reason about consistent 
 """
 
 from datetime import date
-from typing import Any, Dict, List, Optional
+from typing import Any, Literal
 
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, Field
-from typing_extensions import Literal
-
 from models.raw_budget import DraftBudgetModel, RawBudgetLine
 from parsers.csv_parser import parse_csv_to_draft_model
 from parsers.xlsx_parser import parse_xlsx_to_draft_model
+from pydantic import BaseModel, Field
 
 app = FastAPI(title="Budget Ingestion Service")
 
 
 class RawBudgetLineModel(BaseModel):
     source_row_index: int
-    date: Optional[date]
+    date: date | None
     category_label: str
-    description: Optional[str]
+    description: str | None
     amount: float
-    metadata: Dict[str, Any]
+    metadata: dict[str, Any]
 
 
 class DraftBudgetResponseModel(BaseModel):
     detected_format: Literal["categorical", "ledger", "unknown"]
-    notes: Optional[str] = None
-    format_hints: Optional[Dict[str, Any]] = None
-    lines: List[RawBudgetLineModel] = Field(default_factory=list)
+    notes: str | None = None
+    format_hints: dict[str, Any] | None = None
+    lines: list[RawBudgetLineModel] = Field(default_factory=list)
 
 
 CSV_CONTENT_TYPES = {
@@ -73,7 +71,7 @@ async def ingest_budget(file: UploadFile = File(...)) -> DraftBudgetResponseMode
     return _draft_model_to_response(draft_model)
 
 
-def _determine_parser_kind(file: UploadFile) -> Optional[str]:
+def _determine_parser_kind(file: UploadFile) -> str | None:
     content_type = (file.content_type or "").lower()
     filename = (file.filename or "").lower()
 
