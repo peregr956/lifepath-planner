@@ -11,7 +11,7 @@ import os
 import sys
 import time
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 import httpx
 
@@ -35,7 +35,7 @@ class LifePathValidator:
     def __init__(self, gateway_url: str = GATEWAY_URL, timeout: float = DEFAULT_TIMEOUT):
         self.gateway_url = gateway_url
         self.client = httpx.Client(timeout=timeout, follow_redirects=True)
-        self.results: List[Dict[str, Any]] = []
+        self.results: list[dict[str, Any]] = []
 
     def check_health(self) -> None:
         """Verify the API gateway is running."""
@@ -47,13 +47,21 @@ class LifePathValidator:
                 raise ValidationError(f"Gateway health check failed: {data}")
             print("✓ API Gateway is healthy")
         except httpx.RequestError as e:
-            raise ValidationError(f"Cannot connect to gateway at {self.gateway_url}: {e}")
+            raise ValidationError(f"Cannot connect to gateway at {self.gateway_url}: {e}") from e
 
     def upload_budget(self, file_path: Path) -> str:
         """Upload a budget file and return the budget_id."""
         print(f"  Uploading {file_path.name}...")
         with open(file_path, "rb") as f:
-            files = {"file": (file_path.name, f, "text/csv" if file_path.suffix == ".csv" else "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")}
+            files = {
+                "file": (
+                    file_path.name,
+                    f,
+                    "text/csv"
+                    if file_path.suffix == ".csv"
+                    else "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                )
+            }
             response = self.client.post(f"{self.gateway_url}/upload-budget", files=files)
 
         response.raise_for_status()
@@ -66,7 +74,7 @@ class LifePathValidator:
         print(f"    ✓ Uploaded (budget_id: {budget_id}, format: {detected_format})")
         return budget_id
 
-    def get_clarification_questions(self, budget_id: str) -> Dict[str, Any]:
+    def get_clarification_questions(self, budget_id: str) -> dict[str, Any]:
         """Get clarification questions for a budget."""
         print("  Fetching clarification questions...")
         response = self.client.get(f"{self.gateway_url}/clarification-questions", params={"budget_id": budget_id})
@@ -86,12 +94,12 @@ class LifePathValidator:
 
         return data
 
-    def submit_answers(self, budget_id: str, questions: Dict[str, Any]) -> Dict[str, Any]:
+    def submit_answers(self, budget_id: str, questions: dict[str, Any]) -> dict[str, Any]:
         """Submit answers to clarification questions."""
         print("  Submitting answers...")
 
         # Generate default answers based on question components
-        answers: Dict[str, Any] = {}
+        answers: dict[str, Any] = {}
         for question in questions.get("questions", []):
             for component in question.get("components", []):
                 field_id = component.get("field_id")
@@ -131,7 +139,7 @@ class LifePathValidator:
         print(f"    ✓ Answers submitted (ready_for_summary: {ready})")
         return data
 
-    def get_summary_and_suggestions(self, budget_id: str) -> Dict[str, Any]:
+    def get_summary_and_suggestions(self, budget_id: str) -> dict[str, Any]:
         """Get budget summary and optimization suggestions."""
         print("  Fetching summary and suggestions...")
         response = self.client.get(f"{self.gateway_url}/summary-and-suggestions", params={"budget_id": budget_id})
@@ -144,7 +152,7 @@ class LifePathValidator:
         surplus = summary.get("surplus", 0)
         suggestion_count = len(data.get("suggestions", []))
 
-        print(f"    ✓ Summary retrieved")
+        print("    ✓ Summary retrieved")
         print(f"      Income: ${total_income:,.2f}")
         print(f"      Expenses: ${total_expenses:,.2f}")
         print(f"      Surplus: ${surplus:,.2f}")
@@ -154,16 +162,20 @@ class LifePathValidator:
             print("    Suggestions:")
             for s in data.get("suggestions", [])[:3]:  # Show first 3
                 title = s.get("title", "Untitled")
-                description = s.get("description", "")[:60] + "..." if len(s.get("description", "")) > 60 else s.get("description", "")
+                description = (
+                    s.get("description", "")[:60] + "..."
+                    if len(s.get("description", "")) > 60
+                    else s.get("description", "")
+                )
                 print(f"      - {title}: {description}")
 
         return data
 
-    def validate_budget(self, file_path: Path) -> Dict[str, Any]:
+    def validate_budget(self, file_path: Path) -> dict[str, Any]:
         """Validate a single budget file through the full pipeline."""
-        print(f"\n{'='*60}")
+        print(f"\n{'=' * 60}")
         print(f"Validating: {file_path.name}")
-        print(f"{'='*60}\n")
+        print(f"{'=' * 60}\n")
 
         start_time = time.time()
         errors = []
@@ -207,7 +219,7 @@ class LifePathValidator:
                 "success": False,
             }
 
-    def validate_all(self, file_paths: List[Path], output_file: Optional[Path] = None) -> Dict[str, Any]:
+    def validate_all(self, file_paths: list[Path], output_file: Path | None = None) -> dict[str, Any]:
         """Validate multiple budget files and generate a report."""
         print("=" * 60)
         print("LifePath Planner Real-World Validation")
@@ -268,7 +280,12 @@ def main():
     parser.add_argument("files", nargs="+", type=Path, help="Budget files to validate (CSV or XLSX)")
     parser.add_argument("--gateway", default=GATEWAY_URL, help=f"API Gateway URL (default: {GATEWAY_URL})")
     parser.add_argument("--output", type=Path, help="Output file for validation report (JSON)")
-    parser.add_argument("--timeout", type=float, default=DEFAULT_TIMEOUT, help=f"Request timeout in seconds (default: {DEFAULT_TIMEOUT})")
+    parser.add_argument(
+        "--timeout",
+        type=float,
+        default=DEFAULT_TIMEOUT,
+        help=f"Request timeout in seconds (default: {DEFAULT_TIMEOUT})",
+    )
 
     args = parser.parse_args()
 
@@ -286,5 +303,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-

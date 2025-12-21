@@ -1,9 +1,8 @@
 from io import BytesIO
 
 import pytest
-from openpyxl import Workbook
-
 from models.raw_budget import DraftBudgetModel, RawBudgetLine
+from openpyxl import Workbook
 from parsers.csv_parser import parse_csv_to_draft_model
 from parsers.xlsx_parser import parse_xlsx_to_draft_model
 

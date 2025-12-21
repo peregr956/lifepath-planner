@@ -41,7 +41,7 @@ const DEFAULT_HOST_PORTS: Array<[string, number]> = [
 ];
 
 const DEFAULT_API_BASE_CANDIDATES = Array.from(
-  new Set(DEFAULT_HOST_PORTS.map(([host, port]) => `http://${host}:${port}`))
+  new Set(DEFAULT_HOST_PORTS.map(([host, port]) => `http://${host}:${port}`)),
 );
 
 const ENV_API_BASE_KEYS = [
@@ -78,7 +78,8 @@ function getEnvSource(): EnvSource {
   if (typeof process !== 'undefined' && process?.env) {
     return process.env as EnvSource;
   }
-  const globalProcess = (globalThis as typeof globalThis & { process?: { env?: EnvSource } }).process;
+  const globalProcess = (globalThis as typeof globalThis & { process?: { env?: EnvSource } })
+    .process;
   return (globalProcess?.env ?? {}) as EnvSource;
 }
 
@@ -117,7 +118,10 @@ function dedupe(values: string[]): string[] {
 
 function coerceCandidateValues(value?: string | null): string[] {
   if (!value) return [];
-  const parts = value.split(/[, \n\r\t]+/).map((part) => normalizeBaseUrl(part)).filter(Boolean) as string[];
+  const parts = value
+    .split(/[, \n\r\t]+/)
+    .map((part) => normalizeBaseUrl(part))
+    .filter(Boolean) as string[];
   return dedupe(parts);
 }
 
@@ -185,7 +189,7 @@ export function setApiBaseCandidates(candidates: string[]): string[] {
   const normalized = dedupe(
     candidates
       .map((candidate) => normalizeBaseUrl(candidate))
-      .filter((candidate): candidate is string => Boolean(candidate))
+      .filter((candidate): candidate is string => Boolean(candidate)),
   );
   const next = normalized.length ? normalized : resolveInitialCandidates();
   apiBaseStore = {
@@ -242,7 +246,7 @@ export function ApiBaseProvider({ children }: { children: ReactNode }) {
         refreshApiBaseCandidates();
       },
     }),
-    [snapshot]
+    [snapshot],
   );
 
   return <ApiBaseContext.Provider value={value}>{children}</ApiBaseContext.Provider>;
@@ -310,7 +314,10 @@ export class ApiClient {
     return normalizeUserQueryResponse(response);
   }
 
-  async fetchClarificationQuestions(budgetId: string, userQuery?: string): Promise<ClarificationQuestionsResponse> {
+  async fetchClarificationQuestions(
+    budgetId: string,
+    userQuery?: string,
+  ): Promise<ClarificationQuestionsResponse> {
     if (!budgetId) {
       throw new Error('budgetId is required to fetch clarification questions.');
     }
@@ -323,14 +330,14 @@ export class ApiClient {
       {
         method: 'GET',
         query,
-      }
+      },
     );
     return normalizeClarificationQuestionsResponse(response);
   }
 
   async submitClarificationAnswers(
     budgetId: string,
-    answers: ClarificationAnswers
+    answers: ClarificationAnswers,
   ): Promise<SubmitAnswersResponse> {
     if (!budgetId) {
       throw new Error('budgetId is required to submit clarification answers.');
@@ -354,7 +361,7 @@ export class ApiClient {
       {
         method: 'GET',
         query: { budget_id: budgetId },
-      }
+      },
     );
     return normalizeSummaryAndSuggestionsResponse(response);
   }
@@ -366,7 +373,9 @@ export class ApiClient {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), this.timeoutMs);
     const finalBody =
-      body && !(body instanceof FormData) && typeof body !== 'string' ? JSON.stringify(body) : body ?? undefined;
+      body && !(body instanceof FormData) && typeof body !== 'string'
+        ? JSON.stringify(body)
+        : (body ?? undefined);
     const finalHeaders = this.buildHeaders(headers, finalBody);
 
     try {
@@ -380,7 +389,12 @@ export class ApiClient {
       if (!response.ok) {
         const errorMessage = this.describeError(response, payload);
         // For 400 errors with validation details, include the full payload
-        if (response.status === 400 && payload && typeof payload === 'object' && 'invalid_fields' in payload) {
+        if (
+          response.status === 400 &&
+          payload &&
+          typeof payload === 'object' &&
+          'invalid_fields' in payload
+        ) {
           throw new ApiError(errorMessage, response.status, payload);
         }
         throw new ApiError(errorMessage, response.status, payload);
@@ -393,7 +407,7 @@ export class ApiClient {
       if (error instanceof TypeError) {
         throw new ApiError(
           `Unable to reach the API gateway at ${activeBaseUrl}. Ensure the gateway is running and reachable from this browser.`,
-          503
+          503,
         );
       }
       throw error;
@@ -648,7 +662,7 @@ function normalizeUploadBudgetResponse(raw: RawUploadBudgetResponse): UploadBudg
 }
 
 function normalizeClarificationQuestionsResponse(
-  raw: RawClarificationQuestionsResponse
+  raw: RawClarificationQuestionsResponse,
 ): ClarificationQuestionsResponse {
   const questions = parseClarificationQuestions(raw.questions);
   return {
@@ -663,7 +677,7 @@ function normalizeSubmitAnswersResponse(raw: RawSubmitAnswersResponse): SubmitAn
   return {
     budgetId: raw.budget_id,
     status: raw.status,
-    readyForSummary: raw.ready_for_summary ?? (raw.status === 'ready_for_summary'),
+    readyForSummary: raw.ready_for_summary ?? raw.status === 'ready_for_summary',
   };
 }
 
@@ -676,7 +690,7 @@ function normalizeUserQueryResponse(raw: RawUserQueryResponse): UserQueryRespons
 }
 
 function normalizeSummaryAndSuggestionsResponse(
-  raw: RawSummaryAndSuggestionsResponse
+  raw: RawSummaryAndSuggestionsResponse,
 ): SummaryAndSuggestionsResponse {
   return {
     budgetId: raw.budget_id,
@@ -792,7 +806,11 @@ function normalizeBudgetSummary(summary?: RawBudgetSummary | null): BudgetSummar
 function parseClarificationQuestions(payload: unknown): ClarificationQuestion[] {
   const parsed = ClarificationQuestionSchema.array().safeParse(payload ?? []);
   if (!parsed.success) {
-    throw new ApiError('Invalid clarification question payload received from gateway.', 502, parsed.error.flatten());
+    throw new ApiError(
+      'Invalid clarification question payload received from gateway.',
+      502,
+      parsed.error.flatten(),
+    );
   }
   return parsed.data.map(normalizeClarificationQuestion);
 }
@@ -807,7 +825,7 @@ function normalizeClarificationQuestion(raw: RawClarificationQuestion): Clarific
 }
 
 function normalizeClarificationComponent(
-  raw: RawClarificationComponent
+  raw: RawClarificationComponent,
 ): ClarificationComponentDescriptor {
   switch (raw.component) {
     case 'number_input':
@@ -865,7 +883,7 @@ function normalizeSliderComponent(raw: RawSliderComponent): ClarificationSliderD
 }
 
 function extractNumberConstraints(
-  constraints?: Record<string, unknown>
+  constraints?: Record<string, unknown>,
 ): ClarificationNumberInputDescriptor['constraints'] {
   if (!constraints) return undefined;
   const normalized = {
@@ -879,7 +897,7 @@ function extractNumberConstraints(
 }
 
 function extractDropdownConstraints(
-  constraints?: Record<string, unknown>
+  constraints?: Record<string, unknown>,
 ): ClarificationDropdownDescriptor['constraints'] {
   if (!constraints) return undefined;
   const normalized = {
@@ -889,7 +907,7 @@ function extractDropdownConstraints(
 }
 
 function extractToggleConstraints(
-  constraints?: Record<string, unknown>
+  constraints?: Record<string, unknown>,
 ): ClarificationToggleDescriptor['constraints'] {
   if (!constraints) return undefined;
   const normalized = {

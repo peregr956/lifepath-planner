@@ -2,8 +2,9 @@ from __future__ import annotations
 
 """Deterministic question generation module for clarification service."""
 
+from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Any, Dict, List, Sequence, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from normalization import ESSENTIAL_PREFIX, PRIMARY_INCOME_FLAG_METADATA_KEY
 from ui_schema_builder import (
@@ -15,7 +16,7 @@ from ui_schema_builder import (
 )
 
 if TYPE_CHECKING:  # pragma: no cover
-    from budget_model import UnifiedBudgetModel, Expense, Income
+    from budget_model import Expense, Income, UnifiedBudgetModel
 
 
 MAX_QUESTIONS = 5
@@ -27,16 +28,16 @@ class QuestionSpec:
 
     question_id: str
     prompt: str
-    components: List[Dict[str, Any]]
+    components: list[dict[str, Any]]
 
 
-def generate_clarification_questions(model: "UnifiedBudgetModel") -> List[QuestionSpec]:
+def generate_clarification_questions(model: UnifiedBudgetModel) -> list[QuestionSpec]:
     """
     Generate a first-pass deterministic set of clarification questions based on
     missing or uncertain portions of the UnifiedBudgetModel.
     """
 
-    questions: List[QuestionSpec] = []
+    questions: list[QuestionSpec] = []
 
     essentials_question = _build_essential_expense_question(model.expenses)
     if essentials_question:
@@ -57,7 +58,7 @@ def generate_clarification_questions(model: "UnifiedBudgetModel") -> List[Questi
     return questions[:MAX_QUESTIONS]
 
 
-def _build_essential_expense_question(expenses: Sequence["Expense"]) -> QuestionSpec | None:
+def _build_essential_expense_question(expenses: Sequence[Expense]) -> QuestionSpec | None:
     """
     Create a question prompting the user to classify expenses as essential when
     the unified model still has unknown essential flags (None).
@@ -83,7 +84,7 @@ def _build_essential_expense_question(expenses: Sequence["Expense"]) -> Question
     )
 
 
-def _build_optimization_focus_question(model: "UnifiedBudgetModel") -> QuestionSpec | None:
+def _build_optimization_focus_question(model: UnifiedBudgetModel) -> QuestionSpec | None:
     """
     Ask for optimization focus when it is missing, empty, or outside the allowed
     focus options.
@@ -107,7 +108,7 @@ def _build_optimization_focus_question(model: "UnifiedBudgetModel") -> QuestionS
     )
 
 
-def _build_income_clarification_question(income_entries: Sequence["Income"]) -> QuestionSpec | None:
+def _build_income_clarification_question(income_entries: Sequence[Income]) -> QuestionSpec | None:
     """
     Request clarification on the primary income's nature (net vs gross) and
     stability when values still rely on deterministic defaults.

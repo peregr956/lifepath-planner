@@ -2,13 +2,6 @@ import json
 from pathlib import Path
 from typing import Any, Dict
 
-from fastapi.testclient import TestClient
-
-from main import (
-    ApplyAnswersResponseModel,
-    UnifiedBudgetResponseModel,
-    app,
-)
 from budget_model import (
     Debt,
     Expense,
@@ -16,6 +9,12 @@ from budget_model import (
     Preferences,
     Summary,
     UnifiedBudgetModel,
+)
+from fastapi.testclient import TestClient
+from main import (
+    ApplyAnswersResponseModel,
+    UnifiedBudgetResponseModel,
+    app,
 )
 
 SERVICE_ROOT = Path(__file__).resolve().parents[1]
@@ -31,7 +30,7 @@ def _load_fixture(name: str) -> dict:
         return json.load(handle)
 
 
-def _build_partial_model_payload() -> Dict[str, Any]:
+def _build_partial_model_payload() -> dict[str, Any]:
     income = Income(
         id="income_1",
         name="Salary",
@@ -133,4 +132,3 @@ def test_apply_answers_accepts_binding_style_fields():
     assert data["ready_for_summary"] is True
     debts = data["updated_model"]["debts"]
     assert debts and debts[0]["id"] == "student_loan"
-

@@ -1,10 +1,7 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from typing import List, Optional
-
-from typing_extensions import Literal
-
+from dataclasses import dataclass
+from typing import Literal
 
 # Financial philosophy options
 FinancialPhilosophy = Literal["r_personalfinance", "money_guy", "neutral", "custom"]
@@ -20,30 +17,30 @@ GoalTimeline = Literal["immediate", "short_term", "medium_term", "long_term"]
 class UserProfile:
     """
     Minimal, contextual user profile data collected through adaptive questioning.
-    
+
     All fields are optional - only collect what's needed to answer the user's query.
     """
-    
+
     # User's initial query/question that drives personalized guidance
-    user_query: Optional[str] = None
-    
+    user_query: str | None = None
+
     # Financial philosophy (collected when relevant)
-    financial_philosophy: Optional[FinancialPhilosophy] = None
-    philosophy_notes: Optional[str] = None  # If custom, brief description
-    
+    financial_philosophy: FinancialPhilosophy | None = None
+    philosophy_notes: str | None = None  # If custom, brief description
+
     # Risk sentiment (collected when relevant)
-    risk_tolerance: Optional[RiskTolerance] = None
-    risk_concerns: Optional[List[str]] = None  # Specific concerns about risk
-    
+    risk_tolerance: RiskTolerance | None = None
+    risk_concerns: list[str] | None = None  # Specific concerns about risk
+
     # Contextual goals (only if user query mentions goals)
-    primary_goal: Optional[str] = None  # Extracted from or clarified based on user query
-    goal_timeline: Optional[GoalTimeline] = None
-    
+    primary_goal: str | None = None  # Extracted from or clarified based on user query
+    goal_timeline: GoalTimeline | None = None
+
     # Contextual concerns (only if user query indicates concerns)
-    financial_concerns: Optional[List[str]] = None  # e.g., ["job_security", "debt_burden"]
-    
+    financial_concerns: list[str] | None = None  # e.g., ["job_security", "debt_burden"]
+
     # Life context (only when relevant to query)
-    life_stage_context: Optional[str] = None  # Free-form or structured if needed
+    life_stage_context: str | None = None  # Free-form or structured if needed
 
 
 @dataclass
@@ -61,7 +58,7 @@ class Expense:
     category: str
     monthly_amount: float
     essential: bool
-    notes: Optional[str] = None
+    notes: str | None = None
 
 
 @dataclass
@@ -79,7 +76,7 @@ class Debt:
     min_payment: float
     priority: Literal["high", "medium", "low"]
     approximate: bool
-    rate_changes: Optional[List[RateChange]] = None
+    rate_changes: list[RateChange] | None = None
 
 
 @dataclass
@@ -98,9 +95,9 @@ class Summary:
 
 @dataclass
 class UnifiedBudgetModel:
-    income: List[Income]
-    expenses: List[Expense]
-    debts: List[Debt]
+    income: list[Income]
+    expenses: list[Expense]
+    debts: list[Debt]
     preferences: Preferences
     summary: Summary
-    user_profile: Optional[UserProfile] = None
+    user_profile: UserProfile | None = None

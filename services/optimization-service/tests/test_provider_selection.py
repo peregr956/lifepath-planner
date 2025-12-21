@@ -4,7 +4,6 @@ from typing import Any, Dict
 
 import pytest
 from fastapi.testclient import TestClient
-
 from main import app, reload_suggestion_provider_for_tests
 
 SERVICE_ROOT = Path(__file__).resolve().parents[1]
@@ -13,7 +12,7 @@ SERVICE_ROOT = Path(__file__).resolve().parents[1]
 client = TestClient(app)
 
 
-def _model_payload() -> Dict[str, Any]:
+def _model_payload() -> dict[str, Any]:
     return {
         "income": [
             {
@@ -61,7 +60,7 @@ def _model_payload() -> Dict[str, Any]:
     }
 
 
-def _load_mock_suggestions() -> Dict[str, Any]:
+def _load_mock_suggestions() -> dict[str, Any]:
     fixture_path = SERVICE_ROOT / "tests" / "fixtures" / "mock_suggestions_provider.json"
     return json.loads(fixture_path.read_text())
 
@@ -86,4 +85,3 @@ def test_summarize_and_optimize_uses_mock_provider(monkeypatch: pytest.MonkeyPat
     body = response.json()
     mock_payload = _load_mock_suggestions()
     assert body["suggestions"] == mock_payload["suggestions"]
-

@@ -2,11 +2,11 @@ from __future__ import annotations
 
 from pathlib import Path
 from typing import Dict
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
 
 from persistence.models import AuditEvent, Base
 from persistence.repository import BudgetSessionRepository, SessionStage
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
 
 
 def test_budget_session_survives_new_engine(tmp_path: Path) -> None:
@@ -56,7 +56,7 @@ def test_audit_events_record_stage_transitions(tmp_path: Path) -> None:
     Base.metadata.create_all(bind=engine)
     factory = sessionmaker(bind=engine, expire_on_commit=False, future=True)
 
-    answers: Dict[str, str] = {"q1": "yes"}
+    answers: dict[str, str] = {"q1": "yes"}
     with factory() as session:
         repo = BudgetSessionRepository(session)
         created = repo.create_session(
@@ -77,12 +77,7 @@ def test_audit_events_record_stage_transitions(tmp_path: Path) -> None:
             details={"answer_count": len(answers)},
         )
 
-        events = (
-            session.query(AuditEvent)
-            .filter(AuditEvent.session_id == created.id)
-            .order_by(AuditEvent.id)
-            .all()
-        )
+        events = session.query(AuditEvent).filter(AuditEvent.session_id == created.id).order_by(AuditEvent.id).all()
 
     assert [event.action for event in events] == [
         "upload_budget",
@@ -94,4 +89,3 @@ def test_audit_events_record_stage_transitions(tmp_path: Path) -> None:
     assert events[1].details == {"question_count": 2}
     assert events[2].details == {"answer_count": len(answers)}
     engine.dispose()
-

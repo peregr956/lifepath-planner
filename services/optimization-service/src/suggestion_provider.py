@@ -14,12 +14,11 @@ import logging
 import os
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Protocol, runtime_checkable
-
-from shared.observability.privacy import hash_payload, redact_fields
+from typing import Any, Protocol, runtime_checkable
 
 from budget_model import Summary, UnifiedBudgetModel
 from generate_suggestions import Suggestion, generate_suggestions
+from shared.observability.privacy import hash_payload, redact_fields
 
 logger = logging.getLogger(__name__)
 
@@ -40,7 +39,7 @@ class SuggestionProviderRequest:
 
     model: UnifiedBudgetModel
     summary: Summary
-    context: Dict[str, Any] = field(default_factory=dict)
+    context: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass(slots=True)
@@ -53,7 +52,7 @@ class SuggestionProviderResponse:
             serializers can expose them without knowing which provider was used.
     """
 
-    suggestions: List[Suggestion] = field(default_factory=list)
+    suggestions: list[Suggestion] = field(default_factory=list)
 
 
 @runtime_checkable
@@ -104,9 +103,7 @@ class MockSuggestionProvider:
 
         self._fixture_path = Path(candidate)
         if not self._fixture_path.exists():
-            raise FileNotFoundError(
-                f"Mock suggestion provider fixture not found at {self._fixture_path}"
-            )
+            raise FileNotFoundError(f"Mock suggestion provider fixture not found at {self._fixture_path}")
 
     def generate(self, request: SuggestionProviderRequest) -> SuggestionProviderResponse:
         payload = self._load_fixture()
@@ -116,13 +113,11 @@ class MockSuggestionProvider:
         _log_suggestion_metrics(self.name, request, response.suggestions)
         return response
 
-    def _load_fixture(self) -> Dict[str, Any]:
+    def _load_fixture(self) -> dict[str, Any]:
         try:
             return json.loads(self._fixture_path.read_text())
         except json.JSONDecodeError as exc:
-            raise ValueError(
-                f"Mock suggestion provider fixture is not valid JSON: {self._fixture_path}"
-            ) from exc
+            raise ValueError(f"Mock suggestion provider fixture is not valid JSON: {self._fixture_path}") from exc
 
 
 def _default_fixture_path() -> Path:
@@ -130,7 +125,7 @@ def _default_fixture_path() -> Path:
     return service_root / "tests" / "fixtures" / "mock_suggestions_provider.json"
 
 
-def _deserialize_suggestion(item: Dict[str, Any]) -> Suggestion:
+def _deserialize_suggestion(item: dict[str, Any]) -> Suggestion:
     return Suggestion(
         id=item["id"],
         title=item["title"],
@@ -144,7 +139,7 @@ def _deserialize_suggestion(item: Dict[str, Any]) -> Suggestion:
 def build_suggestion_provider(
     name: str | None,
     *,
-    settings: Optional[Any] = None,
+    settings: Any | None = None,
 ) -> SuggestionProvider:
     """
     Factory that instantiates the requested suggestion provider implementation.
@@ -158,6 +153,7 @@ def build_suggestion_provider(
     if normalized == "openai":
         # Import lazily to avoid circular dependencies and path issues
         from providers.openai_suggestions import OpenAISuggestionProvider
+
         return OpenAISuggestionProvider(settings=settings)
 
     raise ValueError(f"Unsupported suggestion provider '{name}'")
@@ -166,7 +162,7 @@ def build_suggestion_provider(
 def _log_suggestion_metrics(
     provider_name: str,
     request: SuggestionProviderRequest,
-    suggestions: List[Suggestion],
+    suggestions: list[Suggestion],
 ) -> None:
     logger.info(
         {
@@ -185,10 +181,7 @@ def _hash_suggestion_payload(suggestion: Suggestion) -> str:
     return hash_payload(asdict(suggestion))
 
 
-def _safe_context_snapshot(context: Dict[str, Any]) -> Dict[str, Any]:
+def _safe_context_snapshot(context: dict[str, Any]) -> dict[str, Any]:
     if not context:
         return {}
     return redact_fields(context, SAFE_CONTEXT_KEYS)
-
-
-

@@ -6,9 +6,9 @@ baseline UnifiedBudgetModel the clarification service can reason about before
 invoking any AI-driven refinement.
 """
 
-from typing import Any, Dict, Iterable, List, Sequence, Tuple
+from collections.abc import Iterable
+from typing import Any
 
-from models.raw_budget import DraftBudgetModel, RawBudgetLine
 from budget_model import (
     Debt,
     Expense,
@@ -18,6 +18,7 @@ from budget_model import (
     Summary,
     UnifiedBudgetModel,
 )
+from models.raw_budget import DraftBudgetModel, RawBudgetLine
 
 __all__ = ["draft_to_initial_unified", "apply_answers_to_model", "parse_debt_field_id"]
 
@@ -42,7 +43,7 @@ SUPPORTED_SIMPLE_FIELD_IDS = {
     "risk_tolerance",
     "goal_timeline",
 }
-DEBT_FIELD_SUFFIXES: Tuple[Tuple[str, str], ...] = (
+DEBT_FIELD_SUFFIXES: tuple[tuple[str, str], ...] = (
     ("_rate_change_new_rate", "rate_change_new_rate"),
     ("_rate_change_date", "rate_change_date"),
     ("_interest_rate", "interest_rate"),
@@ -66,8 +67,8 @@ def draft_to_initial_unified(draft: DraftBudgetModel) -> UnifiedBudgetModel:
         Uses only sign-based rules (no AI); debt detection, essential flags, and rich metadata are left unset for later stages.
     """
 
-    incomes: List[Income] = []
-    expenses: List[Expense] = []
+    incomes: list[Income] = []
+    expenses: list[Expense] = []
 
     income_index = 0
     expense_index = 0
@@ -177,7 +178,7 @@ def _deterministic_id(kind: str, line: RawBudgetLine, ordinal: int) -> str:
     return f"{kind}-draft-{line.source_row_index}-{ordinal}"
 
 
-def apply_answers_to_model(model: UnifiedBudgetModel, answers: Dict[str, Any]) -> UnifiedBudgetModel:
+def apply_answers_to_model(model: UnifiedBudgetModel, answers: dict[str, Any]) -> UnifiedBudgetModel:
     """
     Apply structured clarification answers to the unified model in place.
 
@@ -195,10 +196,12 @@ def apply_answers_to_model(model: UnifiedBudgetModel, answers: Dict[str, Any]) -
     if not answers:
         return model
 
-    expense_lookup: Dict[str, Expense] = {expense.id: expense for expense in model.expenses if getattr(expense, "id", None)}
+    expense_lookup: dict[str, Expense] = {
+        expense.id: expense for expense in model.expenses if getattr(expense, "id", None)
+    }
     primary_income = model.income[0] if model.income else None
-    debt_lookup: Dict[str, Debt] = {debt.id: debt for debt in model.debts if getattr(debt, "id", None)}
-    pending_rate_changes: Dict[str, Dict[str, Any]] = {}
+    debt_lookup: dict[str, Debt] = {debt.id: debt for debt in model.debts if getattr(debt, "id", None)}
+    pending_rate_changes: dict[str, dict[str, Any]] = {}
 
     for field_id, raw_value in answers.items():
         if not isinstance(field_id, str):
@@ -247,7 +250,7 @@ def apply_answers_to_model(model: UnifiedBudgetModel, answers: Dict[str, Any]) -
     return model
 
 
-def _apply_essential_flag(expense_lookup: Dict[str, Expense], field_id: str, raw_value: Any) -> None:
+def _apply_essential_flag(expense_lookup: dict[str, Expense], field_id: str, raw_value: Any) -> None:
     expense_id = field_id[len(ESSENTIAL_PREFIX) :]
     if not expense_id:
         return
@@ -296,28 +299,28 @@ def _apply_primary_income_stability(primary_income: Income | None, raw_value: An
 def _apply_profile_field(model: UnifiedBudgetModel, field_name: str, raw_value: Any, valid_values: set) -> None:
     """
     Apply a profile field value to the model's user_profile.
-    
+
     Creates the user_profile if it doesn't exist.
     """
     from budget_model import UserProfile
-    
+
     # Normalize the value - handle dropdown values like "conservative - I prefer..."
     normalized = _normalize_string(raw_value)
     if normalized is None:
         return
-    
+
     # Extract just the key if it's a formatted option (e.g., "conservative - description")
     if " - " in normalized:
         normalized = normalized.split(" - ")[0].strip()
-    
+
     # Validate against allowed values
     if normalized not in valid_values:
         return
-    
+
     # Ensure user_profile exists
     if model.user_profile is None:
         model.user_profile = UserProfile()
-    
+
     # Set the field dynamically
     setattr(model.user_profile, field_name, normalized)
 
@@ -353,17 +356,17 @@ def _normalize_string(value: Any) -> str | None:
     return normalized or None
 
 
-def _ensure_metadata_dict(entry: Income) -> Dict[str, Any]:
+def _ensure_metadata_dict(entry: Income) -> dict[str, Any]:
     metadata = getattr(entry, "metadata", None)
     if metadata is None:
         metadata = {}
     elif not isinstance(metadata, dict):
         metadata = dict(metadata)
-    setattr(entry, "metadata", metadata)
+    entry.metadata = metadata
     return metadata
 
 
-def parse_debt_field_id(field_id: str) -> Tuple[str, str] | None:
+def parse_debt_field_id(field_id: str) -> tuple[str, str] | None:
     """
     Attempt to split a field_id into (debt_id, attribute) when it matches a known
     debt mapping suffix such as `_balance` or `_interest_rate`.
@@ -380,7 +383,7 @@ def parse_debt_field_id(field_id: str) -> Tuple[str, str] | None:
 
 def _ensure_debt_entry(
     model: UnifiedBudgetModel,
-    debt_lookup: Dict[str, Debt],
+    debt_lookup: dict[str, Debt],
     debt_id: str,
 ) -> Debt:
     debt = debt_lookup.get(debt_id)
@@ -413,7 +416,7 @@ def _apply_debt_field(
     debt: Debt,
     attribute: str,
     raw_value: Any,
-    pending_rate_changes: Dict[str, Dict[str, Any]],
+    pending_rate_changes: dict[str, dict[str, Any]],
 ) -> None:
     if attribute == "balance":
         numeric = _coerce_to_number(raw_value)
@@ -458,7 +461,7 @@ def _apply_debt_field(
         return
 
 
-def _finalize_rate_changes(debt_lookup: Dict[str, Debt], pending_rate_changes: Dict[str, Dict[str, Any]]) -> None:
+def _finalize_rate_changes(debt_lookup: dict[str, Debt], pending_rate_changes: dict[str, dict[str, Any]]) -> None:
     for debt_id, fragment in pending_rate_changes.items():
         if not fragment:
             continue
@@ -495,4 +498,3 @@ def _coerce_to_date_string(value: Any) -> str | None:
         return candidate or None
     candidate = str(value).strip()
     return candidate or None
-

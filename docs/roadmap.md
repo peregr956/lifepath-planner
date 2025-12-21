@@ -12,21 +12,22 @@ This roadmap outlines the phased delivery plan for the LifePath Planner MVP, ens
 - The legacy Streamlit UI has been removed; Next.js (`services/ui-web`) is the canonical client going forward.
 - Repository structure has been cleaned up: `sys.path` manipulation removed, proper package imports via `conftest.py` files, and `pyproject.toml` configuration for IDE support.
 - Test coverage audit completed (December 2024) — gaps documented in Phase 6 below.
+- **CI/CD pipeline implemented** (December 2024) — GitHub Actions workflow with linting (ruff, pyright, ESLint, Prettier), Python 3.11+ test matrix, and deterministic pipeline validation. See `docs/development.md` for local commands and `.github/workflows/ci.yml` for the workflow definition.
 
 The remaining work before wiring ChatGPT is limited to the forthcoming AI integration epic.
 
 ---
 
-## Phase 0 — Foundation (Week 1)
+## Phase 0 — Foundation (Week 1) ✓ Complete
 
-- Finalize product scope, schemas, and specifications (`PRD.md`, `budget_schema.md`, `ai_questioning_spec.md`, `ui_components_spec.md`).
-- Establish repository structure, service boundaries, and development environments.
-- Set up CI, linting, and shared testing utilities.
+- [x] Finalize product scope, schemas, and specifications (`PRD.md`, `budget_schema.md`, `ai_questioning_spec.md`, `ui_components_spec.md`).
+- [x] Establish repository structure, service boundaries, and development environments.
+- [x] Set up CI, linting, and shared testing utilities.
 
 **Deliverables**
 
-- Documented architecture diagram and service readmes.
-- Initial CI pipeline with lint and test stages.
+- [x] Documented architecture diagram and service readmes.
+- [x] Initial CI pipeline with lint and test stages (`.github/workflows/ci.yml`).
 
 ---
 

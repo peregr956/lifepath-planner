@@ -29,9 +29,7 @@ export function SummaryView({ summary, categoryShares = {} }: Props) {
     <div className="card flex flex-col gap-6">
       <div>
         <h2 className="text-xl font-semibold text-white">Your budget at a glance</h2>
-        <p className="text-xs text-white/60">
-          Based on the information you provided
-        </p>
+        <p className="text-xs text-white/60">Based on the information you provided</p>
       </div>
 
       <div className="grid gap-4 sm:grid-cols-3">

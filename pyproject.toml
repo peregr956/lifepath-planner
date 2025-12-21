@@ -60,3 +60,42 @@ pythonpath = [
     "services/shared",
 ]
 
+[tool.ruff]
+line-length = 120
+target-version = "py311"
+exclude = [
+    ".git",
+    ".venv",
+    "__pycache__",
+    "node_modules",
+    ".mypy_cache",
+    ".pytest_cache",
+]
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # pyflakes
+    "I",   # isort
+    "B",   # flake8-bugbear
+]
+ignore = [
+    "E501",  # line too long (handled by formatter)
+    "B008",  # function call in default argument (FastAPI Depends/File pattern)
+    "B905",  # zip() without strict= (not always needed)
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Allow module-level imports after code in main.py files (setup code pattern)
+"services/*/src/main.py" = ["E402"]
+"services/api-gateway/src/main.py" = ["E402"]
+# Allow E402 in files with docstrings after __future__ imports
+"services/*/src/*.py" = ["E402"]
+"services/*/src/providers/*.py" = ["E402", "F401"]
+"services/shared/*.py" = ["E402"]
+# Test files can have unused imports for fixtures and use deprecated typing
+"**/tests/**" = ["F401", "UP035"]
+# Scripts may have unused variables during development
+"scripts/**" = ["F841", "UP035"]
+

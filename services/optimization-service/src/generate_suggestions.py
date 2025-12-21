@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import List
 
 from budget_model import Summary, UnifiedBudgetModel
 from heuristics import (
@@ -25,7 +24,7 @@ def _clamp(value: float, minimum: float, maximum: float) -> float:
     return max(minimum, min(value, maximum))
 
 
-def generate_suggestions(model: UnifiedBudgetModel, summary: Summary) -> List[Suggestion]:
+def generate_suggestions(model: UnifiedBudgetModel, summary: Summary) -> list[Suggestion]:
     """
     Produce deterministic budgeting suggestions from the unified model and its summary.
 
@@ -37,15 +36,13 @@ def generate_suggestions(model: UnifiedBudgetModel, summary: Summary) -> List[Su
     Assumptions:
         Operates on monthly dollar amounts, relies solely on rule-based heuristics, and never mutates inputs.
     """
-    suggestions: List[Suggestion] = []
+    suggestions: list[Suggestion] = []
     surplus = summary.surplus
     flexible_expenses = find_flexible_expenses(model)
     total_flexible_spend = compute_total_flexible_spend(model)
     preferences = model.preferences
 
-    high_priority_debts = [
-        debt for debt in model.debts if classify_debt_priority(debt) == "high"
-    ]
+    high_priority_debts = [debt for debt in model.debts if classify_debt_priority(debt) == "high"]
 
     if high_priority_debts and surplus > 25:
         target_debt = max(high_priority_debts, key=lambda debt: debt.interest_rate)
@@ -66,16 +63,13 @@ def generate_suggestions(model: UnifiedBudgetModel, summary: Summary) -> List[Su
                     "the payoff timeline while lowering total interest."
                 ),
                 tradeoffs=(
-                    "Reduces cash available for other goals this month and assumes the surplus "
-                    "remains consistent."
+                    "Reduces cash available for other goals this month and assumes the surplus remains consistent."
                 ),
             )
         )
 
     if total_flexible_spend >= 150 and flexible_expenses:
-        flexible_expenses = sorted(
-            flexible_expenses, key=lambda expense: expense.monthly_amount, reverse=True
-        )
+        flexible_expenses = sorted(flexible_expenses, key=lambda expense: expense.monthly_amount, reverse=True)
         max_change_fraction = preferences.max_desired_change_per_category
         reduction_fraction = _clamp(max_change_fraction, 0.05, 0.1)
         suggested_categories = flexible_expenses[: min(3, len(flexible_expenses))]
@@ -113,9 +107,7 @@ def generate_suggestions(model: UnifiedBudgetModel, summary: Summary) -> List[Su
             allocation = round(min(surplus * 0.4, surplus - 50), 2)
             if allocation > 25:
                 focus = preferences.optimization_focus
-                target_account = (
-                    "high-yield savings" if focus != "savings" else "retirement contributions"
-                )
+                target_account = "high-yield savings" if focus != "savings" else "retirement contributions"
                 suggestions.append(
                     Suggestion(
                         id="surplus-savings",
@@ -130,8 +122,7 @@ def generate_suggestions(model: UnifiedBudgetModel, summary: Summary) -> List[Su
                             "keeps idle money working toward goals."
                         ),
                         tradeoffs=(
-                            "Monthly cash cushion will shrink, so monitor variability in income or "
-                            "unexpected expenses."
+                            "Monthly cash cushion will shrink, so monitor variability in income or unexpected expenses."
                         ),
                     )
                 )

@@ -81,18 +81,30 @@ export function DeveloperPanel({ session, onClearSession }: Props) {
           <p className="mb-2 font-medium uppercase tracking-wide text-white/60">Session</p>
           {session?.budgetId ? (
             <div className="space-y-1 font-mono text-white/80">
-              <p><span className="text-white/50">Budget ID:</span> {session.budgetId}</p>
-              <p><span className="text-white/50">Format:</span> {session.detectedFormat ?? 'Unknown'}</p>
-              <p><span className="text-white/50">Clarified:</span> {session.clarified ? 'Yes' : 'No'}</p>
-              <p><span className="text-white/50">Ready for Summary:</span> {session.readyForSummary ? 'Yes' : 'No'}</p>
+              <p>
+                <span className="text-white/50">Budget ID:</span> {session.budgetId}
+              </p>
+              <p>
+                <span className="text-white/50">Format:</span> {session.detectedFormat ?? 'Unknown'}
+              </p>
+              <p>
+                <span className="text-white/50">Clarified:</span> {session.clarified ? 'Yes' : 'No'}
+              </p>
+              <p>
+                <span className="text-white/50">Ready for Summary:</span>{' '}
+                {session.readyForSummary ? 'Yes' : 'No'}
+              </p>
               {session.summaryPreview && (
                 <p>
                   <span className="text-white/50">Preview:</span>{' '}
-                  {session.summaryPreview.detectedIncomeLines} income, {session.summaryPreview.detectedExpenseLines} expenses
+                  {session.summaryPreview.detectedIncomeLines} income,{' '}
+                  {session.summaryPreview.detectedExpenseLines} expenses
                 </p>
               )}
               {session.userQuery && (
-                <p><span className="text-white/50">Query:</span> {session.userQuery}</p>
+                <p>
+                  <span className="text-white/50">Query:</span> {session.userQuery}
+                </p>
               )}
             </div>
           ) : (
@@ -113,7 +125,7 @@ export function DeveloperPanel({ session, onClearSession }: Props) {
         <div>
           <p className="mb-2 font-medium uppercase tracking-wide text-white/60">API Gateway</p>
           <p className="mb-2 font-mono text-emerald-400">{activeApiBase}</p>
-          
+
           <div className="space-y-1">
             <p className="text-white/50">Available endpoints:</p>
             {candidates.map((url) => (
@@ -175,4 +187,3 @@ export function DeveloperPanel({ session, onClearSession }: Props) {
     </div>
   );
 }
-

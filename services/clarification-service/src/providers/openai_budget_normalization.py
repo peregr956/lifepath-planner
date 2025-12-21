@@ -11,13 +11,10 @@ from __future__ import annotations
 
 import json
 import logging
-from dataclasses import asdict
-from datetime import date
-from typing import Any, Dict, List, Optional
-
-from openai import OpenAI, APIError, APITimeoutError
+from typing import Any
 
 from models.raw_budget import DraftBudgetModel, RawBudgetLine
+from openai import APIError, APITimeoutError, OpenAI
 from shared.observability.privacy import hash_payload
 
 logger = logging.getLogger(__name__)
@@ -128,17 +125,17 @@ Normalize all amounts so income is positive and expenses/debt are negative.
 Preserve the exact source_row_index for each line."""
 
 
-def _format_lines_section(lines: List[RawBudgetLine]) -> str:
+def _format_lines_section(lines: list[RawBudgetLine]) -> str:
     """Format budget lines for the AI prompt."""
     if not lines:
         return "No lines detected."
-    
+
     formatted = []
     for line in lines:
         date_str = line.date.isoformat() if line.date else "N/A"
         desc = line.description or "N/A"
         metadata_str = ", ".join(f"{k}={v}" for k, v in line.metadata.items()) if line.metadata else "N/A"
-        
+
         formatted.append(
             f"- Row {line.source_row_index}: "
             f"category='{line.category_label}', "
@@ -147,7 +144,7 @@ def _format_lines_section(lines: List[RawBudgetLine]) -> str:
             f"date={date_str}, "
             f"metadata={{{metadata_str}}}"
         )
-    
+
     return "\n".join(formatted)
 
 
@@ -156,7 +153,7 @@ def _build_user_prompt(draft: DraftBudgetModel) -> str:
     positive_count = sum(1 for line in draft.lines if line.amount > 0)
     negative_count = sum(1 for line in draft.lines if line.amount < 0)
     zero_count = sum(1 for line in draft.lines if line.amount == 0)
-    
+
     return USER_PROMPT_TEMPLATE.format(
         detected_format=draft.detected_format,
         format_notes=draft.notes or "None",
@@ -170,15 +167,15 @@ def _build_user_prompt(draft: DraftBudgetModel) -> str:
 
 class NormalizationProviderRequest:
     """Request object for budget normalization."""
-    
-    def __init__(self, draft: DraftBudgetModel, context: Optional[Dict[str, Any]] = None):
+
+    def __init__(self, draft: DraftBudgetModel, context: dict[str, Any] | None = None):
         self.draft = draft
         self.context = context or {}
 
 
 class NormalizationProviderResponse:
     """Response object from budget normalization."""
-    
+
     def __init__(
         self,
         normalized_draft: DraftBudgetModel,
@@ -197,15 +194,15 @@ class NormalizationProviderResponse:
 class OpenAIBudgetNormalizationProvider:
     """
     ChatGPT-backed provider that normalizes budget data.
-    
+
     Uses function calling to ensure structured outputs that correctly classify
     budget line items as income or expenses regardless of the input format.
     Falls back to pass-through (no changes) on errors.
     """
-    
+
     name = "openai"
-    
-    def __init__(self, settings: Optional[Any] = None):
+
+    def __init__(self, settings: Any | None = None):
         self._settings = settings
         if settings and settings.openai:
             self._client = OpenAI(
@@ -221,25 +218,23 @@ class OpenAIBudgetNormalizationProvider:
             self._model = None
             self._temperature = 0.1  # Low temperature for consistent normalization
             self._max_tokens = 2048  # Larger to handle full budget data
-    
+
     def normalize(self, request: NormalizationProviderRequest) -> NormalizationProviderResponse:
         """
         Normalize the draft budget using ChatGPT.
-        
+
         Args:
             request: NormalizationProviderRequest containing the draft budget.
-            
+
         Returns:
             NormalizationProviderResponse with the normalized draft budget.
         """
         if not self._client:
-            raise RuntimeError(
-                "OpenAI client not configured. Check OPENAI_API_KEY, OPENAI_MODEL, OPENAI_API_BASE."
-            )
-        
+            raise RuntimeError("OpenAI client not configured. Check OPENAI_API_KEY, OPENAI_MODEL, OPENAI_API_BASE.")
+
         user_prompt = _build_user_prompt(request.draft)
         prompt_hash = hash_payload({"system": SYSTEM_PROMPT, "user": user_prompt})
-        
+
         logger.info(
             {
                 "event": "openai_normalization_request",
@@ -249,7 +244,7 @@ class OpenAIBudgetNormalizationProvider:
                 "line_count": len(request.draft.lines),
             }
         )
-        
+
         try:
             response = self._client.chat.completions.create(
                 model=self._model,
@@ -271,16 +266,16 @@ class OpenAIBudgetNormalizationProvider:
                 temperature=self._temperature,
                 max_tokens=self._max_tokens,
             )
-            
+
             tool_calls = response.choices[0].message.tool_calls
             if not tool_calls:
                 logger.warning({"event": "openai_no_tool_calls", "provider": self.name})
                 return self._passthrough_response(request.draft)
-            
+
             arguments = tool_calls[0].function.arguments
             parsed = json.loads(arguments)
             normalized = self._parse_response(parsed, request.draft)
-            
+
             response_hash = hash_payload(parsed)
             logger.info(
                 {
@@ -292,9 +287,9 @@ class OpenAIBudgetNormalizationProvider:
                     "response_hash": response_hash,
                 }
             )
-            
+
             return normalized
-            
+
         except (APIError, APITimeoutError) as exc:
             logger.error(
                 {
@@ -305,7 +300,7 @@ class OpenAIBudgetNormalizationProvider:
                 }
             )
             return self._passthrough_response(request.draft)
-            
+
         except json.JSONDecodeError as exc:
             logger.error(
                 {
@@ -315,25 +310,23 @@ class OpenAIBudgetNormalizationProvider:
                 }
             )
             return self._passthrough_response(request.draft)
-    
+
     def _parse_response(
-        self, parsed: Dict[str, Any], original_draft: DraftBudgetModel
+        self, parsed: dict[str, Any], original_draft: DraftBudgetModel
     ) -> NormalizationProviderResponse:
         """Convert OpenAI response into a normalized DraftBudgetModel."""
         raw_lines = parsed.get("lines", [])
-        
+
         # Build a lookup from source_row_index to original line for metadata preservation
-        original_lookup: Dict[int, RawBudgetLine] = {
-            line.source_row_index: line for line in original_draft.lines
-        }
-        
-        normalized_lines: List[RawBudgetLine] = []
-        
+        original_lookup: dict[int, RawBudgetLine] = {line.source_row_index: line for line in original_draft.lines}
+
+        normalized_lines: list[RawBudgetLine] = []
+
         for item in raw_lines:
             source_row_index = item.get("source_row_index")
             if source_row_index is None:
                 continue
-            
+
             # Get original line for metadata preservation
             original_line = original_lookup.get(source_row_index)
             if original_line is None:
@@ -345,7 +338,7 @@ class OpenAIBudgetNormalizationProvider:
                     }
                 )
                 continue
-            
+
             # Create normalized line preserving original metadata
             normalized_line = RawBudgetLine(
                 source_row_index=source_row_index,
@@ -360,7 +353,7 @@ class OpenAIBudgetNormalizationProvider:
                 },
             )
             normalized_lines.append(normalized_line)
-        
+
         # Create normalized draft budget
         normalized_draft = DraftBudgetModel(
             lines=normalized_lines,
@@ -374,7 +367,7 @@ class OpenAIBudgetNormalizationProvider:
                 "ai_debt_count": parsed.get("detected_debt_count", 0),
             },
         )
-        
+
         return NormalizationProviderResponse(
             normalized_draft=normalized_draft,
             income_count=parsed.get("detected_income_count", 0),
@@ -382,15 +375,15 @@ class OpenAIBudgetNormalizationProvider:
             debt_count=parsed.get("detected_debt_count", 0),
             notes=parsed.get("normalization_notes", ""),
         )
-    
+
     def _passthrough_response(self, draft: DraftBudgetModel) -> NormalizationProviderResponse:
         """Return the original draft unchanged when normalization fails."""
         logger.info({"event": "openai_normalization_passthrough", "provider": self.name})
-        
+
         # Count based on sign
         income_count = sum(1 for line in draft.lines if line.amount > 0)
         expense_count = sum(1 for line in draft.lines if line.amount < 0)
-        
+
         return NormalizationProviderResponse(
             normalized_draft=draft,
             income_count=income_count,
@@ -403,21 +396,21 @@ class OpenAIBudgetNormalizationProvider:
 class DeterministicBudgetNormalizationProvider:
     """
     Deterministic fallback provider that preserves original amounts.
-    
+
     This provider does not modify the budget data - it passes through the
     original amounts unchanged. Use this when AI normalization is not available
     or not desired.
     """
-    
+
     name = "deterministic"
-    
+
     def normalize(self, request: NormalizationProviderRequest) -> NormalizationProviderResponse:
         """Pass through the draft budget unchanged."""
         draft = request.draft
-        
+
         income_count = sum(1 for line in draft.lines if line.amount > 0)
         expense_count = sum(1 for line in draft.lines if line.amount < 0)
-        
+
         logger.info(
             {
                 "event": "deterministic_normalization",
@@ -427,7 +420,7 @@ class DeterministicBudgetNormalizationProvider:
                 "expense_count": expense_count,
             }
         )
-        
+
         return NormalizationProviderResponse(
             normalized_draft=draft,
             income_count=income_count,
@@ -435,4 +428,3 @@ class DeterministicBudgetNormalizationProvider:
             debt_count=0,
             notes="Deterministic passthrough - amounts unchanged",
         )
-

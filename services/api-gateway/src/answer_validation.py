@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass
-from typing import Any, Dict, Iterable, List, Tuple
+from typing import Any
 
 ESSENTIAL_FIELD_PREFIX = "essential_"
 VALID_OPTIMIZATION_FOCUS = {"debt", "savings", "balanced"}
@@ -14,7 +15,7 @@ PREFERENCE_FIELD_IDS = {
     "protect_essentials",
     "max_desired_change_per_category",
 }
-DEBT_FIELD_SUFFIXES: Tuple[Tuple[str, str], ...] = (
+DEBT_FIELD_SUFFIXES: tuple[tuple[str, str], ...] = (
     ("_rate_change_new_rate", "rate_change_new_rate"),
     ("_rate_change_date", "rate_change_date"),
     ("_interest_rate", "interest_rate"),
@@ -43,22 +44,22 @@ LEGACY_FIELD_BINDINGS = {
 class FieldBinding:
     kind: str
     target_id: str | None
-    path: Tuple[str, ...]
+    path: tuple[str, ...]
     raw: str
 
 
 @dataclass
 class AnswerValidationContext:
-    expenses: Dict[str, Dict[str, Any]]
-    expense_aliases: Dict[str, Dict[str, Any]]
-    debts: Dict[str, Dict[str, Any]]
-    debt_aliases: Dict[str, Dict[str, Any]]
-    incomes: Dict[str, Dict[str, Any]]
-    income_aliases: Dict[str, Dict[str, Any]]
+    expenses: dict[str, dict[str, Any]]
+    expense_aliases: dict[str, dict[str, Any]]
+    debts: dict[str, dict[str, Any]]
+    debt_aliases: dict[str, dict[str, Any]]
+    incomes: dict[str, dict[str, Any]]
+    income_aliases: dict[str, dict[str, Any]]
     primary_income_id: str | None
 
     @classmethod
-    def from_partial(cls, partial: Dict[str, Any]) -> "AnswerValidationContext":
+    def from_partial(cls, partial: dict[str, Any]) -> AnswerValidationContext:
         expenses = _build_lookup(partial.get("expenses"))
         debts = _build_lookup(partial.get("debts"))
         incomes = _build_lookup(partial.get("income"))
@@ -72,14 +73,14 @@ class AnswerValidationContext:
             primary_income_id=_select_primary_income_id(incomes.values()),
         )
 
-    def resolve_expense(self, identifier: str | None) -> Dict[str, Any] | None:
+    def resolve_expense(self, identifier: str | None) -> dict[str, Any] | None:
         if not identifier:
             return None
         if identifier in self.expenses:
             return self.expenses[identifier]
         return self.expense_aliases.get(_slugify(identifier))
 
-    def resolve_income(self, identifier: str | None) -> Dict[str, Any] | None:
+    def resolve_income(self, identifier: str | None) -> dict[str, Any] | None:
         if not identifier and self.primary_income_id:
             return self.incomes.get(self.primary_income_id)
         if identifier in self.incomes:
@@ -89,7 +90,7 @@ class AnswerValidationContext:
             return self.incomes.get(self.primary_income_id)
         return self.income_aliases.get(slug)
 
-    def resolve_debt(self, identifier: str | None) -> Tuple[Dict[str, Any] | None, Dict[str, Any] | None, str | None]:
+    def resolve_debt(self, identifier: str | None) -> tuple[dict[str, Any] | None, dict[str, Any] | None, str | None]:
         if not identifier:
             return None, None, None
         if identifier in self.debts:
@@ -105,12 +106,12 @@ class AnswerValidationContext:
         return None, None, slug or identifier
 
 
-def validate_answers(partial_model: Dict[str, Any], answers: Dict[str, Any]) -> List[Dict[str, str]]:
+def validate_answers(partial_model: dict[str, Any], answers: dict[str, Any]) -> list[dict[str, str]]:
     if not answers:
         return []
 
     context = AnswerValidationContext.from_partial(partial_model or {})
-    invalid: List[Dict[str, str]] = []
+    invalid: list[dict[str, str]] = []
 
     for raw_field_id, raw_value in answers.items():
         if not isinstance(raw_field_id, str):
@@ -158,8 +159,8 @@ def validate_answers(partial_model: Dict[str, Any], answers: Dict[str, Any]) -> 
     return invalid
 
 
-def _build_lookup(entries: Iterable[Dict[str, Any]] | None) -> Dict[str, Dict[str, Any]]:
-    lookup: Dict[str, Dict[str, Any]] = {}
+def _build_lookup(entries: Iterable[dict[str, Any]] | None) -> dict[str, dict[str, Any]]:
+    lookup: dict[str, dict[str, Any]] = {}
     if not entries:
         return lookup
     for entry in entries:
@@ -169,8 +170,8 @@ def _build_lookup(entries: Iterable[Dict[str, Any]] | None) -> Dict[str, Dict[st
     return lookup
 
 
-def _build_alias_lookup(entries: Iterable[Dict[str, Any]], *fields: Tuple[str, ...]) -> Dict[str, Dict[str, Any]]:
-    alias_map: Dict[str, Dict[str, Any]] = {}
+def _build_alias_lookup(entries: Iterable[dict[str, Any]], *fields: tuple[str, ...]) -> dict[str, dict[str, Any]]:
+    alias_map: dict[str, dict[str, Any]] = {}
     for entry in entries:
         for field_tuple in fields:
             for field_name in field_tuple:
@@ -183,7 +184,7 @@ def _build_alias_lookup(entries: Iterable[Dict[str, Any]], *fields: Tuple[str, .
     return alias_map
 
 
-def _select_primary_income_id(incomes: Iterable[Dict[str, Any]]) -> str | None:
+def _select_primary_income_id(incomes: Iterable[dict[str, Any]]) -> str | None:
     best_id: str | None = None
     best_amount = -1.0
     for entry in incomes:
@@ -223,7 +224,9 @@ def _interpret_binding(field_id: str) -> FieldBinding | None:
     return _binding_from_collection(collection, target_id, path, field_id)
 
 
-def _binding_from_collection(collection: str, target_id: str | None, path: Tuple[str, ...], raw: str) -> FieldBinding | None:
+def _binding_from_collection(
+    collection: str, target_id: str | None, path: tuple[str, ...], raw: str
+) -> FieldBinding | None:
     if collection == "preferences":
         return FieldBinding(kind="preferences", target_id=None, path=path, raw=raw)
     if collection == "expenses" and path == ("essential",):
@@ -235,7 +238,7 @@ def _binding_from_collection(collection: str, target_id: str | None, path: Tuple
     return None
 
 
-def _parse_binding_path(field_id: str) -> Tuple[str, str | None, Tuple[str, ...]] | None:
+def _parse_binding_path(field_id: str) -> tuple[str, str | None, tuple[str, ...]] | None:
     parts = [segment.strip() for segment in field_id.split(".") if segment.strip()]
     if len(parts) < 2:
         return None
@@ -255,7 +258,7 @@ def _parse_binding_path(field_id: str) -> Tuple[str, str | None, Tuple[str, ...]
     return None
 
 
-def _parse_debt_suffix(field_id: str) -> Tuple[str, str] | None:
+def _parse_debt_suffix(field_id: str) -> tuple[str, str] | None:
     for suffix, attribute in DEBT_FIELD_SUFFIXES:
         if not field_id.endswith(suffix):
             continue
@@ -265,7 +268,7 @@ def _parse_debt_suffix(field_id: str) -> Tuple[str, str] | None:
     return None
 
 
-def _validate_binding_target(binding: FieldBinding, context: AnswerValidationContext) -> Dict[str, str] | None:
+def _validate_binding_target(binding: FieldBinding, context: AnswerValidationContext) -> dict[str, str] | None:
     if binding.kind == "expense_essential":
         if context.resolve_expense(binding.target_id):
             return None
@@ -312,7 +315,7 @@ def _validate_binding_target(binding: FieldBinding, context: AnswerValidationCon
     }
 
 
-def _validate_value_type(binding: FieldBinding, value: Any) -> Dict[str, str] | None:
+def _validate_value_type(binding: FieldBinding, value: Any) -> dict[str, str] | None:
     if binding.kind == "expense_essential":
         if isinstance(value, bool):
             return None
@@ -377,7 +380,7 @@ def _validate_value_type(binding: FieldBinding, value: Any) -> Dict[str, str] | 
     return None
 
 
-def _is_supported_income_path(path: Tuple[str, ...]) -> bool:
+def _is_supported_income_path(path: tuple[str, ...]) -> bool:
     if not path:
         return False
     head = path[0]
@@ -388,7 +391,7 @@ def _is_supported_income_path(path: Tuple[str, ...]) -> bool:
     return False
 
 
-def _map_debt_path_to_attribute(path: Tuple[str, ...]) -> str | None:
+def _map_debt_path_to_attribute(path: tuple[str, ...]) -> str | None:
     if not path:
         return None
     if len(path) == 1 and path[0] in {"balance", "interest_rate", "min_payment", "priority", "approximate"}:
@@ -401,7 +404,7 @@ def _map_debt_path_to_attribute(path: Tuple[str, ...]) -> str | None:
     return None
 
 
-def _type_error(field_id: str, expected: str) -> Dict[str, str]:
+def _type_error(field_id: str, expected: str) -> dict[str, str]:
     return {
         "field_id": field_id,
         "reason": "invalid_type",
@@ -412,5 +415,3 @@ def _type_error(field_id: str, expected: str) -> Dict[str, str]:
 def _slugify(value: str) -> str:
     normalized = value.strip().lower()
     return "".join(ch if ch.isalnum() else "_" for ch in normalized).strip("_")
-
-

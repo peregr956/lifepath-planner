@@ -59,7 +59,7 @@ export function FlowShell({ children }: { children: ReactNode }) {
 
   const activeIndex = Math.max(
     0,
-    stepMeta.findIndex((step) => step.isActive)
+    stepMeta.findIndex((step) => step.isActive),
   );
   const progressPercent = ((activeIndex + 1) / stepMeta.length) * 100;
 
@@ -67,9 +67,12 @@ export function FlowShell({ children }: { children: ReactNode }) {
     <main className="mx-auto flex max-w-6xl flex-col gap-6 px-4 py-10 lg:py-16">
       <header className="flex flex-col gap-2">
         <p className="text-sm uppercase tracking-[0.4em] text-indigo-200">LifePath Planner</p>
-        <h1 className="text-3xl font-semibold text-white sm:text-4xl">Get personalized financial guidance</h1>
+        <h1 className="text-3xl font-semibold text-white sm:text-4xl">
+          Get personalized financial guidance
+        </h1>
         <p className="text-white/70">
-          Upload your budget in the format you already use. We&apos;ll understand it, ask what we need, and give you thoughtful suggestions.
+          Upload your budget in the format you already use. We&apos;ll understand it, ask what we
+          need, and give you thoughtful suggestions.
         </p>
       </header>
 
@@ -148,8 +151,7 @@ export function FlowShell({ children }: { children: ReactNode }) {
                   session.detectedFormat === null ? undefined : session.detectedFormat,
                 summaryPreview:
                   session.summaryPreview === null ? undefined : session.summaryPreview,
-                userQuery:
-                  session.userQuery === null ? undefined : session.userQuery,
+                userQuery: session.userQuery === null ? undefined : session.userQuery,
               }
             : null
         }

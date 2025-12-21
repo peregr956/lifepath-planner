@@ -27,17 +27,17 @@ Visit http://localhost:3000 to load the UI.
 
 ### Package Scripts
 
-| Script | Description |
-| --- | --- |
-| `npm run dev` | Start the Next.js dev server with hot reload |
-| `npm run build` | Create a production build (`.next/`) |
-| `npm run start` | Serve the production build |
-| `npm run lint` | Run ESLint (Next.js integration) |
-| `npm run type-check` | Execute TypeScript in `--noEmit` mode |
-| `npm run test` | Run Vitest in CI-friendly mode |
-| `npm run test:watch` | Watch mode for Vitest |
-| `npm run format` | Check formatting via Prettier |
-| `npm run format:write` | Auto-format the repo |
+| Script                 | Description                                  |
+| ---------------------- | -------------------------------------------- |
+| `npm run dev`          | Start the Next.js dev server with hot reload |
+| `npm run build`        | Create a production build (`.next/`)         |
+| `npm run start`        | Serve the production build                   |
+| `npm run lint`         | Run ESLint (Next.js integration)             |
+| `npm run type-check`   | Execute TypeScript in `--noEmit` mode        |
+| `npm run test`         | Run Vitest in CI-friendly mode               |
+| `npm run test:watch`   | Watch mode for Vitest                        |
+| `npm run format`       | Check formatting via Prettier                |
+| `npm run format:write` | Auto-format the repo                         |
 
 ## Testing
 
