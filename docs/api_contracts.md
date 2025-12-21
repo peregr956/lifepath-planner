@@ -264,12 +264,18 @@ The API gateway will call internal services over HTTP or an internal interface. 
 - **Endpoint:** e.g., `POST /clarify`
 - **Input:** draft or partially completed budget model.
 - **Output:** questions list + component descriptors.
+- **Note:** Before generating questions, the service performs AI normalization to correctly classify amounts as income (positive) or expenses (negative). This handles budgets in any format.
 
 Optional second endpoint:
 
 - **Endpoint:** `POST /apply-answers`
 - **Input:** budget model + answers.
 - **Output:** updated unified budget model.
+
+AI Normalization details:
+- Amounts are normalized before the deterministic engine processes them
+- Falls back to passthrough if AI is unavailable
+- Original amounts are preserved in metadata for traceability
 
 ### C. `optimization-service`
 
@@ -294,18 +300,21 @@ Internal contracts can evolve, but they should remain consistent with:
 
 ## 7. Provider Configuration Settings
 
-Clarification and optimization now ship the same knobs for selecting and tuning AI providers. Each service reads the provider choice plus timeout, temperature, and token limits on startup so misconfiguration is caught before the first request.
+Clarification, optimization, and budget normalization all ship the same knobs for selecting and tuning AI providers. Each service reads the provider choice plus timeout, temperature, and token limits on startup so misconfiguration is caught before the first request.
 
-| Service               | Provider env var           | Timeout env var                                | Temperature env var                               | Max token env var                                 |
-| --------------------- | -------------------------- | ---------------------------------------------- | ------------------------------------------------- | ------------------------------------------------- |
-| Clarification Service | `CLARIFICATION_PROVIDER`   | `CLARIFICATION_PROVIDER_TIMEOUT_SECONDS`       | `CLARIFICATION_PROVIDER_TEMPERATURE`              | `CLARIFICATION_PROVIDER_MAX_TOKENS`              |
-| Optimization Service  | `SUGGESTION_PROVIDER`      | `SUGGESTION_PROVIDER_TIMEOUT_SECONDS`          | `SUGGESTION_PROVIDER_TEMPERATURE`                 | `SUGGESTION_PROVIDER_MAX_TOKENS`                 |
+| Service                  | Provider env var               | Timeout env var                          | Temperature env var                         | Max token env var                           |
+| ------------------------ | ------------------------------ | ---------------------------------------- | ------------------------------------------- | ------------------------------------------- |
+| Clarification Service    | `CLARIFICATION_PROVIDER`       | `CLARIFICATION_PROVIDER_TIMEOUT_SECONDS` | `CLARIFICATION_PROVIDER_TEMPERATURE`        | `CLARIFICATION_PROVIDER_MAX_TOKENS`         |
+| Optimization Service     | `SUGGESTION_PROVIDER`          | `SUGGESTION_PROVIDER_TIMEOUT_SECONDS`    | `SUGGESTION_PROVIDER_TEMPERATURE`           | `SUGGESTION_PROVIDER_MAX_TOKENS`            |
+| Budget Normalization     | `BUDGET_NORMALIZATION_PROVIDER`| `BUDGET_NORMALIZATION_TIMEOUT`           | `BUDGET_NORMALIZATION_TEMPERATURE`          | `BUDGET_NORMALIZATION_MAX_TOKENS`           |
 
 Defaults:
 
-- Provider: `deterministic`
-- Timeout: `10` seconds
-- Temperature: `0.2`
-- Max output tokens: `512`
+- Provider: `deterministic` (except Budget Normalization defaults to `openai` when configured)
+- Timeout: `10` seconds (Budget Normalization: `30` seconds)
+- Temperature: `0.2` (Budget Normalization: `0.1` for consistency)
+- Max output tokens: `512` (Budget Normalization: `2048` to handle full budget data)
 
-Supported provider values are `deterministic`, `mock`, and `openai`. Selecting `openai` reserves the upcoming LLM adapter slot and now requires the shared environment variables `OPENAI_API_KEY`, `OPENAI_MODEL`, and `OPENAI_API_BASE`. Both services terminate during startup if any of those values are missing so deployments can catch misconfigurations early.
+Supported provider values are `deterministic`, `mock`, and `openai`. Selecting `openai` requires the shared environment variables `OPENAI_API_KEY`, `OPENAI_MODEL`, and `OPENAI_API_BASE`. Services terminate during startup if any of those values are missing so deployments can catch misconfigurations early.
+
+Budget normalization gracefully falls back to deterministic (passthrough) if OpenAI is not configured, ensuring the pipeline continues to work with budgets that already use correct sign conventions.

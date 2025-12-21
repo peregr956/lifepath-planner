@@ -40,6 +40,20 @@ place, and operational guidance for running with AI providers enabled.
 - Telemetry logging with hashed payloads
 - Mocked tests in `services/optimization-service/tests/test_openai_suggestion_provider.py`
 
+### openai-budget-normalization-provider
+
+✅ `services/clarification-service/src/providers/openai_budget_normalization.py` implements
+AI-powered budget normalization using ChatGPT function calling. Features:
+- Analyzes raw budget data and classifies amounts as income/expense/debt
+- Normalizes amounts: income → positive, expenses/debt → negative
+- Handles any budget format (all positive, ledger, mixed conventions)
+- Preserves original metadata and row indices for traceability
+- Automatic fallback to `DeterministicBudgetNormalizationProvider` on errors
+- Adds `ai_line_type` and `original_amount` metadata to normalized lines
+- Configuration via `BUDGET_NORMALIZATION_PROVIDER` and related env vars
+
+The normalization step runs before `draft_to_initial_unified()` in both `/normalize` and `/clarify` endpoints, ensuring the deterministic engine receives correctly-signed amounts regardless of the original format.
+
 ### secret-management
 
 ✅ Documented in `README.md` and `docs/operations.md`:
@@ -50,10 +64,11 @@ place, and operational guidance for running with AI providers enabled.
 
 ### provider-configuration
 
-✅ Both services honor environment-driven provider selection:
-- `CLARIFICATION_PROVIDER=openai` / `SUGGESTION_PROVIDER=openai` enables ChatGPT
+✅ All services honor environment-driven provider selection:
+- `CLARIFICATION_PROVIDER=openai` / `SUGGESTION_PROVIDER=openai` / `BUDGET_NORMALIZATION_PROVIDER=openai` enables ChatGPT
 - Fail-fast startup when OpenAI env vars are missing
 - Tuning via `*_TIMEOUT_SECONDS`, `*_TEMPERATURE`, `*_MAX_TOKENS` env vars
+- Budget normalization defaults to `openai` when configured, with deterministic fallback
 - Documented in service READMEs and `docs/llm_adapter.md`
 
 ### gateway-provider-metadata
