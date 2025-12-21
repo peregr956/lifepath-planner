@@ -90,6 +90,24 @@ export function BudgetSessionProvider({ children }: { children: ReactNode }) {
     setHydrated(true);
   }, [persist, searchParamsString]);
 
+  // Sync URL when session changes (but not during initial hydration)
+  useEffect(() => {
+    if (!hydrated) return;
+    // Only update URL if it doesn't match the current session
+    const currentUrlSession = parseSessionFromString(searchParamsString);
+    const sessionMatchesUrl =
+      (!session && !currentUrlSession) ||
+      (session &&
+        currentUrlSession &&
+        session.budgetId === currentUrlSession.budgetId &&
+        session.clarified === currentUrlSession.clarified &&
+        session.readyForSummary === currentUrlSession.readyForSummary &&
+        session.detectedFormat === currentUrlSession.detectedFormat);
+    if (!sessionMatchesUrl) {
+      updateUrl(session);
+    }
+  }, [session, hydrated, searchParamsString, updateUrl]);
+
   const saveSession = useCallback(
     (value: BudgetSession) => {
       const nextSession = {
@@ -98,9 +116,8 @@ export function BudgetSessionProvider({ children }: { children: ReactNode }) {
       };
       setSession(nextSession);
       persist(nextSession);
-      updateUrl(nextSession);
     },
-    [persist, updateUrl]
+    [persist]
   );
 
   const markClarified = useCallback(() => {
@@ -108,20 +125,18 @@ export function BudgetSessionProvider({ children }: { children: ReactNode }) {
       if (!prev) return prev;
       const nextSession = { ...prev, clarified: true };
       persist(nextSession);
-      updateUrl(nextSession);
       return nextSession;
     });
-  }, [persist, updateUrl]);
+  }, [persist]);
 
   const markReadyForSummary = useCallback(() => {
     setSession((prev) => {
       if (!prev) return prev;
       const nextSession = { ...prev, readyForSummary: true };
       persist(nextSession);
-      updateUrl(nextSession);
       return nextSession;
     });
-  }, [persist, updateUrl]);
+  }, [persist]);
 
   const setUserQuery = useCallback(
     (query: string) => {
@@ -138,8 +153,7 @@ export function BudgetSessionProvider({ children }: { children: ReactNode }) {
   const clearSession = useCallback(() => {
     setSession(null);
     persist(null);
-    updateUrl(null);
-  }, [persist, updateUrl]);
+  }, [persist]);
 
   const value = useMemo<BudgetSessionContextValue>(
     () => ({
