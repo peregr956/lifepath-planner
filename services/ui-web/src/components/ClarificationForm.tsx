@@ -78,15 +78,15 @@ export function ClarificationForm({
   return (
     <form onSubmit={handleFormSubmit} className="card flex flex-col gap-6" aria-label="clarification form">
       <div>
-        <h2 className="text-xl font-semibold text-white">Clarifications</h2>
+        <h2 className="text-xl font-semibold text-white">A few quick questions</h2>
         <p className="mt-1 text-sm text-white/70">
-          Fill in the gaps so the clarification service can normalize the budget data faster.
+          Help us understand your budget better so we can give you more relevant suggestions.
         </p>
       </div>
 
         {noQuestionsAvailable ? (
           <p className="rounded border border-white/10 bg-white/5 px-3 py-2 text-sm text-white/70">
-            No outstanding questions right now. Upload a budget to generate follow-up prompts.
+            No questions needed right now. You&apos;re all set!
           </p>
         ) : (
           <div className="flex flex-col gap-5">
@@ -106,7 +106,7 @@ export function ClarificationForm({
       )}
       {showSuccess && (
         <p className="rounded bg-emerald-500/20 px-3 py-2 text-sm text-emerald-100">
-          Clarifications queued successfully.
+          Saved! Preparing your results…
         </p>
       )}
 
@@ -116,7 +116,7 @@ export function ClarificationForm({
           className="inline-flex items-center justify-center rounded-lg bg-indigo-500 px-4 py-2 text-sm font-semibold text-white transition hover:bg-indigo-400 disabled:cursor-not-allowed disabled:bg-white/30"
           disabled={inputsDisabled || noQuestionsAvailable}
         >
-          {isSubmitting ? 'Submitting…' : 'Send clarifications'}
+          {isSubmitting ? 'Saving…' : 'Continue'}
         </button>
       </div>
     </form>
