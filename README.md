@@ -13,11 +13,18 @@ The previously experimental Streamlit UI has been removed; the Next.js interface
 - Node.js 20+ with `npm`
 - Recommended: create a virtual environment (`python -m venv .venv && source .venv/bin/activate`)
 
-Install shared Python tooling:
+## Package Installation
+
+The repository is structured as a Python package with proper import paths. Install dependencies (including the local package in editable mode):
 
 ```bash
 pip install -r requirements-dev.txt
 ```
+
+This installs:
+- All runtime dependencies (FastAPI, SQLAlchemy, OpenAI, etc.)
+- The project in editable mode (`-e .`) for proper imports
+- The `shared` package for cross-service utilities
 
 Install the web dependencies:
 
@@ -25,6 +32,8 @@ Install the web dependencies:
 cd services/ui-web
 npm install
 ```
+
+See `docs/development.md` for details on the package structure and adding new services.
 
 ## Environment configuration & secrets
 
@@ -90,6 +99,7 @@ only need to update the base URL in one place if you change ports.
 
 ### Active Documentation
 
+- `docs/development.md` — package structure, imports, and adding new services.
 - `docs/roadmap.md` — phased delivery plan plus post-MVP targets.
 - `docs/llm_adapter.md` — contracts for swapping in future ChatGPT-powered providers.
 - `docs/operations.md` — telemetry, rate limiting, and guardrail runbooks.

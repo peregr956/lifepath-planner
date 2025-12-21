@@ -12,16 +12,7 @@ that any budget format can be processed reliably.
 from __future__ import annotations
 
 import logging
-import sys
-from pathlib import Path
 from typing import Any, Dict, Optional
-
-# Ensure we can import shared modules
-SERVICE_SRC = Path(__file__).resolve().parent
-SERVICES_ROOT = SERVICE_SRC.parents[1]
-INGESTION_SRC = SERVICES_ROOT / "budget-ingestion-service" / "src"
-if INGESTION_SRC.exists() and str(INGESTION_SRC) not in sys.path:
-    sys.path.insert(0, str(INGESTION_SRC))
 
 from models.raw_budget import DraftBudgetModel
 

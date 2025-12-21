@@ -10,6 +10,8 @@ This roadmap outlines the phased delivery plan for the LifePath Planner MVP, ens
 - LLM adapter boundary and operational guardrails are documented in `docs/llm_adapter.md` and `docs/operations.md`.
 - Deterministic pipeline snapshots (`tests/test_deterministic_pipeline.py`) provide regression coverage before ChatGPT integration.
 - The legacy Streamlit UI has been removed; Next.js (`services/ui-web`) is the canonical client going forward.
+- Repository structure has been cleaned up: `sys.path` manipulation removed, proper package imports via `conftest.py` files, and `pyproject.toml` configuration for IDE support.
+- Test coverage audit completed (December 2024) — gaps documented in Phase 6 below.
 
 The remaining work before wiring ChatGPT is limited to the forthcoming AI integration epic.
 
@@ -96,7 +98,55 @@ The remaining work before wiring ChatGPT is limited to the forthcoming AI integr
 
 ---
 
-## Phase 6 — Post-MVP Enhancements (Ongoing)
+## Phase 6 — Test Coverage Expansion
+
+The following modules have been identified as lacking dedicated test coverage. Addressing these will improve reliability and regression safety.
+
+### High Priority (Core Business Logic)
+
+| Module | Service | Description |
+|--------|---------|-------------|
+| `heuristics.py` | optimization-service | Financial rules that drive suggestions (debt ratios, savings targets, emergency fund thresholds) |
+| `generate_suggestions.py` | optimization-service | Core suggestion generation and ranking logic |
+| `format_detection.py` | budget-ingestion-service | Ledger vs categorical budget detection heuristics |
+| `query_analyzer.py` | clarification-service | User query intent analysis for personalization |
+| `adaptive_questioning.py` | clarification-service | Adaptive question flow and follow-up logic |
+
+### Medium Priority (Stability & Reliability)
+
+| Module | Service | Description |
+|--------|---------|-------------|
+| `provider_settings.py` | shared | Provider configuration loading and validation |
+| `observability/privacy.py` | shared | `hash_payload` and `redact_fields` privacy utilities |
+| `answer_validation.py` | api-gateway | Input validation for answer field IDs |
+| `budget_normalization.py` | clarification-service | AI-enhanced normalization orchestration |
+
+### Lower Priority (Infrastructure & Endpoints)
+
+| Module | Service | Description |
+|--------|---------|-------------|
+| `main.py` endpoints | budget-ingestion-service | `/health` and `/ingest` endpoint smoke tests |
+| `main.py` endpoints | optimization-service | `/health`, `/summarize`, `/optimize` endpoint tests |
+| `observability/telemetry.py` | shared | OpenTelemetry setup and request context binding |
+| `routes/budget.py` | api-gateway | Budget routing module |
+
+### Integration & E2E Gaps
+
+| Coverage Type | Status | Description |
+|---------------|--------|-------------|
+| Multi-service HTTP tests | Missing | Tests that call between running services via HTTP |
+| Error propagation tests | Missing | Verify error handling across service boundaries |
+| Rate limiting integration | Partial | End-to-end rate limit behavior validation |
+
+**Acceptance Criteria**
+
+- Each high-priority module has ≥80% line coverage.
+- Medium-priority modules have at least happy-path and primary error-case tests.
+- Integration test suite can run against local Docker Compose stack.
+
+---
+
+## Phase 7 — Post-MVP Enhancements (Ongoing)
 
 - Collect user feedback and prioritize:
   - Multi-year projections.

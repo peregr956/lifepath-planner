@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import copy
-import sys
 from pathlib import Path
 from typing import Dict
 
@@ -11,16 +10,11 @@ from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-ROOT_DIR = Path(__file__).resolve().parents[1]
-SRC_DIR = ROOT_DIR / "src"
-if str(SRC_DIR) not in sys.path:
-    sys.path.insert(0, str(SRC_DIR))
-
-from http_client import RequestMetrics  # noqa: E402
-from main import app  # noqa: E402
-from persistence.database import get_session  # noqa: E402
-from persistence.models import Base  # noqa: E402
-from persistence.repository import BudgetSessionRepository  # noqa: E402
+from http_client import RequestMetrics
+from main import app
+from persistence.database import get_session
+from persistence.models import Base
+from persistence.repository import BudgetSessionRepository
 
 
 BASE_PARTIAL_MODEL: Dict[str, object] = {

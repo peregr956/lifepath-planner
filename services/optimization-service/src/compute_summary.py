@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Dict
 
-from .budget_model import Summary, UnifiedBudgetModel
+from budget_model import Summary, UnifiedBudgetModel
 
 
 def compute_summary_for_model(model: UnifiedBudgetModel) -> Summary:

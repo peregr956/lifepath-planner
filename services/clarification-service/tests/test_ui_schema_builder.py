@@ -1,20 +1,7 @@
-import sys
-from pathlib import Path
-
 from typing import Any, Dict
 
-SERVICE_ROOT = Path(__file__).resolve().parents[1]
-SERVICE_SRC = SERVICE_ROOT / "src"
-INGESTION_SRC = SERVICE_ROOT.parent / "budget-ingestion-service" / "src"
-OPTIMIZATION_SRC = SERVICE_ROOT.parent / "optimization-service" / "src"
-
-for candidate in (SERVICE_SRC, INGESTION_SRC, OPTIMIZATION_SRC):
-    candidate_str = str(candidate)
-    if candidate.exists() and candidate_str not in sys.path:
-        sys.path.append(candidate_str)
-
-from budget_model import Expense, Income, Preferences, Summary, UnifiedBudgetModel  # noqa: E402
-from ui_schema_builder import build_initial_ui_schema  # noqa: E402
+from budget_model import Expense, Income, Preferences, Summary, UnifiedBudgetModel
+from ui_schema_builder import build_initial_ui_schema
 
 
 def test_build_initial_ui_schema_emits_structured_sections() -> None:

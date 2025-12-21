@@ -4,8 +4,8 @@ import csv
 from io import StringIO
 from typing import Dict, Iterable, List, Optional, Sequence
 
-from ..models.raw_budget import DraftBudgetModel, RawBudgetLine
-from .format_detection import HeaderSignals, detect_format
+from models.raw_budget import DraftBudgetModel, RawBudgetLine
+from parsers.format_detection import HeaderSignals, detect_format
 
 CategoryHeaders = ("category", "category_label", "category name", "type")
 AmountHeaders = ("amount", "value", "total")

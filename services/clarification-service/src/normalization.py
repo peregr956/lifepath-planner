@@ -6,27 +6,10 @@ baseline UnifiedBudgetModel the clarification service can reason about before
 invoking any AI-driven refinement.
 """
 
-from pathlib import Path
 from typing import Any, Dict, Iterable, List, Sequence, Tuple
-import sys
 
-# Ensure we can import shared dataclasses from sibling services without having
-# to package everything just yet. Once the repo is structured as an installable
-# workspace, these sys.path manipulations can be revisited.
-SERVICE_SRC = Path(__file__).resolve().parent
-SERVICES_ROOT = SERVICE_SRC.parents[1]
-OTHER_SERVICE_PATHS: Sequence[Path] = (
-    SERVICES_ROOT / "budget-ingestion-service" / "src",
-    SERVICES_ROOT / "optimization-service" / "src",
-)
-
-for candidate in OTHER_SERVICE_PATHS:
-    candidate_str = str(candidate)
-    if candidate.exists() and candidate_str not in sys.path:
-        sys.path.append(candidate_str)
-
-from models.raw_budget import DraftBudgetModel, RawBudgetLine  # noqa: E402
-from budget_model import (  # noqa: E402
+from models.raw_budget import DraftBudgetModel, RawBudgetLine
+from budget_model import (
     Debt,
     Expense,
     Income,

@@ -1,7 +1,7 @@
 """Pluggable provider implementations for clarification question generation and budget normalization."""
 
-from .openai_clarification import OpenAIClarificationProvider
-from .openai_budget_normalization import (
+from providers.openai_clarification import OpenAIClarificationProvider
+from providers.openai_budget_normalization import (
     OpenAIBudgetNormalizationProvider,
     DeterministicBudgetNormalizationProvider,
     NormalizationProviderRequest,

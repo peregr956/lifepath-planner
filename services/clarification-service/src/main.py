@@ -6,40 +6,19 @@ questions, and UI schemas so humans and downstream systems can resolve missing d
 from __future__ import annotations
 
 from datetime import date
-from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Set
 import logging
-import sys
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 from typing_extensions import Literal
 
-# Temporary path wiring so this service can import shared dataclasses until the
-# repo is packaged as a proper workspace.
-SERVICE_SRC = Path(__file__).resolve().parent
-SERVICE_SRC_STR = str(SERVICE_SRC)
-if SERVICE_SRC_STR not in sys.path:
-    sys.path.append(SERVICE_SRC_STR)
-
-SERVICES_ROOT = SERVICE_SRC.parents[1]
-SERVICES_ROOT_STR = str(SERVICES_ROOT)
-if SERVICES_ROOT_STR not in sys.path:
-    sys.path.append(SERVICES_ROOT_STR)
-OTHER_SERVICE_PATHS = (
-    SERVICES_ROOT / "budget-ingestion-service" / "src",
-    SERVICES_ROOT / "optimization-service" / "src",
-)
-for path in OTHER_SERVICE_PATHS:
-    path_str = str(path)
-    if path.exists() and path_str not in sys.path:
-        sys.path.append(path_str)
-
 from shared.observability.telemetry import bind_request_context, ensure_request_id, reset_request_context, setup_telemetry
+from shared.provider_settings import ProviderSettings, ProviderSettingsError, load_provider_settings
 
-from models.raw_budget import DraftBudgetModel, RawBudgetLine  # noqa: E402
-from budget_model import (  # noqa: E402
+from models.raw_budget import DraftBudgetModel, RawBudgetLine
+from budget_model import (
     Debt,
     Expense,
     Income,
@@ -59,7 +38,6 @@ from normalization import (
 from question_generator import QuestionSpec
 from ui_schema_builder import build_initial_ui_schema
 from clarification_provider import ClarificationProviderRequest, build_clarification_provider
-from shared.provider_settings import ProviderSettings, ProviderSettingsError, load_provider_settings
 from budget_normalization import normalize_draft_budget_with_ai, NormalizationResult
 
 app = FastAPI(title="Clarification Service")

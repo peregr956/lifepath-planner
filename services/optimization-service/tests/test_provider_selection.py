@@ -1,16 +1,13 @@
 import json
-import sys
 from pathlib import Path
 from typing import Any, Dict
 
 import pytest
 from fastapi.testclient import TestClient
 
-SERVICE_ROOT = Path(__file__).resolve().parents[1]
-if str(SERVICE_ROOT) not in sys.path:
-    sys.path.append(str(SERVICE_ROOT))
+from main import app, reload_suggestion_provider_for_tests
 
-from src.main import app, reload_suggestion_provider_for_tests  # noqa: E402
+SERVICE_ROOT = Path(__file__).resolve().parents[1]
 
 
 client = TestClient(app)
