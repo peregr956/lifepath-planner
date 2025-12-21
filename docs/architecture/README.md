@@ -81,10 +81,10 @@ To justify a standalone product, LifePath must offer capabilities that **ChatGPT
 │    Ingestion    │ │  Clarification  │ │  Optimization   │ │   Projection    │
 │   (Port 8001)   │ │   (Port 8002)   │ │   (Port 8003)   │ │   (Port 8004)   │
 │                 │ │                 │ │                 │ │                 │
-│ • CSV Parser    │ │ • Question Gen  │ │ • Suggestions   │ │ • Debt Payoff   │
-│ • XLSX Parser   │ │ • Normalization │ │ • Heuristics    │ │ • Savings       │
-│ • Format Detect │ │ • OpenAI Prov.  │ │ • OpenAI Prov.  │ │ • Net Worth     │
-│                 │ │                 │ │                 │ │ • Retirement    │
+│ • CSV Parser    │ │ • AI Normalize  │ │ • Suggestions   │ │ • Debt Payoff   │
+│ • XLSX Parser   │ │ • Question Gen  │ │ • Heuristics    │ │ • Savings       │
+│ • Format Detect │ │ • Normalization │ │ • OpenAI Prov.  │ │ • Net Worth     │
+│                 │ │ • OpenAI Prov.  │ │                 │ │ • Retirement    │
 │                 │ │                 │ │                 │ │ • Scenarios     │
 └─────────────────┘ └─────────────────┘ └─────────────────┘ └─────────────────┘
 ```
@@ -265,6 +265,20 @@ Each differentiation feature is designed as a logical module that could become a
 - **Scenario Engine** - Combines projection + comparison logic
 
 For MVP, these can be implemented within the API Gateway and extracted later if needed.
+
+### Why AI Budget Normalization?
+
+The system accepts budgets in any format, but the deterministic engine needs consistent data:
+- Income must be positive values
+- Expenses must be negative values
+- Debt payments must be negative values
+
+Users upload budgets in many formats: all positive numbers, separate income/expense columns, ledger formats, etc. AI normalization uses ChatGPT to analyze category labels and descriptions to correctly classify each amount before the deterministic engine processes it.
+
+The AI normalization step:
+1. Analyzes the semantic meaning of each budget line
+2. Normalizes amounts to the correct sign convention
+3. Falls back to passthrough if unavailable
 
 ### Why Deterministic Calculations?
 

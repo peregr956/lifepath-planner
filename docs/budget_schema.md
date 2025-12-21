@@ -10,6 +10,41 @@ The deterministic layer and optimization engine depend on this unified model.
 
 ---
 
+## Budget Normalization Pipeline
+
+Before the unified model is created, uploaded budgets go through a two-stage normalization process:
+
+### Stage 1: AI-Powered Normalization
+
+When a budget file is uploaded, ChatGPT analyzes the raw data to correctly classify amounts:
+
+- **Income** is normalized to **positive** values
+- **Expenses** are normalized to **negative** values
+- **Debt payments** are normalized to **negative** values
+- **Savings contributions** are normalized to **negative** values (outflows)
+
+This handles any budget format, including:
+- Budgets where all amounts are positive (AI uses category labels to determine type)
+- Ledger formats with separate debit/credit columns
+- Mixed formats with inconsistent sign conventions
+
+The AI analyzes category labels, descriptions, and metadata to make classification decisions. For example, "Salary: 5000" becomes +5000 (income), while "Rent: 1800" becomes -1800 (expense).
+
+### Stage 2: Deterministic Normalization
+
+After AI normalization, the deterministic engine converts the draft budget into the structured `UnifiedBudgetModel`:
+
+- Positive amounts become `Income` entries
+- Negative amounts become `Expense` entries
+- Summary totals are computed
+- Default preferences are applied
+
+### Fallback Behavior
+
+If AI normalization is unavailable or fails, the system falls back to deterministic behavior where amounts are passed through unchanged. This preserves backward compatibility with budgets that already use correct sign conventions.
+
+---
+
 ## Root Structure
 
 The finalized budget model contains the following top-level fields:

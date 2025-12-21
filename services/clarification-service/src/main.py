@@ -60,6 +60,7 @@ from question_generator import QuestionSpec
 from ui_schema_builder import build_initial_ui_schema
 from clarification_provider import ClarificationProviderRequest, build_clarification_provider
 from provider_settings import ProviderSettings, ProviderSettingsError, load_provider_settings
+from budget_normalization import normalize_draft_budget_with_ai, NormalizationResult
 
 app = FastAPI(title="Clarification Service")
 setup_telemetry(app, service_name="clarification-service")
@@ -74,11 +75,41 @@ def _load_clarification_provider_settings() -> ProviderSettings:
     )
 
 
+def _load_normalization_provider_settings() -> ProviderSettings:
+    """
+    Load provider settings for AI budget normalization.
+    
+    Uses separate environment variables from clarification to allow independent configuration.
+    Defaults to OpenAI if available, otherwise deterministic.
+    """
+    return load_provider_settings(
+        provider_env="BUDGET_NORMALIZATION_PROVIDER",
+        timeout_env="BUDGET_NORMALIZATION_TIMEOUT",
+        temperature_env="BUDGET_NORMALIZATION_TEMPERATURE",
+        max_tokens_env="BUDGET_NORMALIZATION_MAX_TOKENS",
+        default_provider="openai",  # Default to AI normalization
+        default_timeout=30.0,  # Longer timeout for normalization
+        default_temperature=0.1,  # Low temperature for consistent normalization
+        default_max_tokens=2048,  # Larger to handle full budget data
+    )
+
+
 try:
     CLARIFICATION_PROVIDER_SETTINGS = _load_clarification_provider_settings()
 except ProviderSettingsError as exc:
     logger.error("Failed to load clarification provider settings: %s", exc)
     raise
+
+try:
+    NORMALIZATION_PROVIDER_SETTINGS = _load_normalization_provider_settings()
+    logger.info(
+        "Budget normalization provider: %s",
+        NORMALIZATION_PROVIDER_SETTINGS.provider_name,
+    )
+except ProviderSettingsError as exc:
+    # Normalization is optional - fall back to deterministic if OpenAI not configured
+    logger.warning("AI normalization not available, falling back to deterministic: %s", exc)
+    NORMALIZATION_PROVIDER_SETTINGS = None
 
 
 def _initialize_clarification_provider():
@@ -105,9 +136,15 @@ def reload_clarification_provider_for_tests() -> None:
 
     global CLARIFICATION_PROVIDER_SETTINGS
     global CLARIFICATION_PROVIDER
+    global NORMALIZATION_PROVIDER_SETTINGS
 
     CLARIFICATION_PROVIDER_SETTINGS = _load_clarification_provider_settings()
     CLARIFICATION_PROVIDER = _initialize_clarification_provider()
+    
+    try:
+        NORMALIZATION_PROVIDER_SETTINGS = _load_normalization_provider_settings()
+    except ProviderSettingsError:
+        NORMALIZATION_PROVIDER_SETTINGS = None
 
 
 def _log_event(event: str, request: Request, **extra: Any) -> None:
@@ -441,13 +478,36 @@ def health_check() -> dict:
 def normalize_budget(request: Request, payload: DraftBudgetPayload) -> NormalizationResponseModel:
     """
     Normalize an ingested draft budget and attach heuristic follow-ups plus UI scaffolding.
+    
+    This endpoint performs two-stage normalization:
+    1. AI normalization: Analyzes the budget and correctly classifies amounts as income (positive)
+       or expenses (negative) regardless of the original format.
+    2. Deterministic normalization: Converts the normalized draft into the unified model.
+    
     Expects a `DraftBudgetPayload` produced by the ingestion pipeline.
     Returns a `NormalizationResponseModel` containing the unified model, clarification questions, and UI schema.
     """
 
     _log_event("normalize_received", request, line_count=len(payload.lines))
     draft_model = payload.to_dataclass()
-    unified_model = draft_to_initial_unified(draft_model)
+    
+    # Stage 1: AI-powered normalization to correctly sign amounts
+    normalization_result = normalize_draft_budget_with_ai(
+        draft_model,
+        settings=NORMALIZATION_PROVIDER_SETTINGS,
+    )
+    _log_event(
+        "ai_normalization_completed",
+        request,
+        provider=normalization_result.provider_used,
+        income_count=normalization_result.income_count,
+        expense_count=normalization_result.expense_count,
+        debt_count=normalization_result.debt_count,
+        success=normalization_result.success,
+    )
+    
+    # Stage 2: Deterministic normalization to create unified model
+    unified_model = draft_to_initial_unified(normalization_result.draft)
     questions = _build_clarification_questions(unified_model)
     question_models = _serialize_question_specs(questions)
     ui_schema = build_initial_ui_schema(unified_model)
@@ -474,6 +534,11 @@ def normalize_budget(request: Request, payload: DraftBudgetPayload) -> Normaliza
 def clarify_budget(request: Request, payload: DraftBudgetPayload) -> ClarifyResponseModel:
     """
     Generate adaptive clarification questions based on budget data and user query.
+    
+    This endpoint performs two-stage normalization before generating questions:
+    1. AI normalization: Analyzes the budget and correctly classifies amounts.
+    2. Deterministic normalization: Converts the normalized draft into the unified model.
+    
     Expects a `DraftBudgetPayload` with the latest ingestion output, optionally including user_query.
     Returns a `ClarifyResponseModel` including the needs_clarification flag, question specs, and partial model.
     
@@ -489,7 +554,23 @@ def clarify_budget(request: Request, payload: DraftBudgetPayload) -> ClarifyResp
     draft_model = payload.to_dataclass()
     if not draft_model.lines:
         return JSONResponse(status_code=400, content={"error": "empty_budget"})
-    unified_model = draft_to_initial_unified(draft_model)
+    
+    # Stage 1: AI-powered normalization to correctly sign amounts
+    normalization_result = normalize_draft_budget_with_ai(
+        draft_model,
+        settings=NORMALIZATION_PROVIDER_SETTINGS,
+    )
+    _log_event(
+        "ai_normalization_completed",
+        request,
+        provider=normalization_result.provider_used,
+        income_count=normalization_result.income_count,
+        expense_count=normalization_result.expense_count,
+        success=normalization_result.success,
+    )
+    
+    # Stage 2: Deterministic normalization to create unified model
+    unified_model = draft_to_initial_unified(normalization_result.draft)
     
     # Pass user query and profile for adaptive questioning
     questions = _build_clarification_questions(
