@@ -92,7 +92,7 @@ class ExpenseModel(BaseModel):
     id: str
     category: str
     monthly_amount: float
-    essential: bool
+    essential: Optional[bool] = None
     notes: Optional[str] = None
 
 
@@ -172,9 +172,23 @@ class UnifiedBudgetModelPayload(BaseModel):
                 )
             )
 
+        expenses = []
+        for expense in self.expenses:
+            # Default essential to False if not provided
+            essential_value = expense.essential if expense.essential is not None else False
+            expenses.append(
+                Expense(
+                    id=expense.id,
+                    category=expense.category,
+                    monthly_amount=expense.monthly_amount,
+                    essential=essential_value,
+                    notes=expense.notes,
+                )
+            )
+
         return UnifiedBudgetModel(
             income=[Income(**income.model_dump()) for income in self.income],
-            expenses=[Expense(**expense.model_dump()) for expense in self.expenses],
+            expenses=expenses,
             debts=debts,
             preferences=Preferences(**self.preferences.model_dump()),
             summary=Summary(**self.summary.model_dump()),

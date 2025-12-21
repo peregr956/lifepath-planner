@@ -194,8 +194,8 @@ function createFormResolver(schema: ClarificationSchema, labels: Record<string, 
     const result = await schema.safeParseAsync(values);
     if (result.success) {
       return {
-        values: result.data,
-        errors: {},
+        values: result.data as FormValues,
+        errors: {} as const,
       };
     }
 
@@ -211,7 +211,7 @@ function createFormResolver(schema: ClarificationSchema, labels: Record<string, 
     });
 
     return {
-      values: {},
+      values: {} as Record<string, never>,
       errors,
     };
   };
@@ -239,29 +239,33 @@ function deriveComponentSchema(component: ClarificationComponentDescriptor): z.Z
     case 'dropdown': {
       const options = component.options;
       return z
-        .string({
-          invalid_type_error: `${component.label} must be selected.`,
-          required_error: requiredMessage,
+        .string({ message: `${component.label} must be selected.` })
+        .refine((value) => value !== undefined && value !== '', {
+          message: requiredMessage,
         })
         .refine((value) => options.includes(value), {
           message: `${component.label} must match one of the provided options.`,
         });
     }
     case 'toggle':
-      return z.boolean({
-        invalid_type_error: `${component.label} must be true or false.`,
-        required_error: requiredMessage,
-      });
+      return z.boolean({ message: `${component.label} must be true or false.` }).refine(
+        (value) => value !== undefined,
+        {
+          message: requiredMessage,
+        }
+      );
     default:
       return z.any();
   }
 }
 
 function buildNumberSchema(component: NumericComponentDescriptor, requiredMessage: string): z.ZodNumber {
-  let schema = z.number({
-    invalid_type_error: `${component.label} must be a number.`,
-    required_error: requiredMessage,
-  });
+  let schema = z.number({ message: `${component.label} must be a number.` }).refine(
+    (value) => value !== undefined,
+    {
+      message: requiredMessage,
+    }
+  );
 
   const { constraints } = component;
   if (constraints?.minimum !== undefined) {
