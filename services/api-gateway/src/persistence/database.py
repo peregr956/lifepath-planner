@@ -38,17 +38,35 @@ def _prepare_sqlite_path(url: URL) -> None:
 
 
 def get_engine() -> Engine:
-    """Create (or return) the global SQLAlchemy engine."""
+    """Create (or return) the global SQLAlchemy engine.
+    
+    Supports both SQLite (local development) and PostgreSQL (production).
+    For PostgreSQL, connection pooling is configured for better performance.
+    """
     global _engine
     if _engine is None:
         database_url = get_database_url()
         parsed_url = make_url(database_url)
+        
         if parsed_url.drivername.startswith("sqlite"):
             _prepare_sqlite_path(parsed_url)
-            connect_args = {"check_same_thread": False}
+            connect_args: dict = {"check_same_thread": False}
+            # SQLite doesn't support connection pooling
+            _engine = create_engine(
+                database_url,
+                future=True,
+                connect_args=connect_args,
+            )
         else:
-            connect_args = {}
-        _engine = create_engine(database_url, future=True, connect_args=connect_args)
+            # PostgreSQL and other databases - configure connection pooling
+            _engine = create_engine(
+                database_url,
+                future=True,
+                pool_size=5,
+                max_overflow=10,
+                pool_pre_ping=True,  # Verify connections before use
+                pool_recycle=300,  # Recycle connections after 5 minutes
+            )
     return _engine
 
 

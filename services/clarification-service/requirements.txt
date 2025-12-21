@@ -1,0 +1,12 @@
+# Clarification Service dependencies
+fastapi==0.111.0
+pydantic==2.8.2
+uvicorn[standard]==0.30.3
+openai==1.40.0
+
+# OpenTelemetry / observability
+opentelemetry-api==1.26.0
+opentelemetry-sdk==1.26.0
+opentelemetry-instrumentation-fastapi==0.47b0
+python-json-logger==2.0.7
+

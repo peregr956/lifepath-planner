@@ -1,0 +1,14 @@
+[phases.setup]
+nixPkgs = ["python311"]
+
+[phases.install]
+cmds = [
+    "pip install -r requirements-dev.txt"
+]
+
+[start]
+cmd = "./scripts/start-production.sh"
+
+[variables]
+PYTHONPATH = "/app/services/api-gateway/src:/app/services/budget-ingestion-service/src:/app/services/clarification-service/src:/app/services/optimization-service/src:/app/services/shared:/app/services"
+

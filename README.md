@@ -202,3 +202,26 @@ To validate the prototype with real ChatGPT/OpenAI API calls:
    ```
 
 The validation scripts test the full pipeline: upload → clarification questions → answer submission → summary and suggestions. They generate JSON reports with timing, errors, and full response payloads for analysis.
+
+## Production Deployment
+
+### Frontend (Vercel)
+
+1. Go to [vercel.com/new](https://vercel.com/new)
+2. Import your GitHub repository
+3. Set **Root Directory** to `services/ui-web`
+4. Add environment variable: `NEXT_PUBLIC_LIFEPATH_API_BASE_URL` = your backend URL
+5. Deploy
+
+### Backend (Railway)
+
+1. Go to [railway.app](https://railway.app) and create a new project
+2. Deploy from your GitHub repo
+3. Add a PostgreSQL database
+4. Set environment variables:
+   - `GATEWAY_DB_URL` = PostgreSQL connection URL
+   - `GATEWAY_CORS_ORIGINS` = your Vercel URL
+   - `OPENAI_API_KEY` = your OpenAI key
+5. The start command uses `scripts/start-production.sh`
+
+For detailed deployment instructions, see `docs/deployment.md`.
