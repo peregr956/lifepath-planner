@@ -2,10 +2,9 @@ import json
 from pathlib import Path
 
 import pytest
-
-from normalization import apply_answers_to_model, draft_to_initial_unified
-from models.raw_budget import DraftBudgetModel, RawBudgetLine
 from budget_model import Debt, Expense, Income, Preferences, RateChange, Summary, UnifiedBudgetModel
+from models.raw_budget import DraftBudgetModel, RawBudgetLine
+from normalization import apply_answers_to_model, draft_to_initial_unified
 
 SERVICE_ROOT = Path(__file__).resolve().parents[1]
 FIXTURES_DIR = SERVICE_ROOT / "tests" / "fixtures"

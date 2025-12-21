@@ -3,15 +3,8 @@ Optimization Service summarizes unified household budgets and emits deterministi
 suggestions that downstream products can display or refine with AI.
 """
 
-from typing import Any, Dict, List, Optional
 import logging
-
-from fastapi import FastAPI, HTTPException
-from fastapi.responses import JSONResponse
-from pydantic import BaseModel
-from typing_extensions import Literal
-
-from shared.provider_settings import ProviderSettings, ProviderSettingsError, load_provider_settings
+from typing import Any, Literal
 
 from budget_model import (
     Debt,
@@ -23,10 +16,15 @@ from budget_model import (
     UnifiedBudgetModel,
 )
 from compute_summary import compute_category_shares, compute_summary_for_model
+from fastapi import FastAPI, HTTPException
+from fastapi.responses import JSONResponse
+from pydantic import BaseModel
+from shared.provider_settings import ProviderSettings, ProviderSettingsError, load_provider_settings
 from suggestion_provider import SuggestionProviderRequest, build_suggestion_provider
 
 app = FastAPI(title="Optimization Service")
 logger = logging.getLogger(__name__)
+
 
 def _load_suggestion_provider_settings() -> ProviderSettings:
     return load_provider_settings(
@@ -86,8 +84,8 @@ class ExpenseModel(BaseModel):
     id: str
     category: str
     monthly_amount: float
-    essential: Optional[bool] = None
-    notes: Optional[str] = None
+    essential: bool | None = None
+    notes: str | None = None
 
 
 class DebtModel(BaseModel):
@@ -98,7 +96,7 @@ class DebtModel(BaseModel):
     min_payment: float
     priority: Literal["high", "medium", "low"]
     approximate: bool
-    rate_changes: Optional[List[RateChangeModel]] = None
+    rate_changes: list[RateChangeModel] | None = None
 
 
 class PreferencesModel(BaseModel):
@@ -123,30 +121,30 @@ class SuggestionModel(BaseModel):
 
 
 class UserProfileModel(BaseModel):
-    user_query: Optional[str] = None
-    financial_philosophy: Optional[Literal["r_personalfinance", "money_guy", "neutral", "custom"]] = None
-    philosophy_notes: Optional[str] = None
-    risk_tolerance: Optional[Literal["conservative", "moderate", "aggressive"]] = None
-    risk_concerns: Optional[List[str]] = None
-    primary_goal: Optional[str] = None
-    goal_timeline: Optional[Literal["immediate", "short_term", "medium_term", "long_term"]] = None
-    financial_concerns: Optional[List[str]] = None
-    life_stage_context: Optional[str] = None
+    user_query: str | None = None
+    financial_philosophy: Literal["r_personalfinance", "money_guy", "neutral", "custom"] | None = None
+    philosophy_notes: str | None = None
+    risk_tolerance: Literal["conservative", "moderate", "aggressive"] | None = None
+    risk_concerns: list[str] | None = None
+    primary_goal: str | None = None
+    goal_timeline: Literal["immediate", "short_term", "medium_term", "long_term"] | None = None
+    financial_concerns: list[str] | None = None
+    life_stage_context: str | None = None
 
 
 class UnifiedBudgetModelPayload(BaseModel):
-    income: List[IncomeModel]
-    expenses: List[ExpenseModel]
-    debts: List[DebtModel]
+    income: list[IncomeModel]
+    expenses: list[ExpenseModel]
+    debts: list[DebtModel]
     preferences: PreferencesModel
     summary: SummaryModel
     # User query and profile for personalized suggestions
-    user_query: Optional[str] = None
-    user_profile: Optional[Dict[str, Any]] = None
+    user_query: str | None = None
+    user_profile: dict[str, Any] | None = None
 
     def to_dataclass(self) -> UnifiedBudgetModel:
         """Convert validated payload into the internal dataclass representation."""
-        debts: List[Debt] = []
+        debts: list[Debt] = []
         for debt in self.debts:
             rate_changes = (
                 [RateChange(**rate_change.model_dump()) for rate_change in debt.rate_changes]
@@ -191,17 +189,17 @@ class UnifiedBudgetModelPayload(BaseModel):
 
 class SummarizeResponseModel(BaseModel):
     summary: SummaryModel
-    category_shares: Dict[str, float]
+    category_shares: dict[str, float]
 
 
 class SummarizeAndOptimizeResponseModel(BaseModel):
     summary: SummaryModel
-    category_shares: Dict[str, float]
-    suggestions: List[SuggestionModel]
+    category_shares: dict[str, float]
+    suggestions: list[SuggestionModel]
 
 
-def _provider_call_context(settings: ProviderSettings) -> Dict[str, Any]:
-    context: Dict[str, Any] = {
+def _provider_call_context(settings: ProviderSettings) -> dict[str, Any]:
+    context: dict[str, Any] = {
         "provider_name": settings.provider_name,
         "timeout_seconds": settings.timeout_seconds,
         "temperature": settings.temperature,
@@ -218,23 +216,23 @@ def _provider_call_context(settings: ProviderSettings) -> Dict[str, Any]:
 def _build_suggestions(
     model: UnifiedBudgetModel,
     summary: Summary,
-    user_query: Optional[str] = None,
-    user_profile: Optional[Dict[str, Any]] = None,
-) -> List[SuggestionModel]:
+    user_query: str | None = None,
+    user_profile: dict[str, Any] | None = None,
+) -> list[SuggestionModel]:
     """
     Invoke the configured suggestion provider and convert its output into Pydantic models.
-    
+
     Passes user_query and user_profile for personalized suggestion generation.
     """
 
     request_context = _provider_call_context(SUGGESTION_PROVIDER_SETTINGS)
-    
+
     # Add user query and profile to context for personalized suggestions
     if user_query:
         request_context["user_query"] = user_query
     if user_profile:
         request_context["user_profile"] = user_profile
-    
+
     request = SuggestionProviderRequest(model=model, summary=summary, context=request_context)
     try:
         response = SUGGESTION_PROVIDER.generate(request)
@@ -298,7 +296,7 @@ def summarize_and_optimize(payload: UnifiedBudgetModelPayload) -> SummarizeAndOp
         return JSONResponse(status_code=400, content={"error": "empty_model"})
     summary = compute_summary_for_model(model)
     category_shares = compute_category_shares(model)
-    
+
     # Pass user query and profile for personalized suggestions
     suggestion_models = _build_suggestions(
         model,

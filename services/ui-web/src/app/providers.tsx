@@ -26,7 +26,7 @@ export function AppProviders({ children }: Props) {
             retry: 0,
           },
         },
-      })
+      }),
   );
 
   return (

@@ -138,6 +138,17 @@ pytest services/clarification-service/tests
 pytest services/optimization-service/tests
 ```
 
+### Continuous Integration
+
+The repository uses GitHub Actions for CI. Every push to `main` and every pull request triggers:
+
+- **Linting**: ruff (format + lint), pyright (type checking), ESLint, Prettier
+- **Python tests**: pytest across all services (Python 3.11, 3.12, 3.13 matrix)
+- **UI tests**: vitest for the Next.js frontend
+- **Integration tests**: deterministic pipeline validation
+
+See `.github/workflows/ci.yml` for the full workflow and `docs/development.md` for local linting commands.
+
 ### Deterministic pipeline tests
 
 To exercise the ingestion → clarification → optimization pipeline with fixture data (no UI required), run:

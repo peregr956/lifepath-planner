@@ -48,9 +48,14 @@ export function BudgetSessionProvider({ children }: { children: ReactNode }) {
   const updateUrl = useCallback(
     (value: BudgetSession | null) => {
       const params = new URLSearchParams(searchParams.toString());
-      ['budget_id', 'format', 'income_lines', 'expense_lines', 'clarified', 'ready_for_summary'].forEach((key) =>
-        params.delete(key)
-      );
+      [
+        'budget_id',
+        'format',
+        'income_lines',
+        'expense_lines',
+        'clarified',
+        'ready_for_summary',
+      ].forEach((key) => params.delete(key));
       if (value) {
         params.set('budget_id', value.budgetId);
         if (value.detectedFormat) {
@@ -71,7 +76,7 @@ export function BudgetSessionProvider({ children }: { children: ReactNode }) {
       const nextUrl = query.length ? `${pathname}?${query}` : pathname;
       router.replace(nextUrl as any, { scroll: false });
     },
-    [pathname, router, searchParams]
+    [pathname, router, searchParams],
   );
 
   useEffect(() => {
@@ -117,7 +122,7 @@ export function BudgetSessionProvider({ children }: { children: ReactNode }) {
       setSession(nextSession);
       persist(nextSession);
     },
-    [persist]
+    [persist],
   );
 
   const markClarified = useCallback(() => {
@@ -147,7 +152,7 @@ export function BudgetSessionProvider({ children }: { children: ReactNode }) {
         return nextSession;
       });
     },
-    [persist]
+    [persist],
   );
 
   const clearSession = useCallback(() => {
@@ -165,7 +170,15 @@ export function BudgetSessionProvider({ children }: { children: ReactNode }) {
       markReadyForSummary,
       clearSession,
     }),
-    [session, hydrated, saveSession, setUserQuery, markClarified, markReadyForSummary, clearSession]
+    [
+      session,
+      hydrated,
+      saveSession,
+      setUserQuery,
+      markClarified,
+      markReadyForSummary,
+      clearSession,
+    ],
   );
 
   return <BudgetSessionContext.Provider value={value}>{children}</BudgetSessionContext.Provider>;

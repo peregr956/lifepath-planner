@@ -1,7 +1,6 @@
 from fastapi.testclient import TestClient
-
-from middleware.rate_limit import SimpleRateLimiter
 from main import app
+from middleware.rate_limit import SimpleRateLimiter
 
 
 def test_rate_limit_returns_429_after_threshold() -> None:
@@ -22,4 +21,3 @@ def test_rate_limit_returns_429_after_threshold() -> None:
             assert "Retry-After" in blocked.headers
     finally:
         app.state.rate_limiter = original_limiter
-

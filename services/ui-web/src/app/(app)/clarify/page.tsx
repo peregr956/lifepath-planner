@@ -6,21 +6,24 @@ import { useRouter } from 'next/navigation';
 import type { ClarificationAnswers } from '@/types';
 import { ClarificationForm, QueryInput } from '@/components';
 import { useBudgetSession } from '@/hooks/useBudgetSession';
-import { fetchClarificationQuestions, submitClarificationAnswers, submitUserQuery } from '@/utils/apiClient';
+import {
+  fetchClarificationQuestions,
+  submitClarificationAnswers,
+  submitUserQuery,
+} from '@/utils/apiClient';
 
 type ClarifyStep = 'query' | 'questions';
 
 export default function ClarifyPage() {
   const router = useRouter();
   const queryClient = useQueryClient();
-  const { session, hydrated, setUserQuery, markClarified, markReadyForSummary } = useBudgetSession();
+  const { session, hydrated, setUserQuery, markClarified, markReadyForSummary } =
+    useBudgetSession();
   const budgetId = session?.budgetId;
   const existingUserQuery = session?.userQuery;
 
   // Determine initial step based on whether user has already provided a query
-  const [step, setStep] = useState<ClarifyStep>(() => 
-    existingUserQuery ? 'questions' : 'query'
-  );
+  const [step, setStep] = useState<ClarifyStep>(() => (existingUserQuery ? 'questions' : 'query'));
   const [localUserQuery, setLocalUserQuery] = useState(existingUserQuery || '');
 
   // Sync step with session when it changes
@@ -57,7 +60,7 @@ export default function ClarifyPage() {
     async (query: string) => {
       await queryMutation.mutateAsync(query);
     },
-    [queryMutation]
+    [queryMutation],
   );
 
   // Fetch clarification questions only after user has provided a query
@@ -124,12 +127,14 @@ export default function ClarifyPage() {
       {/* Show user's query as context */}
       {localUserQuery && (
         <div className="rounded-xl border border-indigo-500/20 bg-indigo-500/10 px-4 py-3">
-          <p className="text-xs font-medium uppercase tracking-wide text-indigo-300">Your Question</p>
+          <p className="text-xs font-medium uppercase tracking-wide text-indigo-300">
+            Your Question
+          </p>
           <p className="mt-1 text-sm text-white">&ldquo;{localUserQuery}&rdquo;</p>
           <button
             type="button"
             onClick={() => setStep('query')}
-            className="mt-2 text-xs text-indigo-300 hover:text-indigo-200 underline-offset-2 hover:underline"
+            className="mt-2 text-xs text-indigo-300 underline-offset-2 hover:text-indigo-200 hover:underline"
           >
             Edit question
           </button>
@@ -144,7 +149,9 @@ export default function ClarifyPage() {
       {clarificationQuery.isError && (
         <p className="rounded border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-100">
           {clarificationQuery.error instanceof Error
-            ? clarificationQuery.error.message.replace(/gateway/gi, 'server').replace(/clarification/gi, '')
+            ? clarificationQuery.error.message
+                .replace(/gateway/gi, 'server')
+                .replace(/clarification/gi, '')
             : 'Something went wrong. Please try again.'}
         </p>
       )}

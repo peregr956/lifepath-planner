@@ -3,11 +3,11 @@
 from __future__ import annotations
 
 import os
+from collections.abc import Generator
 from pathlib import Path
-from typing import Generator
 
 from sqlalchemy import create_engine
-from sqlalchemy.engine import Engine, URL, make_url
+from sqlalchemy.engine import URL, Engine, make_url
 from sqlalchemy.orm import Session, sessionmaker
 
 DEFAULT_DB_FILENAME = "gateway.db"
@@ -72,7 +72,6 @@ def get_session() -> Generator[Session, None, None]:
 
 def init_db() -> None:
     """Create tables if they are missing."""
-    from persistence import models  # noqa: WPS433 (import inside function)
+    from persistence import models  # noqa: F401 - import required for side effects
 
     models.Base.metadata.create_all(bind=get_engine())
-

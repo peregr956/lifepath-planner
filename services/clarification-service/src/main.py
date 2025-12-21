@@ -5,19 +5,11 @@ questions, and UI schemas so humans and downstream systems can resolve missing d
 
 from __future__ import annotations
 
-from datetime import date
-from typing import Any, Dict, List, Optional, Sequence, Set
 import logging
+from collections.abc import Sequence
+from datetime import date
+from typing import Any, Literal
 
-from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import JSONResponse
-from pydantic import BaseModel, Field
-from typing_extensions import Literal
-
-from shared.observability.telemetry import bind_request_context, ensure_request_id, reset_request_context, setup_telemetry
-from shared.provider_settings import ProviderSettings, ProviderSettingsError, load_provider_settings
-
-from models.raw_budget import DraftBudgetModel, RawBudgetLine
 from budget_model import (
     Debt,
     Expense,
@@ -27,7 +19,11 @@ from budget_model import (
     Summary,
     UnifiedBudgetModel,
 )
-
+from budget_normalization import normalize_draft_budget_with_ai
+from clarification_provider import ClarificationProviderRequest, build_clarification_provider
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.responses import JSONResponse
+from models.raw_budget import DraftBudgetModel, RawBudgetLine
 from normalization import (
     ESSENTIAL_PREFIX,
     SUPPORTED_SIMPLE_FIELD_IDS,
@@ -35,14 +31,21 @@ from normalization import (
     draft_to_initial_unified,
     parse_debt_field_id,
 )
+from pydantic import BaseModel, Field
 from question_generator import QuestionSpec
+from shared.observability.telemetry import (
+    bind_request_context,
+    ensure_request_id,
+    reset_request_context,
+    setup_telemetry,
+)
+from shared.provider_settings import ProviderSettings, ProviderSettingsError, load_provider_settings
 from ui_schema_builder import build_initial_ui_schema
-from clarification_provider import ClarificationProviderRequest, build_clarification_provider
-from budget_normalization import normalize_draft_budget_with_ai, NormalizationResult
 
 app = FastAPI(title="Clarification Service")
 setup_telemetry(app, service_name="clarification-service")
 logger = logging.getLogger(__name__)
+
 
 def _load_clarification_provider_settings() -> ProviderSettings:
     return load_provider_settings(
@@ -56,7 +59,7 @@ def _load_clarification_provider_settings() -> ProviderSettings:
 def _load_normalization_provider_settings() -> ProviderSettings:
     """
     Load provider settings for AI budget normalization.
-    
+
     Uses separate environment variables from clarification to allow independent configuration.
     Defaults to OpenAI if available, otherwise deterministic.
     """
@@ -95,8 +98,7 @@ def _initialize_clarification_provider():
     try:
         provider = build_clarification_provider(provider_name, settings=CLARIFICATION_PROVIDER_SETTINGS)
         logger.info(
-            "Initialized clarification provider: %s (set CLARIFICATION_PROVIDER=openai to use OpenAI)",
-            provider_name
+            "Initialized clarification provider: %s (set CLARIFICATION_PROVIDER=openai to use OpenAI)", provider_name
         )
         return provider
     except ValueError as exc:
@@ -118,7 +120,7 @@ def reload_clarification_provider_for_tests() -> None:
 
     CLARIFICATION_PROVIDER_SETTINGS = _load_clarification_provider_settings()
     CLARIFICATION_PROVIDER = _initialize_clarification_provider()
-    
+
     try:
         NORMALIZATION_PROVIDER_SETTINGS = _load_normalization_provider_settings()
     except ProviderSettingsError:
@@ -149,11 +151,11 @@ async def request_context_middleware(request: Request, call_next):
 
 class RawBudgetLinePayload(BaseModel):
     source_row_index: int
-    date: Optional[date] = None
+    date: date | None = None
     category_label: str
-    description: Optional[str]
+    description: str | None
     amount: float
-    metadata: Dict[str, Any] = Field(default_factory=dict)
+    metadata: dict[str, Any] = Field(default_factory=dict)
 
     def to_dataclass(self) -> RawBudgetLine:
         return RawBudgetLine(
@@ -167,13 +169,13 @@ class RawBudgetLinePayload(BaseModel):
 
 
 class DraftBudgetPayload(BaseModel):
-    lines: List[RawBudgetLinePayload] = Field(default_factory=list)
+    lines: list[RawBudgetLinePayload] = Field(default_factory=list)
     detected_format: Literal["categorical", "ledger", "unknown"] = "unknown"
-    notes: Optional[str] = None
+    notes: str | None = None
     # User query for personalized question generation
-    user_query: Optional[str] = None
+    user_query: str | None = None
     # Existing user profile data
-    user_profile: Optional[Dict[str, Any]] = None
+    user_profile: dict[str, Any] | None = None
 
     def to_dataclass(self) -> DraftBudgetModel:
         return DraftBudgetModel(
@@ -191,7 +193,7 @@ class IncomeModel(BaseModel):
     stability: Literal["stable", "variable", "seasonal"]
 
     @classmethod
-    def from_dataclass(cls, income: Income) -> "IncomeModel":
+    def from_dataclass(cls, income: Income) -> IncomeModel:
         return cls(
             id=income.id,
             name=income.name,
@@ -214,11 +216,11 @@ class ExpenseModel(BaseModel):
     id: str
     category: str
     monthly_amount: float
-    essential: Optional[bool] = None
-    notes: Optional[str] = None
+    essential: bool | None = None
+    notes: str | None = None
 
     @classmethod
-    def from_dataclass(cls, expense: Expense) -> "ExpenseModel":
+    def from_dataclass(cls, expense: Expense) -> ExpenseModel:
         return cls(
             id=expense.id,
             category=expense.category,
@@ -242,7 +244,7 @@ class RateChangeModel(BaseModel):
     new_rate: float
 
     @classmethod
-    def from_dataclass(cls, change: RateChange) -> "RateChangeModel":
+    def from_dataclass(cls, change: RateChange) -> RateChangeModel:
         return cls(date=change.date, new_rate=change.new_rate)
 
     def to_dataclass(self) -> RateChange:
@@ -257,10 +259,10 @@ class DebtModel(BaseModel):
     min_payment: float
     priority: Literal["high", "medium", "low"]
     approximate: bool
-    rate_changes: Optional[List[RateChangeModel]] = None
+    rate_changes: list[RateChangeModel] | None = None
 
     @classmethod
-    def from_dataclass(cls, debt: Debt) -> "DebtModel":
+    def from_dataclass(cls, debt: Debt) -> DebtModel:
         rate_changes = None
         if debt.rate_changes:
             rate_changes = [RateChangeModel.from_dataclass(change) for change in debt.rate_changes]
@@ -297,7 +299,7 @@ class PreferencesModel(BaseModel):
     max_desired_change_per_category: float
 
     @classmethod
-    def from_dataclass(cls, preferences: Preferences) -> "PreferencesModel":
+    def from_dataclass(cls, preferences: Preferences) -> PreferencesModel:
         return cls(
             optimization_focus=preferences.optimization_focus,
             protect_essentials=preferences.protect_essentials,
@@ -318,7 +320,7 @@ class SummaryModel(BaseModel):
     surplus: float
 
     @classmethod
-    def from_dataclass(cls, summary: Summary) -> "SummaryModel":
+    def from_dataclass(cls, summary: Summary) -> SummaryModel:
         return cls(
             total_income=summary.total_income,
             total_expenses=summary.total_expenses,
@@ -334,14 +336,14 @@ class SummaryModel(BaseModel):
 
 
 class UnifiedBudgetResponseModel(BaseModel):
-    income: List[IncomeModel]
-    expenses: List[ExpenseModel]
-    debts: List[DebtModel]
+    income: list[IncomeModel]
+    expenses: list[ExpenseModel]
+    debts: list[DebtModel]
     preferences: PreferencesModel
     summary: SummaryModel
 
     @classmethod
-    def from_dataclass(cls, model: UnifiedBudgetModel) -> "UnifiedBudgetResponseModel":
+    def from_dataclass(cls, model: UnifiedBudgetModel) -> UnifiedBudgetResponseModel:
         return cls(
             income=[IncomeModel.from_dataclass(income) for income in model.income],
             expenses=[ExpenseModel.from_dataclass(expense) for expense in model.expenses],
@@ -363,10 +365,10 @@ class UnifiedBudgetResponseModel(BaseModel):
 class QuestionSpecModel(BaseModel):
     question_id: str
     prompt: str
-    components: List[Dict[str, Any]]
+    components: list[dict[str, Any]]
 
     @classmethod
-    def from_dataclass(cls, spec: QuestionSpec) -> "QuestionSpecModel":
+    def from_dataclass(cls, spec: QuestionSpec) -> QuestionSpecModel:
         return cls(
             question_id=spec.question_id,
             prompt=spec.prompt,
@@ -376,19 +378,19 @@ class QuestionSpecModel(BaseModel):
 
 class NormalizationResponseModel(BaseModel):
     unified_model: UnifiedBudgetResponseModel
-    clarification_questions: List[QuestionSpecModel] = Field(default_factory=list)
-    ui_schema: Dict[str, Any]
+    clarification_questions: list[QuestionSpecModel] = Field(default_factory=list)
+    ui_schema: dict[str, Any]
 
 
 class ClarifyResponseModel(BaseModel):
     needs_clarification: bool
-    questions: List[QuestionSpecModel] = Field(default_factory=list)
+    questions: list[QuestionSpecModel] = Field(default_factory=list)
     partial_model: UnifiedBudgetResponseModel
 
 
 class ApplyAnswersPayload(BaseModel):
     partial_model: UnifiedBudgetResponseModel
-    answers: Dict[str, Any] = Field(default_factory=dict)
+    answers: dict[str, Any] = Field(default_factory=dict)
 
 
 class ApplyAnswersResponseModel(BaseModel):
@@ -396,8 +398,8 @@ class ApplyAnswersResponseModel(BaseModel):
     ready_for_summary: bool
 
 
-def _provider_call_context(settings: ProviderSettings) -> Dict[str, Any]:
-    context: Dict[str, Any] = {
+def _provider_call_context(settings: ProviderSettings) -> dict[str, Any]:
+    context: dict[str, Any] = {
         "provider_name": settings.provider_name,
         "timeout_seconds": settings.timeout_seconds,
         "temperature": settings.temperature,
@@ -413,23 +415,23 @@ def _provider_call_context(settings: ProviderSettings) -> Dict[str, Any]:
 
 def _build_clarification_questions(
     unified_model: UnifiedBudgetModel,
-    user_query: Optional[str] = None,
-    user_profile: Optional[Dict[str, Any]] = None,
-) -> List[QuestionSpec]:
+    user_query: str | None = None,
+    user_profile: dict[str, Any] | None = None,
+) -> list[QuestionSpec]:
     """
     Invoke the configured clarification provider and return its question list.
-    
+
     Passes user_query and user_profile to enable adaptive questioning.
     """
 
     request_context = _provider_call_context(CLARIFICATION_PROVIDER_SETTINGS)
-    
+
     # Add user query and profile to context for adaptive questioning
     if user_query:
         request_context["user_query"] = user_query
     if user_profile:
         request_context["user_profile"] = user_profile
-    
+
     request = ClarificationProviderRequest(model=unified_model, context=request_context)
     try:
         response = CLARIFICATION_PROVIDER.generate(request)
@@ -456,19 +458,19 @@ def health_check() -> dict:
 def normalize_budget(request: Request, payload: DraftBudgetPayload) -> NormalizationResponseModel:
     """
     Normalize an ingested draft budget and attach heuristic follow-ups plus UI scaffolding.
-    
+
     This endpoint performs two-stage normalization:
     1. AI normalization: Analyzes the budget and correctly classifies amounts as income (positive)
        or expenses (negative) regardless of the original format.
     2. Deterministic normalization: Converts the normalized draft into the unified model.
-    
+
     Expects a `DraftBudgetPayload` produced by the ingestion pipeline.
     Returns a `NormalizationResponseModel` containing the unified model, clarification questions, and UI schema.
     """
 
     _log_event("normalize_received", request, line_count=len(payload.lines))
     draft_model = payload.to_dataclass()
-    
+
     # Stage 1: AI-powered normalization to correctly sign amounts
     normalization_result = normalize_draft_budget_with_ai(
         draft_model,
@@ -483,7 +485,7 @@ def normalize_budget(request: Request, payload: DraftBudgetPayload) -> Normaliza
         debt_count=normalization_result.debt_count,
         success=normalization_result.success,
     )
-    
+
     # Stage 2: Deterministic normalization to create unified model
     unified_model = draft_to_initial_unified(normalization_result.draft)
     questions = _build_clarification_questions(unified_model)
@@ -512,14 +514,14 @@ def normalize_budget(request: Request, payload: DraftBudgetPayload) -> Normaliza
 def clarify_budget(request: Request, payload: DraftBudgetPayload) -> ClarifyResponseModel:
     """
     Generate adaptive clarification questions based on budget data and user query.
-    
+
     This endpoint performs two-stage normalization before generating questions:
     1. AI normalization: Analyzes the budget and correctly classifies amounts.
     2. Deterministic normalization: Converts the normalized draft into the unified model.
-    
+
     Expects a `DraftBudgetPayload` with the latest ingestion output, optionally including user_query.
     Returns a `ClarifyResponseModel` including the needs_clarification flag, question specs, and partial model.
-    
+
     When user_query is provided, questions are tailored to answer the user's specific question.
     """
 
@@ -532,7 +534,7 @@ def clarify_budget(request: Request, payload: DraftBudgetPayload) -> ClarifyResp
     draft_model = payload.to_dataclass()
     if not draft_model.lines:
         return JSONResponse(status_code=400, content={"error": "empty_budget"})
-    
+
     # Stage 1: AI-powered normalization to correctly sign amounts
     normalization_result = normalize_draft_budget_with_ai(
         draft_model,
@@ -546,10 +548,10 @@ def clarify_budget(request: Request, payload: DraftBudgetPayload) -> ClarifyResp
         expense_count=normalization_result.expense_count,
         success=normalization_result.success,
     )
-    
+
     # Stage 2: Deterministic normalization to create unified model
     unified_model = draft_to_initial_unified(normalization_result.draft)
-    
+
     # Pass user query and profile for adaptive questioning
     questions = _build_clarification_questions(
         unified_model,
@@ -614,7 +616,7 @@ def apply_answers(request: Request, payload: ApplyAnswersPayload) -> ApplyAnswer
     return response
 
 
-def _serialize_question_specs(question_specs: Sequence[QuestionSpec]) -> List[QuestionSpecModel]:
+def _serialize_question_specs(question_specs: Sequence[QuestionSpec]) -> list[QuestionSpecModel]:
     """
     Convert internal QuestionSpec dataclasses into response models that FastAPI
     can serialize.
@@ -623,7 +625,7 @@ def _serialize_question_specs(question_specs: Sequence[QuestionSpec]) -> List[Qu
     return [QuestionSpecModel.from_dataclass(spec) for spec in question_specs]
 
 
-def _validate_answer_field_ids(model: UnifiedBudgetModel, answers: Dict[str, Any]) -> List[Dict[str, str]]:
+def _validate_answer_field_ids(model: UnifiedBudgetModel, answers: dict[str, Any]) -> list[dict[str, str]]:
     """
     Ensure every incoming field_id maps to a known expense, preference, income, or debt binding.
     Returns a list of error descriptors when unsupported IDs are encountered.
@@ -634,7 +636,7 @@ def _validate_answer_field_ids(model: UnifiedBudgetModel, answers: Dict[str, Any
 
     expense_ids = _collect_ids(model.expenses)
     debt_ids = _collect_ids(model.debts)
-    invalid_entries: List[Dict[str, str]] = []
+    invalid_entries: list[dict[str, str]] = []
 
     for raw_field_id in answers.keys():
         if not isinstance(raw_field_id, str):
@@ -699,8 +701,8 @@ def _validate_answer_field_ids(model: UnifiedBudgetModel, answers: Dict[str, Any
     return invalid_entries
 
 
-def _collect_ids(entries: Sequence[Any]) -> Set[str]:
-    collected: Set[str] = set()
+def _collect_ids(entries: Sequence[Any]) -> set[str]:
+    collected: set[str] = set()
     for entry in entries:
         entry_id = getattr(entry, "id", None)
         if entry_id:

@@ -12,7 +12,7 @@ def test_build_initial_ui_schema_emits_structured_sections() -> None:
         type="earned",
         stability="stable",
     )
-    setattr(primary_income, "metadata", {"net_or_gross": "net"})
+    primary_income.metadata = {"net_or_gross": "net"}
     secondary_income = Income(
         id="income_bonus",
         name="Freelance",
@@ -53,7 +53,7 @@ def test_build_initial_ui_schema_emits_structured_sections() -> None:
 
     schema = build_initial_ui_schema(model)
 
-    expected_schema: Dict[str, Any] = {
+    expected_schema: dict[str, Any] = {
         "schema_id": "clarification_initial",
         "sections": [
             {
@@ -192,4 +192,3 @@ def test_build_initial_ui_schema_handles_empty_model() -> None:
     assert schema["sections"][0]["components"] == []
     assert schema["sections"][1]["components"] == []
     assert schema["sections"][2]["components"][0]["field_id"] == "optimization_focus"
-

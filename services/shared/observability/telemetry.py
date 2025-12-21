@@ -11,10 +11,9 @@ from __future__ import annotations
 import logging
 import os
 from contextvars import ContextVar, Token
-from typing import Optional
+from uuid import uuid4
 
 from fastapi import FastAPI, Request
-from uuid import uuid4
 from opentelemetry import trace
 from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
 from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
@@ -31,7 +30,7 @@ RequestContextToken = Token
 
 _httpx_instrumented = False
 _logging_configured = False
-_request_id_ctx_var: ContextVar[Optional[str]] = ContextVar("request_id", default=None)
+_request_id_ctx_var: ContextVar[str | None] = ContextVar("request_id", default=None)
 
 
 def setup_telemetry(app: FastAPI, service_name: str) -> None:
@@ -56,7 +55,7 @@ def setup_telemetry(app: FastAPI, service_name: str) -> None:
         LoggingInstrumentor().instrument(set_logging_format=False)
 
 
-def ensure_request_id(request: Optional[Request], header_name: str = CORRELATION_ID_HEADER) -> str:
+def ensure_request_id(request: Request | None, header_name: str = CORRELATION_ID_HEADER) -> str:
     """
     Retrieve the inbound request ID (x-request-id) or generate a new UUID4 value.
     """
@@ -73,7 +72,7 @@ def ensure_request_id(request: Optional[Request], header_name: str = CORRELATION
     return request_id
 
 
-def bind_request_context(request_id: Optional[str]) -> RequestContextToken:
+def bind_request_context(request_id: str | None) -> RequestContextToken:
     """
     Store the inbound request ID in a ContextVar so log records can include it.
     """
@@ -81,7 +80,7 @@ def bind_request_context(request_id: Optional[str]) -> RequestContextToken:
     return _request_id_ctx_var.set(request_id)
 
 
-def reset_request_context(token: Optional[RequestContextToken]) -> None:
+def reset_request_context(token: RequestContextToken | None) -> None:
     """Reset the ContextVar token emitted by `bind_request_context`."""
 
     if token is not None:
@@ -141,8 +140,8 @@ class _TelemetryLogFilter(logging.Filter):
     def filter(self, record: logging.LogRecord) -> bool:  # noqa: D401
         record.service_name = self._service_name
         record.request_id = _request_id_ctx_var.get()
-        trace_id: Optional[str] = None
-        span_id: Optional[str] = None
+        trace_id: str | None = None
+        span_id: str | None = None
 
         if self._traces_enabled:
             span = trace.get_current_span()
@@ -154,4 +153,3 @@ class _TelemetryLogFilter(logging.Filter):
         record.trace_id = trace_id
         record.span_id = span_id
         return True
-

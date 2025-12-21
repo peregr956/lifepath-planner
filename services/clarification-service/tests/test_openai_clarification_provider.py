@@ -12,7 +12,6 @@ from typing import Any, Dict
 from unittest.mock import MagicMock, patch
 
 import pytest
-
 from budget_model import (
     Debt,
     Expense,
@@ -81,7 +80,7 @@ def mock_settings() -> ProviderSettings:
 
 
 @pytest.fixture
-def mock_openai_response() -> Dict[str, Any]:
+def mock_openai_response() -> dict[str, Any]:
     """Sample OpenAI function call response with clarification questions."""
     return {
         "questions": [
@@ -128,7 +127,7 @@ class TestOpenAIClarificationProvider:
         self,
         sample_model: UnifiedBudgetModel,
         mock_settings: ProviderSettings,
-        mock_openai_response: Dict[str, Any],
+        mock_openai_response: dict[str, Any],
     ):
         """Verify provider parses OpenAI function call response correctly."""
         provider = OpenAIClarificationProvider(settings=mock_settings)
@@ -161,8 +160,8 @@ class TestOpenAIClarificationProvider:
         mock_settings: ProviderSettings,
     ):
         """Verify provider falls back to deterministic on OpenAI API errors."""
+        from httpx import Request, Response
         from openai import APIStatusError
-        from httpx import Response, Request
 
         provider = OpenAIClarificationProvider(settings=mock_settings)
 
@@ -296,7 +295,7 @@ class TestOpenAIClarificationProvider:
         self,
         sample_model: UnifiedBudgetModel,
         mock_settings: ProviderSettings,
-        mock_openai_response: Dict[str, Any],
+        mock_openai_response: dict[str, Any],
     ):
         """Verify framework preference is included in the prompt."""
         provider = OpenAIClarificationProvider(settings=mock_settings)
@@ -337,4 +336,3 @@ class TestOpenAIClarificationProviderWithoutSettings:
 
         with pytest.raises(RuntimeError, match="OpenAI client not configured"):
             provider.generate(request)
-

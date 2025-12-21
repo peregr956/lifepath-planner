@@ -11,11 +11,13 @@ from __future__ import annotations
 import json
 import logging
 from dataclasses import asdict
-from typing import Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Any
 
-from openai import OpenAI, APIError, APITimeoutError
+if TYPE_CHECKING:
+    from clarification_provider import ClarificationProviderRequest, ClarificationProviderResponse
 
 from budget_model import UnifiedBudgetModel
+from openai import APIError, APITimeoutError, OpenAI
 from question_generator import QuestionSpec
 from shared.observability.privacy import hash_payload
 
@@ -98,7 +100,7 @@ Question priorities based on user's query:
 
 Budget clarification topics (ask only what's relevant):
 1. Missing debt details (interest rates, balances, minimum payments)
-2. Expense categorization (essential vs flexible) 
+2. Expense categorization (essential vs flexible)
 3. Income classification (net vs gross, stability)
 4. Optimization preferences (debt payoff, savings, balanced)
 
@@ -200,26 +202,26 @@ def _format_debt_section(model: UnifiedBudgetModel) -> str:
 def _build_valid_field_ids_section(model: UnifiedBudgetModel) -> str:
     """Generate a list of all valid field_ids that can be used in questions."""
     lines = ["## VALID FIELD_IDS (use ONLY these exact field_ids):"]
-    
+
     # Expense essentials
     if model.expenses:
         lines.append("\n### Expense Essentials (use 'essential_' prefix):")
         for exp in model.expenses:
             if exp.essential is None:  # Only show if needs clarification
                 lines.append(f"  - essential_{exp.id}  (for {exp.category})")
-    
+
     # Preferences
     lines.append("\n### Preferences:")
     lines.append("  - optimization_focus")
     lines.append("  - primary_income_type")
     lines.append("  - primary_income_stability")
-    
+
     # Profile fields (for adaptive personalization)
     lines.append("\n### Profile (ask only when relevant to user's query):")
     lines.append("  - financial_philosophy  (r_personalfinance, money_guy, neutral)")
     lines.append("  - risk_tolerance  (conservative, moderate, aggressive)")
     lines.append("  - goal_timeline  (immediate, short_term, medium_term, long_term)")
-    
+
     # Debts (only if debts exist)
     if model.debts:
         lines.append("\n### Debt Fields (use '{debt_id}_' prefix):")
@@ -229,36 +231,37 @@ def _build_valid_field_ids_section(model: UnifiedBudgetModel) -> str:
             lines.append(f"  - {debt.id}_min_payment")
             lines.append(f"  - {debt.id}_priority")
             lines.append(f"  - {debt.id}_approximate")
-    
+
     lines.append("\n⚠️ CRITICAL: Only use field_ids listed above. Do NOT invent new field_ids.")
     return "\n".join(lines)
 
 
-def _build_query_analysis_section(user_query: str, context: Dict[str, Any]) -> str:
+def _build_query_analysis_section(user_query: str, context: dict[str, Any]) -> str:
     """Build a section describing the analyzed user query for the AI prompt."""
     if not user_query:
         return ""
-    
+
     # Import query analyzer to get structured analysis
     try:
         from query_analyzer import analyze_query, get_intent_description
+
         analysis = analyze_query(user_query)
-        
+
         lines = ["## Query Analysis (Use this to prioritize questions)"]
         lines.append(f"- Primary intent: {analysis.primary_intent} ({get_intent_description(analysis.primary_intent)})")
-        
+
         if analysis.secondary_intents:
             lines.append(f"- Secondary intents: {', '.join(analysis.secondary_intents)}")
-        
+
         if analysis.mentioned_goals:
             lines.append(f"- Mentioned goals: {', '.join(analysis.mentioned_goals)}")
-        
+
         if analysis.mentioned_concerns:
             lines.append(f"- Concerns: {', '.join(analysis.mentioned_concerns)}")
-        
+
         if analysis.timeframe != "unspecified":
             lines.append(f"- Timeframe: {analysis.timeframe}")
-        
+
         # Guidance on what profile questions to ask
         profile_guidance = []
         if analysis.needs_financial_philosophy:
@@ -267,16 +270,16 @@ def _build_query_analysis_section(user_query: str, context: Dict[str, Any]) -> s
             profile_guidance.append("risk_tolerance")
         if analysis.needs_timeline_clarification:
             profile_guidance.append("goal_timeline")
-        
+
         if profile_guidance:
             lines.append(f"- Suggested profile questions: {', '.join(profile_guidance)}")
-        
+
         return "\n".join(lines)
     except ImportError:
         return ""
 
 
-def _build_user_prompt(model: UnifiedBudgetModel, context: Dict[str, Any]) -> str:
+def _build_user_prompt(model: UnifiedBudgetModel, context: dict[str, Any]) -> str:
     framework = context.get("framework", "neutral")
     framework_desc = {
         "r_personalfinance": "r/personalfinance flowchart style - prioritize emergency fund, employer match, high-interest debt, tax-advantaged accounts.",
@@ -288,7 +291,7 @@ def _build_user_prompt(model: UnifiedBudgetModel, context: Dict[str, Any]) -> st
     user_query = context.get("user_query", "")
     if not user_query:
         user_query = "Help me understand and optimize my budget"
-    
+
     # Build query analysis section
     query_analysis_section = _build_query_analysis_section(user_query, context)
 
@@ -322,7 +325,7 @@ class OpenAIClarificationProvider:
 
     name = "openai"
 
-    def __init__(self, settings: Optional[Any] = None):
+    def __init__(self, settings: Any | None = None):
         self._settings = settings
         if settings and settings.openai:
             self._client = OpenAI(
@@ -339,18 +342,18 @@ class OpenAIClarificationProvider:
             self._temperature = 0.2
             self._max_tokens = 512
 
-    def generate(self, request: "ClarificationProviderRequest") -> "ClarificationProviderResponse":
+    def generate(self, request: ClarificationProviderRequest) -> ClarificationProviderResponse:
         from clarification_provider import (
-            ClarificationProviderRequest,
             ClarificationProviderResponse,
-            DeterministicClarificationProvider,
         )
 
         if not self._client:
             raise RuntimeError("OpenAI client not configured. Check OPENAI_API_KEY, OPENAI_MODEL, OPENAI_API_BASE.")
 
         model_dict = asdict(request.model)
-        prompt_hash = hash_payload({"system": SYSTEM_PROMPT, "user": _build_user_prompt(request.model, request.context)})
+        prompt_hash = hash_payload(
+            {"system": SYSTEM_PROMPT, "user": _build_user_prompt(request.model, request.context)}
+        )
 
         logger.info(
             {
@@ -426,18 +429,21 @@ class OpenAIClarificationProvider:
             )
             return self._fallback_to_deterministic(request)
 
-    def _parse_questions(self, parsed: Dict[str, Any], max_questions: int, model: UnifiedBudgetModel) -> List[QuestionSpec]:
+    def _parse_questions(
+        self, parsed: dict[str, Any], max_questions: int, model: UnifiedBudgetModel
+    ) -> list[QuestionSpec]:
         """Convert OpenAI response into validated QuestionSpec objects, filtering out invalid field_ids."""
         # Import normalization utilities for validation
         import normalization
+
         ESSENTIAL_PREFIX = normalization.ESSENTIAL_PREFIX
         SUPPORTED_SIMPLE_FIELD_IDS = normalization.SUPPORTED_SIMPLE_FIELD_IDS
         parse_debt_field_id = normalization.parse_debt_field_id
-        
-        questions: List[QuestionSpec] = []
+
+        questions: list[QuestionSpec] = []
         raw_questions = parsed.get("questions", [])
         seen_question_ids: set[str] = set()
-        
+
         # Build sets of valid IDs for validation
         expense_ids = {exp.id for exp in model.expenses}
         debt_ids = {debt.id for debt in model.debts}
@@ -461,30 +467,30 @@ class OpenAIClarificationProvider:
 
                 validated_components = []
                 invalid_field_ids = []
-                
+
                 for comp in components:
                     if not all(k in comp for k in ("component", "field_id", "label", "binding")):
                         continue
-                    
+
                     field_id = comp.get("field_id", "").strip()
                     if not field_id:
                         continue
-                    
+
                     # Validate field_id against actual model
                     is_valid = False
-                    
+
                     # Check expense essentials
                     if field_id.startswith(ESSENTIAL_PREFIX):
-                        expense_id = field_id[len(ESSENTIAL_PREFIX):]
+                        expense_id = field_id[len(ESSENTIAL_PREFIX) :]
                         if expense_id in expense_ids:
                             is_valid = True
                         else:
                             invalid_field_ids.append(f"{field_id} (expense '{expense_id}' not found)")
-                    
+
                     # Check simple field IDs
                     elif field_id in SUPPORTED_SIMPLE_FIELD_IDS:
                         is_valid = True
-                    
+
                     # Check debt fields
                     else:
                         debt_target = parse_debt_field_id(field_id)
@@ -494,10 +500,10 @@ class OpenAIClarificationProvider:
                                 is_valid = True
                             else:
                                 invalid_field_ids.append(f"{field_id} (debt '{debt_id}' not found)")
-                    
+
                     if is_valid:
                         validated_components.append(comp)
-                
+
                 # Only add question if it has at least one valid component
                 if validated_components:
                     if invalid_field_ids:
@@ -535,4 +541,3 @@ class OpenAIClarificationProvider:
         logger.info({"event": "openai_fallback_to_deterministic", "provider": self.name})
         fallback = DeterministicClarificationProvider()
         return fallback.generate(request)
-
