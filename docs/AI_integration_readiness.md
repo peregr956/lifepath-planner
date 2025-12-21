@@ -1,5 +1,9 @@
 # AI Integration Readiness
 
+> **Status: Complete** — All integration items below have been implemented.
+> This document now serves as a historical record of the ChatGPT integration work.
+> For operational guidance, see `docs/operations.md` and `docs/real_world_validation.md`.
+
 This document summarizes the current state of the ChatGPT integration, the guardrails in
 place, and operational guidance for running with AI providers enabled.
 

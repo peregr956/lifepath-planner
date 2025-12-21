@@ -1,5 +1,9 @@
 # Pre-Integration Execution Guide
 
+> **Historical Document**: This document records the seven pre-integration workstreams
+> that were completed before ChatGPT integration. All steps have been implemented.
+> See `docs/AI_integration_readiness.md` for the final integration status.
+
 This document turns the pre-integration priorities into discrete, agent-ready
 steps. Each step includes a ready-to-run prompt that can be handed to a new
 agent (or teammate) so they understand the objective, key files, and success
@@ -54,7 +58,7 @@ Document any conventions in `docs/ui_components_spec.md` if you extend the spec.
 ## Step 3 — Persist Budget Sessions and Audit Trails
 
 **Objective**  
-Move the API gateway’s in-memory `budgets` store into durable persistence (SQLite or similar), introduce basic auditing, and keep endpoints backward-compatible.
+Move the API gateway's in-memory `budgets` store into durable persistence (SQLite or similar), introduce basic auditing, and keep endpoints backward-compatible.
 
 **Prompt for Execution**
 ```
