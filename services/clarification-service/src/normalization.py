@@ -352,9 +352,7 @@ def apply_answers_to_model(model: UnifiedBudgetModel, answers: dict[str, Any]) -
     expense_lookup: dict[str, Expense] = {
         expense.id: expense for expense in model.expenses if getattr(expense, "id", None)
     }
-    income_lookup: dict[str, Income] = {
-        income.id: income for income in model.income if getattr(income, "id", None)
-    }
+    income_lookup: dict[str, Income] = {income.id: income for income in model.income if getattr(income, "id", None)}
     primary_income = model.income[0] if model.income else None
     debt_lookup: dict[str, Debt] = {debt.id: debt for debt in model.debts if getattr(debt, "id", None)}
     pending_rate_changes: dict[str, dict[str, Any]] = {}
