@@ -512,7 +512,7 @@ def normalize_budget(request: Request, payload: DraftBudgetPayload) -> Normaliza
     response_model=ClarifyResponseModel,
     response_model_exclude_none=True,
 )
-def clarify_budget(request: Request, payload: DraftBudgetPayload) -> ClarifyResponseModel:
+def clarify_budget(request: Request, payload: DraftBudgetPayload) -> ClarifyResponseModel | JSONResponse:
     """
     Generate adaptive clarification questions based on budget data and user query.
 
