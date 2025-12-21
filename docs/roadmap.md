@@ -4,18 +4,20 @@ This roadmap outlines the phased delivery plan for the LifePath Planner MVP, ens
 
 ---
 
-## Current Status (Pre-AI Integration Complete)
+## Current Status (MVP Core Complete)
 
+- **Phases 0-4 Complete**: Foundation, ingestion, clarification, deterministic engine, and optimization engine are all implemented and functional.
+- **AI Integration Complete**: OpenAI integration for clarification questions, budget normalization, and suggestions is fully implemented and operational.
 - Deterministic clarification UI schema, persistence, retry logic, telemetry, and rate limiting landed (see `docs/archive/pre_integration_prompts.md` for the execution history).
 - LLM adapter boundary and operational guardrails are documented in `docs/llm_adapter.md` and `docs/operations.md`.
-- Deterministic pipeline snapshots (`tests/test_deterministic_pipeline.py`) provide regression coverage before ChatGPT integration.
+- Deterministic pipeline snapshots (`tests/test_deterministic_pipeline.py`) provide regression coverage.
 - The legacy Streamlit UI has been removed; Next.js (`services/ui-web`) is the canonical client going forward.
 - Repository structure has been cleaned up: `sys.path` manipulation removed, proper package imports via `conftest.py` files, and `pyproject.toml` configuration for IDE support.
-- **Test coverage expansion** (December 2024) — High-priority test coverage completed for all core business logic modules: `heuristics.py`, `generate_suggestions.py`, `format_detection.py`, `query_analyzer.py`, and `adaptive_questioning.py`. All modules now have ≥80% line coverage. See Phase 7 for remaining gaps.
+- **Test coverage significantly expanded** (January 2025) — High-priority test coverage completed for all core business logic modules: `heuristics.py`, `generate_suggestions.py`, `format_detection.py`, `query_analyzer.py`, and `adaptive_questioning.py`. All modules now have ≥80% line coverage. See Phase 7 for remaining gaps.
 - **CI/CD pipeline implemented** (December 2024) — GitHub Actions workflow with linting (ruff, pyright, ESLint, Prettier), Python 3.11+ test matrix, and deterministic pipeline validation. See `docs/development.md` for local commands and `.github/workflows/ci.yml` for the workflow definition.
 - **Technical debt cleanup** (December 2024) — API gateway now validates answers before upstream calls; binding-style field IDs implemented; AI-related TODOs documented as future work. See Phase 6 for details.
 
-The remaining work before wiring ChatGPT is limited to the forthcoming AI integration epic.
+The MVP core functionality is complete. Remaining work focuses on enhancements, additional test coverage, and launch preparation.
 
 ---
 
@@ -32,71 +34,71 @@ The remaining work before wiring ChatGPT is limited to the forthcoming AI integr
 
 ---
 
-## Phase 1 — File Ingestion and Interpretation (Weeks 2–3)
+## Phase 1 — File Ingestion and Interpretation (Weeks 2–3) ✓ Complete
 
-- Implement CSV/XLSX upload endpoint in the API gateway.
-- Build parsers for categorical budgets and ledger-style budgets in the ingestion service.
-- Produce draft structured budget models aligned with `budget_schema.md`.
-- Handle error states for unsupported formats.
+- [x] Implement CSV/XLSX upload endpoint in the API gateway.
+- [x] Build parsers for categorical budgets and ledger-style budgets in the ingestion service.
+- [x] Produce draft structured budget models aligned with `budget_schema.md`.
+- [x] Handle error states for unsupported formats.
 
 **Milestones**
 
-- Upload API returns parsed model preview.
-- Unit tests for parser coverage on representative files.
+- [x] Upload API returns parsed model preview.
+- [x] Unit tests for parser coverage on representative files.
 
 ---
 
-## Phase 2 — Clarification Layer and Dynamic UI (Weeks 3–4)
+## Phase 2 — Clarification Layer and Dynamic UI (Weeks 3–4) ✓ Complete
 
-- Implement question generation logic in the clarification service using the AI questioning specification.
-- Output UI component descriptors defined in `ui_components_spec.md`.
-- Build frontend dynamic form renderer to display 4–7 questions per round.
-- Persist clarified responses and merge them into the draft model.
+- [x] Implement question generation logic in the clarification service using the AI questioning specification.
+- [x] Output UI component descriptors defined in `ui_components_spec.md`.
+- [x] Build frontend dynamic form renderer to display 4–7 questions per round.
+- [x] Persist clarified responses and merge them into the draft model.
 
 **Milestones**
 
-- End-to-end flow from upload → questions → revised model in staging environment.
-- Frontend/UI QA sign-off on dynamic components.
+- [x] End-to-end flow from upload → questions → revised model in staging environment.
+- [x] Frontend/UI QA sign-off on dynamic components.
 
 ---
 
-## Phase 3 — Deterministic Budget Engine (Week 5)
+## Phase 3 — Deterministic Budget Engine (Week 5) ✓ Complete
 
-- Implement deterministic computations (totals, surplus, category shares) in the optimization service.
-- Generate structured summaries for display and for the optimization engine.
-- Validate calculations against sample budgets.
+- [x] Implement deterministic computations (totals, surplus, category shares) in the optimization service.
+- [x] Generate structured summaries for display and for the optimization engine.
+- [x] Validate calculations against sample budgets.
 
 **Milestones**
 
-- API endpoint returning summary metrics for clarified budgets.
-- Regression tests comparing expected totals against fixture data.
+- [x] API endpoint returning summary metrics for clarified budgets.
+- [x] Regression tests comparing expected totals against fixture data.
 
 ---
 
-## Phase 4 — Optimization Engine and Suggestions (Weeks 6–7)
+## Phase 4 — Optimization Engine and Suggestions (Weeks 6–7) ✓ Complete
 
-- Implement heuristic-based suggestion generator per MVP requirements.
-- Ensure suggestions reference clarification inputs (debt priorities, essentials).
-- Return 3–6 actionable recommendations with impact estimates.
+- [x] Implement heuristic-based suggestion generator per MVP requirements.
+- [x] Ensure suggestions reference clarification inputs (debt priorities, essentials).
+- [x] Return 3–6 actionable recommendations with impact estimates.
 
 **Milestones**
 
-- Optimization API returns structured suggestions for demo scenarios.
-- Internal review of suggestion quality and tone.
+- [x] Optimization API returns structured suggestions for demo scenarios.
+- [x] Internal review of suggestion quality and tone.
 
 ---
 
-## Phase 5 — Integration, QA, and Launch Prep (Weeks 8–9)
+## Phase 5 — Integration, QA, and Launch Prep (Weeks 8–9) ✓ Mostly Complete
 
-- Conduct integration tests across services (upload → clarification → summary → suggestions).
-- Harden error handling, logging, and observability.
-- Prepare launch collateral: onboarding walkthrough, support docs, and demo script.
-- Keep `docs/operations.md` updated with telemetry toggles, rate limits, and logging guardrails.
+- [x] Conduct integration tests across services (upload → clarification → summary → suggestions).
+- [x] Harden error handling, logging, and observability.
+- [ ] Prepare launch collateral: onboarding walkthrough, support docs, and demo script.
+- [x] Keep `docs/operations.md` updated with telemetry toggles, rate limits, and logging guardrails.
 
 **Milestones**
 
-- Beta candidate build deployed to staging.
-- User acceptance testing feedback incorporated.
+- [x] Beta candidate build deployed to staging.
+- [ ] User acceptance testing feedback incorporated.
 
 ---
 
