@@ -137,9 +137,10 @@ app.add_middleware(
 
 # Handles external API endpoints and orchestrates ingestion, clarification, and optimization flows (see PRD).
 
-INGESTION_BASE = "http://localhost:8001"
-CLARIFICATION_BASE = "http://localhost:8002"
-OPTIMIZATION_BASE = "http://localhost:8003"
+# Service URLs - configurable via environment variables for production deployment
+INGESTION_BASE = os.getenv("INGESTION_BASE", "http://localhost:8001")
+CLARIFICATION_BASE = os.getenv("CLARIFICATION_BASE", "http://localhost:8002")
+OPTIMIZATION_BASE = os.getenv("OPTIMIZATION_BASE", "http://localhost:8003")
 
 http_client = ResilientHttpClient()
 
