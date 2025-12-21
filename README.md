@@ -88,12 +88,23 @@ only need to update the base URL in one place if you change ports.
 
 ## Documentation
 
+### Active Documentation
+
 - `docs/roadmap.md` — phased delivery plan plus post-MVP targets.
-- `docs/pre_integration_prompts.md` — historical record of the seven pre-integration workstreams and prompts.
-- `docs/AI_integration_readiness.md` — snapshot of remaining blockers before enabling ChatGPT.
 - `docs/llm_adapter.md` — contracts for swapping in future ChatGPT-powered providers.
 - `docs/operations.md` — telemetry, rate limiting, and guardrail runbooks.
+- `docs/real_world_validation.md` — guide for validating with real OpenAI API calls.
 - `docs/api_contracts.md`, `docs/budget_schema.md`, `docs/ui_components_spec.md` — canonical API and UI schemas.
+
+### Architecture & Future Planning
+
+- `docs/architecture/README.md` — overview of current and planned architecture.
+- `docs/differentiation_analysis.md` — analysis of capabilities vs direct ChatGPT usage.
+
+### Historical / Archive
+
+- `docs/AI_integration_readiness.md` — historical snapshot of ChatGPT integration work (all complete).
+- `docs/archive/pre_integration_prompts.md` — historical record of the seven pre-integration workstreams.
 
 ## Troubleshooting
 

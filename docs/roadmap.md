@@ -6,7 +6,7 @@ This roadmap outlines the phased delivery plan for the LifePath Planner MVP, ens
 
 ## Current Status (Pre-AI Integration Complete)
 
-- Deterministic clarification UI schema, persistence, retry logic, telemetry, and rate limiting landed (see `docs/pre_integration_prompts.md` for the execution history).
+- Deterministic clarification UI schema, persistence, retry logic, telemetry, and rate limiting landed (see `docs/archive/pre_integration_prompts.md` for the execution history).
 - LLM adapter boundary and operational guardrails are documented in `docs/llm_adapter.md` and `docs/operations.md`.
 - Deterministic pipeline snapshots (`tests/test_deterministic_pipeline.py`) provide regression coverage before ChatGPT integration.
 - The legacy Streamlit UI has been removed; Next.js (`services/ui-web`) is the canonical client going forward.

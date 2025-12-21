@@ -38,7 +38,7 @@ from src.budget_model import (
 )
 from src.suggestion_provider import SuggestionProviderRequest, SuggestionProviderResponse
 from openai_suggestions import OpenAISuggestionProvider
-from provider_settings import OpenAIConfig, ProviderSettings
+from shared.provider_settings import OpenAIConfig, ProviderSettings
 
 
 @pytest.fixture

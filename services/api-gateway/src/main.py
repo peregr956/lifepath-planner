@@ -46,7 +46,7 @@ from http_client import ResilientHttpClient
 from persistence.database import get_session, init_db
 from persistence.repository import BudgetSessionRepository
 from middleware.rate_limit import SimpleRateLimiter, build_default_rate_limiter
-from observability.telemetry import bind_request_context, ensure_request_id, reset_request_context, setup_telemetry
+from shared.observability.telemetry import bind_request_context, ensure_request_id, reset_request_context, setup_telemetry
 
 logger = logging.getLogger(__name__)
 

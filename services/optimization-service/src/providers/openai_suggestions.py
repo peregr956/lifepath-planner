@@ -23,7 +23,7 @@ if str(SERVICES_ROOT) not in sys.path:
     sys.path.insert(0, str(SERVICES_ROOT))
 
 from openai import OpenAI, APIError, APITimeoutError
-from observability.privacy import hash_payload
+from shared.observability.privacy import hash_payload
 
 # Inline dataclass definition to avoid circular import issues
 from dataclasses import dataclass as _dataclass

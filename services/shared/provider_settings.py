@@ -54,9 +54,6 @@ def load_provider_settings(
     
     Note: For OpenAI providers, consider using a longer timeout (60+ seconds)
     as API calls can take longer for complex requests.
-    """
-    """
-    Construct ProviderSettings for a service-specific provider stack.
 
     Args:
         provider_env: Env var that selects the provider implementation.
@@ -127,6 +124,4 @@ def _build_openai_config(provider_env: str) -> OpenAIConfig:
         model=os.environ["OPENAI_MODEL"].strip(),
         api_base=os.environ["OPENAI_API_BASE"].strip(),
     )
-
-
 
