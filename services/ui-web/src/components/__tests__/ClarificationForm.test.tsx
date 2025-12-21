@@ -106,7 +106,7 @@ describe('ClarificationForm', () => {
       await user.type(input, '123');
     });
     await act(async () => {
-      await user.click(screen.getByRole('button', { name: /send clarifications/i }));
+      await user.click(screen.getByRole('button', { name: /continue/i }));
     });
 
     expect(handleSubmit).toHaveBeenCalledWith({ monthly_amount: 123 });
@@ -119,11 +119,11 @@ describe('ClarificationForm', () => {
     render(<ClarificationForm questions={groupedQuestions} onSubmit={handleSubmit} />);
 
     await act(async () => {
-      await user.click(screen.getByRole('button', { name: /send clarifications/i }));
+      await user.click(screen.getByRole('button', { name: /continue/i }));
     });
 
-    expect(await screen.findByText(/current balance is required/i)).toBeInTheDocument();
-    expect(await screen.findByText(/set a priority is required/i)).toBeInTheDocument();
+    expect(await screen.findByText(/current balance must be a number/i)).toBeInTheDocument();
+    expect(await screen.findByText(/set a priority must be selected/i)).toBeInTheDocument();
     expect(handleSubmit).not.toHaveBeenCalled();
   });
 
@@ -138,7 +138,7 @@ describe('ClarificationForm', () => {
       await user.type(balanceInput, '6400');
     });
     await act(async () => {
-      await user.click(screen.getByRole('button', { name: /send clarifications/i }));
+      await user.click(screen.getByRole('button', { name: /continue/i }));
     });
 
     expect(handleSubmit).toHaveBeenCalledWith({ balance: 6400, priority: 'high' });

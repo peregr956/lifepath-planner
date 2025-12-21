@@ -68,6 +68,7 @@ export type ClarificationComponentType = 'number_input' | 'dropdown' | 'toggle' 
 type BaseComponentDescriptor = {
   fieldId: string;
   label: string;
+  description?: string;
   binding?: string;
 };
 
