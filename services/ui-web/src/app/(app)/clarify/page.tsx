@@ -159,7 +159,9 @@ export default function ClarifyPage() {
         questions={questions}
         needsClarification={needsClarification}
         disabled={!budgetId || clarificationQuery.isLoading || submitMutation.isPending}
-        onSubmit={(answers) => submitMutation.mutateAsync(answers)}
+        onSubmit={async (answers) => {
+          await submitMutation.mutateAsync(answers);
+        }}
       />
     </div>
   );
