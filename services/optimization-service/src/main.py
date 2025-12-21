@@ -5,20 +5,15 @@ suggestions that downstream products can display or refine with AI.
 
 from typing import Any, Dict, List, Optional
 import logging
-from pathlib import Path
-import sys
 
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from typing_extensions import Literal
 
-SERVICE_SRC = Path(__file__).resolve().parent
-SERVICES_ROOT = SERVICE_SRC.parents[1]
-if str(SERVICES_ROOT) not in sys.path:
-    sys.path.append(str(SERVICES_ROOT))
+from shared.provider_settings import ProviderSettings, ProviderSettingsError, load_provider_settings
 
-from .budget_model import (
+from budget_model import (
     Debt,
     Expense,
     Income,
@@ -27,9 +22,8 @@ from .budget_model import (
     Summary,
     UnifiedBudgetModel,
 )
-from .compute_summary import compute_category_shares, compute_summary_for_model
-from .suggestion_provider import SuggestionProviderRequest, build_suggestion_provider
-from shared.provider_settings import ProviderSettings, ProviderSettingsError, load_provider_settings
+from compute_summary import compute_category_shares, compute_summary_for_model
+from suggestion_provider import SuggestionProviderRequest, build_suggestion_provider
 
 app = FastAPI(title="Optimization Service")
 logger = logging.getLogger(__name__)

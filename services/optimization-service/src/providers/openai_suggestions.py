@@ -10,17 +10,8 @@ from __future__ import annotations
 
 import json
 import logging
-import sys
 from dataclasses import asdict
-from pathlib import Path
 from typing import Any, Dict, List, Optional
-
-SERVICE_SRC = Path(__file__).resolve().parents[1]
-if str(SERVICE_SRC) not in sys.path:
-    sys.path.insert(0, str(SERVICE_SRC))
-SERVICES_ROOT = SERVICE_SRC.parents[1]
-if str(SERVICES_ROOT) not in sys.path:
-    sys.path.insert(0, str(SERVICES_ROOT))
 
 from openai import OpenAI, APIError, APITimeoutError
 from shared.observability.privacy import hash_payload

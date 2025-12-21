@@ -72,7 +72,7 @@ def get_session() -> Generator[Session, None, None]:
 
 def init_db() -> None:
     """Create tables if they are missing."""
-    from . import models  # noqa: WPS433 (import inside function)
+    from persistence import models  # noqa: WPS433 (import inside function)
 
     models.Base.metadata.create_all(bind=get_engine())
 

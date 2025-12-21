@@ -23,6 +23,9 @@ if [[ "${SKIP_PIP_INSTALL:-0}" != "1" ]]; then
   python3 -m pip install -r "$ROOT_DIR/requirements-dev.txt"
 fi
 
+# Export PYTHONPATH so services can find shared modules
+export PYTHONPATH="${ROOT_DIR}/services:${ROOT_DIR}/services/shared:${PYTHONPATH:-}"
+
 kill_port() {
   local port="$1"
   if lsof -ti tcp:"$port" >/dev/null 2>&1; then

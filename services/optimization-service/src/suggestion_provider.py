@@ -12,22 +12,14 @@ ready for serialization.
 import json
 import logging
 import os
-import sys
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Protocol, runtime_checkable
 
-SERVICE_SRC = Path(__file__).resolve().parent
-if str(SERVICE_SRC) not in sys.path:
-    sys.path.append(str(SERVICE_SRC))
-SERVICES_ROOT = SERVICE_SRC.parents[1]
-if str(SERVICES_ROOT) not in sys.path:
-    sys.path.append(str(SERVICES_ROOT))
-
 from shared.observability.privacy import hash_payload, redact_fields
 
-from .budget_model import Summary, UnifiedBudgetModel
-from .generate_suggestions import Suggestion, generate_suggestions
+from budget_model import Summary, UnifiedBudgetModel
+from generate_suggestions import Suggestion, generate_suggestions
 
 logger = logging.getLogger(__name__)
 

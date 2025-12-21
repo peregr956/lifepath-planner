@@ -1,23 +1,13 @@
 import json
-import os
-import sys
 from pathlib import Path
 from typing import Any, Dict
 
 import pytest
 from fastapi.testclient import TestClient
 
+from main import app, reload_clarification_provider_for_tests
+
 SERVICE_ROOT = Path(__file__).resolve().parents[1]
-SERVICE_SRC = SERVICE_ROOT / "src"
-INGESTION_SRC = SERVICE_ROOT.parent / "budget-ingestion-service" / "src"
-OPTIMIZATION_SRC = SERVICE_ROOT.parent / "optimization-service" / "src"
-
-for candidate in (SERVICE_SRC, INGESTION_SRC, OPTIMIZATION_SRC):
-    candidate_str = str(candidate)
-    if candidate.exists() and candidate_str not in sys.path:
-        sys.path.append(candidate_str)
-
-from main import app, reload_clarification_provider_for_tests  # noqa: E402
 
 
 client = TestClient(app)

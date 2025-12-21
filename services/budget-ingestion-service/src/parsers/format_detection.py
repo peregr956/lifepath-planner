@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from statistics import median
 from typing import Any, Dict, Iterable, List, Tuple
 
-from ..models.raw_budget import RawBudgetLine
+from models.raw_budget import RawBudgetLine
 
 
 @dataclass
