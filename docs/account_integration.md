@@ -858,3 +858,4 @@ Consider adding support for:
 - `docs/differentiation_analysis.md` — Account integration as differentiator
 - `docs/architecture/persistence_layer.md` — Data model details
 
+
