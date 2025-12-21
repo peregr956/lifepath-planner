@@ -202,7 +202,6 @@ def test_apply_answers_to_model_handles_income_and_debt_fields():
     assert debt_entry.rate_changes == [RateChange(date="2025-06-01", new_rate=14.25)]
 
 
-@pytest.mark.skip(reason="TODO: Binding-style answer format (e.g., income.id.field) not yet implemented")
 def test_apply_answers_handles_binding_style_payloads():
     payload = _load_fixture("ai_answers_payload.json")
     partial_model = _model_from_payload(payload["partial_model"])
