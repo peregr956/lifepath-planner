@@ -28,9 +28,9 @@ export function SummaryView({ summary, categoryShares = {} }: Props) {
   return (
     <div className="card flex flex-col gap-6">
       <div>
-        <h2 className="text-xl font-semibold text-white">Budget summary</h2>
+        <h2 className="text-xl font-semibold text-white">Your budget at a glance</h2>
         <p className="text-xs text-white/60">
-          Deterministic totals computed by the optimization service.
+          Based on the information you provided
         </p>
       </div>
 
@@ -45,7 +45,7 @@ export function SummaryView({ summary, categoryShares = {} }: Props) {
 
       {categories.length > 0 && (
         <div>
-          <p className="text-sm font-semibold text-white">Category share of expenses</p>
+          <p className="text-sm font-semibold text-white">Where your money goes</p>
           <div className="mt-2 overflow-x-auto">
             <table className="min-w-full divide-y divide-white/10 text-sm">
               <thead>

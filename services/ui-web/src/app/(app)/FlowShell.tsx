@@ -4,26 +4,26 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import type { ReactNode } from 'react';
 import { useMemo } from 'react';
+import { DeveloperPanel } from '@/components';
 import { useBudgetSession } from '@/hooks/useBudgetSession';
-import { useApiBase } from '@/utils/apiClient';
 
 const steps = [
   {
     key: 'upload',
     label: 'Upload',
-    description: 'Send CSV/XLSX exports',
+    description: 'Share your budget file',
     href: '/upload',
   },
   {
     key: 'clarify',
     label: 'Clarify',
-    description: 'Answer AI follow-ups',
+    description: 'Answer a few questions',
     href: '/clarify',
   },
   {
     key: 'summarize',
-    label: 'Summarize',
-    description: 'Review AI summary',
+    label: 'Results',
+    description: 'Get personalized suggestions',
     href: '/summarize',
   },
 ] as const;
@@ -33,7 +33,6 @@ type StepKey = (typeof steps)[number]['key'];
 export function FlowShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const { session, hydrated, clearSession } = useBudgetSession();
-  const { activeApiBase } = useApiBase();
 
   const hasBudget = Boolean(session?.budgetId);
   const clarificationsDone = Boolean(session?.clarified);
@@ -67,13 +66,11 @@ export function FlowShell({ children }: { children: ReactNode }) {
   return (
     <main className="mx-auto flex max-w-6xl flex-col gap-6 px-4 py-10 lg:py-16">
       <header className="flex flex-col gap-2">
-        <p className="text-sm uppercase tracking-[0.4em] text-indigo-200">AI budget suite</p>
-        <h1 className="text-3xl font-semibold text-white sm:text-4xl">Upload → Clarify → Summarize</h1>
+        <p className="text-sm uppercase tracking-[0.4em] text-indigo-200">LifePath Planner</p>
+        <h1 className="text-3xl font-semibold text-white sm:text-4xl">Get personalized financial guidance</h1>
         <p className="text-white/70">
-          Route budgets through the ingestion, clarification, and optimization services without leaving
-          this browser tab.
+          Upload your budget in the format you already use. We&apos;ll understand it, ask what we need, and give you thoughtful suggestions.
         </p>
-        <p className="text-xs text-white/50">Active gateway: {activeApiBase}</p>
       </header>
 
       <section className="rounded-2xl border border-white/10 bg-white/5 p-4 shadow-lg shadow-indigo-500/5">
@@ -126,50 +123,23 @@ export function FlowShell({ children }: { children: ReactNode }) {
         </div>
       </section>
 
+      {/* User-facing session controls */}
       {hydrated && session && (
-        <section className="rounded-2xl border border-white/10 bg-white/5 p-4 text-sm text-white shadow-lg shadow-indigo-500/5">
-          <div className="grid gap-4 md:grid-cols-4">
-            <div>
-              <p className="text-xs uppercase tracking-wide text-white/60">Budget ID</p>
-              <p className="font-semibold text-white">{session.budgetId}</p>
-            </div>
-            <div>
-              <p className="text-xs uppercase tracking-wide text-white/60">Detected format</p>
-              <p className="font-semibold text-white">
-                {session.detectedFormat ?? 'Pending gateway response'}
-              </p>
-            </div>
-            <div>
-              <p className="text-xs uppercase tracking-wide text-white/60">Summary preview</p>
-              {session.summaryPreview ? (
-                <p className="font-semibold text-white">
-                  {session.summaryPreview.detectedIncomeLines} income ·{' '}
-                  {session.summaryPreview.detectedExpenseLines} expenses
-                </p>
-              ) : (
-                <p className="font-semibold text-white">Waiting for ingestion</p>
-              )}
-            </div>
-            <div>
-              <p className="text-xs uppercase tracking-wide text-white/60">Clarifications</p>
-              <p className="font-semibold text-white">
-                {session.clarified ? 'Submitted' : 'Outstanding'}
-              </p>
-            </div>
-          </div>
-          <div className="mt-4 flex justify-end">
-            <button
-              type="button"
-              className="text-xs font-semibold text-white/70 underline underline-offset-4 transition hover:text-white"
-              onClick={clearSession}
-            >
-              Reset session
-            </button>
-          </div>
-        </section>
+        <div className="flex justify-end">
+          <button
+            type="button"
+            className="text-xs font-medium text-white/60 underline underline-offset-4 transition hover:text-white"
+            onClick={clearSession}
+          >
+            Start over with a new budget
+          </button>
+        </div>
       )}
 
       <section>{children}</section>
+
+      {/* Developer panel - floating, only visible in dev mode */}
+      <DeveloperPanel session={session} onClearSession={clearSession} />
     </main>
   );
 }
