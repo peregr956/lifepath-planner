@@ -2,85 +2,25 @@
 from __future__ import annotations
 
 import dataclasses
-import importlib.util
 import json
 import os
-import sys
-import types
 from pathlib import Path
 from typing import Dict, Sequence
 
 import pytest
 
+# Imports using proper package paths configured via pyproject.toml
+from models.raw_budget import DraftBudgetModel, RawBudgetLine
+from parsers.csv_parser import parse_csv_to_draft_model
+from budget_model import Expense, UnifiedBudgetModel
+from compute_summary import compute_category_shares, compute_summary_for_model
+from generate_suggestions import Suggestion, generate_suggestions
+from normalization import ESSENTIAL_PREFIX, apply_answers_to_model, draft_to_initial_unified
+from question_generator import QuestionSpec, generate_clarification_questions
+from ui_schema_builder import build_initial_ui_schema
+
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SERVICES_ROOT = REPO_ROOT / "services"
-INGESTION_SRC = SERVICES_ROOT / "budget-ingestion-service" / "src"
-CLARIFICATION_SRC = SERVICES_ROOT / "clarification-service" / "src"
-OPTIMIZATION_SRC = SERVICES_ROOT / "optimization-service" / "src"
-
-for path in (CLARIFICATION_SRC, OPTIMIZATION_SRC):
-    if str(path) not in sys.path:
-        sys.path.append(str(path))
-
-
-def _ensure_package(name: str, path: Path | None = None) -> None:
-    if name not in sys.modules:
-        pkg = types.ModuleType(name)
-        if path is not None:
-            pkg.__path__ = [str(path)]  # type: ignore[attr-defined]
-        else:
-            pkg.__path__ = []  # type: ignore[attr-defined]
-        sys.modules[name] = pkg
-
-
-def _load_service_module(root: Path, module_name: str, relative_path: str):
-    full_path = root / relative_path
-    spec = importlib.util.spec_from_file_location(module_name, full_path)
-    if spec is None or spec.loader is None:
-        raise ImportError(f"Unable to load module {module_name} from {full_path}")
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[module_name] = module
-    spec.loader.exec_module(module)
-    return module
-
-
-_ensure_package("budget_ingestion", INGESTION_SRC)
-_ensure_package("budget_ingestion.models", INGESTION_SRC / "models")
-_ensure_package("budget_ingestion.parsers", INGESTION_SRC / "parsers")
-
-_load_service_module(INGESTION_SRC, "budget_ingestion.models.raw_budget", "models/raw_budget.py")
-csv_parser_module = _load_service_module(INGESTION_SRC, "budget_ingestion.parsers.csv_parser", "parsers/csv_parser.py")
-parse_csv_to_draft_model = csv_parser_module.parse_csv_to_draft_model
-
-_ensure_package("optimization_service", OPTIMIZATION_SRC)
-budget_model_module = _load_service_module(OPTIMIZATION_SRC, "optimization_service.budget_model", "budget_model.py")
-_load_service_module(OPTIMIZATION_SRC, "optimization_service.heuristics", "heuristics.py")
-compute_summary_module = _load_service_module(
-    OPTIMIZATION_SRC,
-    "optimization_service.compute_summary",
-    "compute_summary.py",
-)
-generate_suggestions_module = _load_service_module(
-    OPTIMIZATION_SRC,
-    "optimization_service.generate_suggestions",
-    "generate_suggestions.py",
-)
-
-from normalization import (  # type: ignore  # noqa: E402
-    ESSENTIAL_PREFIX,
-    apply_answers_to_model,
-    draft_to_initial_unified,
-)
-from question_generator import QuestionSpec, generate_clarification_questions  # type: ignore  # noqa: E402
-from ui_schema_builder import build_initial_ui_schema  # type: ignore  # noqa: E402
-
-compute_category_shares = compute_summary_module.compute_category_shares  # type: ignore[attr-defined]
-compute_summary_for_model = compute_summary_module.compute_summary_for_model  # type: ignore[attr-defined]
-Suggestion = generate_suggestions_module.Suggestion  # type: ignore[attr-defined]
-generate_suggestions = generate_suggestions_module.generate_suggestions  # type: ignore[attr-defined]
-Expense = budget_model_module.Expense  # type: ignore[attr-defined]
-UnifiedBudgetModel = budget_model_module.UnifiedBudgetModel  # type: ignore[attr-defined]
-
 FIXTURE_CSV = (
     SERVICES_ROOT
     / "budget-ingestion-service"

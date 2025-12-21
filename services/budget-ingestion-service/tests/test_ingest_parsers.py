@@ -1,16 +1,7 @@
-import sys
 from io import BytesIO
-from pathlib import Path
 
 import pytest
 from openpyxl import Workbook
-
-
-SERVICE_ROOT = Path(__file__).resolve().parents[1]
-SERVICE_SRC = SERVICE_ROOT / "src"
-
-if str(SERVICE_SRC) not in sys.path:
-    sys.path.append(str(SERVICE_SRC))
 
 from models.raw_budget import DraftBudgetModel, RawBudgetLine
 from parsers.csv_parser import parse_csv_to_draft_model

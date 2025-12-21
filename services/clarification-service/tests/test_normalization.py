@@ -1,24 +1,14 @@
 import json
-import sys
 from pathlib import Path
 
 import pytest
 
-
-SERVICE_ROOT = Path(__file__).resolve().parents[1]
-SERVICE_SRC = SERVICE_ROOT / "src"
-INGESTION_SRC = SERVICE_ROOT.parent / "budget-ingestion-service" / "src"
-OPTIMIZATION_SRC = SERVICE_ROOT.parent / "optimization-service" / "src"
-FIXTURES_DIR = SERVICE_ROOT / "tests" / "fixtures"
-
-for candidate in (SERVICE_SRC, INGESTION_SRC, OPTIMIZATION_SRC):
-    candidate_str = str(candidate)
-    if candidate.exists() and candidate_str not in sys.path:
-        sys.path.append(candidate_str)
-
 from normalization import apply_answers_to_model, draft_to_initial_unified
 from models.raw_budget import DraftBudgetModel, RawBudgetLine
 from budget_model import Debt, Expense, Income, Preferences, RateChange, Summary, UnifiedBudgetModel
+
+SERVICE_ROOT = Path(__file__).resolve().parents[1]
+FIXTURES_DIR = SERVICE_ROOT / "tests" / "fixtures"
 
 
 def _load_fixture(name: str) -> dict:

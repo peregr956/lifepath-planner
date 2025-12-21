@@ -1,6 +1,6 @@
 """Persistence primitives for the API gateway."""
 
-from .database import (
+from persistence.database import (
     DB_URL_ENV_VAR,
     DEFAULT_DB_FILENAME,
     DEFAULT_DB_PATH,
@@ -9,7 +9,7 @@ from .database import (
     get_engine,
     init_db,
 )
-from .models import AuditEvent, BudgetSession, Base
+from persistence.models import AuditEvent, BudgetSession, Base
 
 __all__ = [
     "AuditEvent",

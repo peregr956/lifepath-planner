@@ -1,15 +1,7 @@
-import sys
-from pathlib import Path
-
 import pytest
 
-
-SERVICE_ROOT = Path(__file__).resolve().parents[1]
-if str(SERVICE_ROOT) not in sys.path:
-    sys.path.append(str(SERVICE_ROOT))
-
-from src.budget_model import Expense, Income, Preferences, Summary, UnifiedBudgetModel
-from src.compute_summary import (
+from budget_model import Expense, Income, Preferences, Summary, UnifiedBudgetModel
+from compute_summary import (
     attach_summary_to_model,
     compute_category_shares,
     compute_summary_for_model,
