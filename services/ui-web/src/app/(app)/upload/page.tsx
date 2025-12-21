@@ -3,7 +3,6 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
 import { useRouter } from 'next/navigation';
-import type { UploadSummaryPreview } from '@/types';
 import { useBudgetSession } from '@/hooks/useBudgetSession';
 import { uploadBudget } from '@/utils/apiClient';
 
@@ -14,7 +13,7 @@ type UploadFormValues = {
 export default function UploadPage() {
   const router = useRouter();
   const queryClient = useQueryClient();
-  const { saveSession, session } = useBudgetSession();
+  const { saveSession } = useBudgetSession();
 
   const {
     register,
@@ -60,24 +59,25 @@ export default function UploadPage() {
   });
 
   return (
-    <div className="grid gap-6 lg:grid-cols-2">
-      <form onSubmit={onSubmit} className="card flex flex-col gap-4">
+    <div className="mx-auto max-w-xl">
+      <form onSubmit={onSubmit} className="card flex flex-col gap-5">
         <div>
-          <h2 className="text-2xl font-semibold text-white">Upload your budget export</h2>
+          <h2 className="text-2xl font-semibold text-white">Upload your budget</h2>
           <p className="mt-1 text-sm text-white/70">
-            Budgets route through the ApiClient gateway so ingestion, clarification, and optimization
-            services can stay in sync.
+            Share the spreadsheet you already use to track your finances. We&apos;ll analyze it and help you make better decisions.
           </p>
         </div>
 
         <label
           htmlFor="budget-upload"
-          className="inline-flex cursor-pointer flex-col rounded-xl border border-dashed border-white/20 bg-white/5 px-4 py-6 text-center transition hover:border-indigo-300"
+          className="inline-flex cursor-pointer flex-col rounded-xl border border-dashed border-white/20 bg-white/5 px-6 py-8 text-center transition hover:border-indigo-300 hover:bg-white/10"
         >
-          <span className="text-sm font-semibold text-white">
+          <span className="text-base font-semibold text-white">
             {selectedFile ? selectedFile.name : 'Drag & drop or click to choose a file'}
           </span>
-          <span className="mt-1 text-xs text-white/60">Supports CSV, XLSX, XLS, or JSON exports.</span>
+          <span className="mt-2 text-sm text-white/60">
+            We support CSV and Excel files from most budgeting tools
+          </span>
           <input
             id="budget-upload"
             type="file"
@@ -101,85 +101,22 @@ export default function UploadPage() {
         {mutation.error && (
           <p className="rounded bg-red-500/20 px-3 py-2 text-sm text-red-100">
             {mutation.error instanceof Error
-              ? mutation.error.message
-              : 'Upload failed. Ensure the API gateway is reachable.'}
+              ? mutation.error.message.replace(/gateway/gi, 'server').replace(/ApiClient/gi, '')
+              : 'Upload failed. Please check your connection and try again.'}
           </p>
         )}
-
-        <div className="flex flex-col gap-2 text-xs text-white/60">
-          <p>
-            Files are uploaded via the ApiClient wrapper so environment-specific base URLs and request
-            timeouts stay consistent with the rest of the repo.
-          </p>
-          <p>
-            We keep the lightweight metadata (budget id, detected format, preview counts) in both the URL
-            params and localStorage for resumable sessions.
-          </p>
-        </div>
 
         <div className="flex justify-end">
           <button
             type="submit"
-            className="inline-flex items-center justify-center rounded-lg bg-indigo-500 px-4 py-2 text-sm font-semibold text-white transition hover:bg-indigo-400 disabled:cursor-not-allowed disabled:bg-white/30"
-            disabled={mutation.isPending}
+            className="inline-flex items-center justify-center rounded-lg bg-indigo-500 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-indigo-400 disabled:cursor-not-allowed disabled:bg-white/30"
+            disabled={mutation.isPending || !selectedFile}
           >
-            {mutation.isPending ? 'Uploading…' : 'Continue to clarifications'}
+            {mutation.isPending ? 'Processing…' : 'Continue'}
           </button>
         </div>
       </form>
-
-      <aside className="card flex flex-col gap-4">
-        <div>
-          <h2 className="text-xl font-semibold text-white">Latest upload metadata</h2>
-          <p className="text-sm text-white/70">
-            Mirrors the Streamlit UI&apos;s upload summary so teams can cross-check parsing results.
-          </p>
-        </div>
-        <MetadataList
-          budgetId={session?.budgetId ?? null}
-          detectedFormat={session?.detectedFormat ?? null}
-          preview={session?.summaryPreview ?? null}
-        />
-      </aside>
     </div>
   );
 }
 
-function MetadataList({
-  budgetId,
-  detectedFormat,
-  preview,
-}: {
-  budgetId: string | null;
-  detectedFormat: string | null | undefined;
-  preview: UploadSummaryPreview | null | undefined;
-}) {
-  if (!budgetId) {
-    return (
-      <p className="rounded border border-white/10 bg-white/5 px-3 py-2 text-sm text-white/70">
-        Upload a file to see the detected format plus the summary preview counts reported by the ingestion
-        service.
-      </p>
-    );
-  }
-
-  return (
-    <div className="rounded-xl border border-white/10 bg-white/5 p-4 text-sm text-white">
-      <p>
-        <span className="text-white/60">Budget ID:</span>{' '}
-        <span className="font-semibold text-white">{budgetId}</span>
-      </p>
-      <p className="mt-2">
-        <span className="text-white/60">Detected format:</span>{' '}
-        <span className="font-semibold text-white">{detectedFormat ?? 'pending'}</span>
-      </p>
-      {preview ? (
-        <p className="mt-2 text-white/80">
-          {preview.detectedIncomeLines} income lines · {preview.detectedExpenseLines} expense lines
-        </p>
-      ) : (
-        <p className="mt-2 text-white/60">Waiting for preview counts from ingestion.</p>
-      )}
-    </div>
-  );
-}

@@ -30,14 +30,12 @@ export default function SummarizePage() {
     <div className="flex flex-col gap-4">
       {summaryQuery.isLoading && (
         <p className="rounded border border-white/10 bg-white/5 px-3 py-2 text-sm text-white/70">
-          Generating summary and AI suggestions…
+          Analyzing your budget and preparing suggestions…
         </p>
       )}
       {summaryQuery.isError && (
         <p className="rounded border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-100">
-          {summaryQuery.error instanceof Error
-            ? summaryQuery.error.message
-            : 'Unable to load the summary right now.'}
+          Something went wrong while loading your results. Please try again.
         </p>
       )}
       {summaryQuery.data ? (
@@ -54,21 +52,12 @@ export default function SummarizePage() {
           <p className="text-sm text-white/70">
             {budgetId
               ? readyForSummary
-                ? 'Generating summary results…'
-                : 'Clarifications saved. We’ll unlock the summary once the gateway signals it is ready.'
-              : 'Upload a budget to kick off the pipeline.'}
+                ? 'Preparing your personalized results…'
+                : 'Almost there! Your results will be ready in just a moment.'
+              : 'Upload a budget to get started.'}
           </p>
         </div>
       )}
-      <div className="flex justify-end">
-        <button
-          type="button"
-          className="text-xs font-semibold text-white underline-offset-4 hover:underline"
-          onClick={() => summaryQuery.refetch()}
-        >
-          Refresh summary
-        </button>
-      </div>
     </div>
   );
 }
