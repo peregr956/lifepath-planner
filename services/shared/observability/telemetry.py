@@ -153,3 +153,4 @@ class _TelemetryLogFilter(logging.Filter):
         record.trace_id = trace_id
         record.span_id = span_id
         return True
+
