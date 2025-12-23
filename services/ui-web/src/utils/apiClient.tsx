@@ -75,6 +75,8 @@ type EnvSource = Record<string, string | undefined>;
 const listeners = new Set<() => void>();
 
 function getEnvSource(): EnvSource {
+  // In Next.js, NEXT_PUBLIC_ variables are embedded at build time
+  // We need to access them directly so Next.js can statically replace them
   if (typeof process !== 'undefined' && process?.env) {
     return process.env as EnvSource;
   }
@@ -86,7 +88,15 @@ function getEnvSource(): EnvSource {
 function firstDefined(keys: readonly string[]): string | undefined {
   const env = getEnvSource();
   for (const key of keys) {
-    const value = env[key];
+    // Access environment variables directly - Next.js will replace NEXT_PUBLIC_ vars at build time
+    // For runtime access, we check process.env dynamically
+    let value: string | undefined;
+    if (typeof process !== 'undefined' && process.env) {
+      // Direct access for Next.js build-time replacement
+      value = process.env[key];
+    } else {
+      value = env[key];
+    }
     if (typeof value === 'string' && value.trim().length > 0) {
       return value.trim();
     }
@@ -142,6 +152,20 @@ function resolveInitialCandidates(): string[] {
 }
 
 const initialCandidates = resolveInitialCandidates();
+
+// Log the resolved API base for debugging (only in development)
+if (typeof window !== 'undefined' && process.env.NODE_ENV === 'development') {
+  console.log('[API Client] Initial API base candidates:', initialCandidates);
+  console.log('[API Client] Active API base:', initialCandidates[0]);
+  // Check if NEXT_PUBLIC_ vars are accessible
+  const envCheck = {
+    NEXT_PUBLIC_LIFEPATH_API_BASE_URL: process.env.NEXT_PUBLIC_LIFEPATH_API_BASE_URL,
+    NEXT_PUBLIC_API_BASE_URL: process.env.NEXT_PUBLIC_API_BASE_URL,
+    NEXT_PUBLIC_GATEWAY_BASE_URL: process.env.NEXT_PUBLIC_GATEWAY_BASE_URL,
+  };
+  console.log('[API Client] Environment variables check:', envCheck);
+}
+
 let apiBaseStore: ApiBaseSnapshot = {
   active: initialCandidates[0],
   candidates: initialCandidates,
@@ -378,6 +402,11 @@ export class ApiClient {
         : (body ?? undefined);
     const finalHeaders = this.buildHeaders(headers, finalBody);
 
+    // Log request details in development
+    if (typeof window !== 'undefined' && process.env.NODE_ENV === 'development') {
+      console.log('[API Client] Making request:', { method: options.method || 'GET', url, path });
+    }
+
     try {
       const response = await fetch(url, {
         ...rest,
@@ -388,6 +417,16 @@ export class ApiClient {
       const payload = await this.parsePayload(response);
       if (!response.ok) {
         const errorMessage = this.describeError(response, payload);
+        // Log error details in development
+        if (typeof window !== 'undefined' && process.env.NODE_ENV === 'development') {
+          console.error('[API Client] Request failed:', {
+            status: response.status,
+            statusText: response.statusText,
+            url,
+            errorMessage,
+            payload,
+          });
+        }
         // For 400 errors with validation details, include the full payload
         if (
           response.status === 400 &&
@@ -405,10 +444,33 @@ export class ApiClient {
         throw new ApiError('Request timed out while contacting the API gateway.', 408);
       }
       if (error instanceof TypeError) {
-        throw new ApiError(
-          `Unable to reach the API gateway at ${activeBaseUrl}. Ensure the gateway is running and reachable from this browser.`,
-          503,
-        );
+        // Check if this is likely a CORS error
+        const isLikelyCors = error.message.includes('Failed to fetch') || 
+                            error.message.includes('NetworkError') ||
+                            error.message.includes('CORS');
+        
+        // Enhanced error message for network errors
+        let enhancedMessage = `Unable to reach the API gateway at ${activeBaseUrl}. `;
+        if (isLikelyCors) {
+          enhancedMessage += `This appears to be a CORS (Cross-Origin Resource Sharing) error. ` +
+            `Ensure the backend has GATEWAY_CORS_ORIGINS configured to include this origin: ${window.location.origin}. `;
+        } else {
+          enhancedMessage += `This could be due to: (1) CORS configuration on the backend, (2) Network connectivity issues, ` +
+            `or (3) The API gateway is not running. `;
+        }
+        enhancedMessage += `Check the browser console and network tab for more details.`;
+        
+        if (typeof window !== 'undefined' && process.env.NODE_ENV === 'development') {
+          console.error('[API Client] Network error:', {
+            error,
+            activeBaseUrl,
+            url,
+            currentOrigin: window.location.origin,
+            isLikelyCors,
+            message: enhancedMessage,
+          });
+        }
+        throw new ApiError(enhancedMessage, 503);
       }
       throw error;
     } finally {
