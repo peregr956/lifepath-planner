@@ -141,6 +141,18 @@ export function FlowShell({ children }: { children: ReactNode }) {
 
       <section>{children}</section>
 
+      {/* Diagnostics link - visible in all environments for troubleshooting */}
+      {process.env.NODE_ENV === 'production' && (
+        <div className="flex justify-end">
+          <a
+            href="/diagnostics"
+            className="text-xs font-medium text-white/40 underline-offset-4 transition hover:text-white/60 hover:underline"
+          >
+            Diagnostics
+          </a>
+        </div>
+      )}
+
       {/* Developer panel - floating, only visible in dev mode */}
       <DeveloperPanel
         session={
