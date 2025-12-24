@@ -122,3 +122,4 @@ def _build_openai_config(provider_env: str) -> OpenAIConfig:
         api_base=os.environ["OPENAI_API_BASE"].strip(),
     )
 
+
