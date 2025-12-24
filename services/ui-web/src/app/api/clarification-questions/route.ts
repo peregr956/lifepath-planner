@@ -60,7 +60,7 @@ export async function GET(request: NextRequest) {
 
     // Convert draft to unified model
     const draftBudget = session.draft as unknown as DraftBudgetModel;
-    const unifiedModel = draftToUnifiedModel(draftBudget);
+    const unifiedModel = await draftToUnifiedModel(draftBudget);
 
     // Generate clarification questions
     const questions = await generateClarificationQuestions(

@@ -52,6 +52,9 @@ export async function initDatabase(): Promise<void> {
     return;
   }
 
+  console.log('[DB] Initializing database connection...');
+  const startTime = Date.now();
+
   try {
     await sql`
       CREATE TABLE IF NOT EXISTS budget_sessions (
@@ -80,7 +83,8 @@ export async function initDatabase(): Promise<void> {
       )
     `;
 
-    console.log('[DB] Tables initialized successfully');
+    const duration = Date.now() - startTime;
+    console.log(`[DB] Tables initialized successfully in ${duration}ms`);
   } catch (error) {
     console.error('[DB] Failed to initialize tables:', error);
     throw error;
@@ -109,20 +113,31 @@ export async function createSession(
     updated_at: now,
   };
 
-  if (hasPostgres()) {
-    await sql`
-      INSERT INTO budget_sessions (id, stage, draft, created_at, updated_at)
-      VALUES (${sessionId}, 'draft', ${JSON.stringify(draftPayload)}, ${now.toISOString()}, ${now.toISOString()})
-    `;
+  console.log(`[DB] Creating session ${sessionId}...`);
+  const startTime = Date.now();
 
-    await recordAuditEvent({
-      session_id: sessionId,
-      action: 'upload_budget',
-      source_ip: sourceIp ?? null,
-      from_stage: null,
-      to_stage: 'draft',
-      details: details ?? null,
-    });
+  if (hasPostgres()) {
+    try {
+      await sql`
+        INSERT INTO budget_sessions (id, stage, draft, created_at, updated_at)
+        VALUES (${sessionId}, 'draft', ${JSON.stringify(draftPayload)}, ${now.toISOString()}, ${now.toISOString()})
+      `;
+
+      await recordAuditEvent({
+        session_id: sessionId,
+        action: 'upload_budget',
+        source_ip: sourceIp ?? null,
+        from_stage: null,
+        to_stage: 'draft',
+        details: details ?? null,
+      });
+      
+      const duration = Date.now() - startTime;
+      console.log(`[DB] Session ${sessionId} created in Postgres (${duration}ms)`);
+    } catch (error) {
+      console.error(`[DB] Failed to create session ${sessionId} in Postgres:`, error);
+      throw error;
+    }
   } else {
     memoryStore.set(sessionId, session);
     auditEvents.push({
@@ -135,6 +150,7 @@ export async function createSession(
       details: details ?? null,
       created_at: now,
     });
+    console.log(`[DB] Session ${sessionId} created in memory`);
   }
 
   return session;
@@ -145,24 +161,44 @@ export async function createSession(
  */
 export async function getSession(sessionId: string): Promise<BudgetSession | null> {
   if (hasPostgres()) {
-    const result = await sql`
-      SELECT * FROM budget_sessions WHERE id = ${sessionId}
-    `;
-    if (result.rows.length === 0) return null;
-    const row = result.rows[0];
-    return {
-      id: row.id,
-      stage: row.stage,
-      draft: row.draft,
-      partial: row.partial,
-      final: row.final,
-      user_query: row.user_query,
-      user_profile: row.user_profile,
-      created_at: new Date(row.created_at),
-      updated_at: new Date(row.updated_at),
-    };
+    console.log(`[DB] Fetching session ${sessionId} from Postgres...`);
+    const startTime = Date.now();
+    try {
+      const result = await sql`
+        SELECT * FROM budget_sessions WHERE id = ${sessionId}
+      `;
+      const duration = Date.now() - startTime;
+      
+      if (result.rows.length === 0) {
+        console.log(`[DB] Session ${sessionId} not found in Postgres (${duration}ms)`);
+        return null;
+      }
+      
+      const row = result.rows[0];
+      console.log(`[DB] Session ${sessionId} retrieved from Postgres (${duration}ms)`);
+      return {
+        id: row.id,
+        stage: row.stage,
+        draft: row.draft,
+        partial: row.partial,
+        final: row.final,
+        user_query: row.user_query,
+        user_profile: row.user_profile,
+        created_at: new Date(row.created_at),
+        updated_at: new Date(row.updated_at),
+      };
+    } catch (error) {
+      console.error(`[DB] Error fetching session ${sessionId} from Postgres:`, error);
+      throw error;
+    }
   } else {
-    return memoryStore.get(sessionId) ?? null;
+    const session = memoryStore.get(sessionId) ?? null;
+    if (session) {
+      console.log(`[DB] Session ${sessionId} retrieved from memory`);
+    } else {
+      console.log(`[DB] Session ${sessionId} not found in memory`);
+    }
+    return session;
   }
 }
 

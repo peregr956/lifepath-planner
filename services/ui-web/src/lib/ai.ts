@@ -8,6 +8,15 @@
 import OpenAI from 'openai';
 import type { UnifiedBudgetModel, QuestionSpec, Suggestion } from './budgetModel';
 import { ESSENTIAL_PREFIX, SUPPORTED_SIMPLE_FIELD_IDS, parseDebtFieldId } from './normalization';
+import { loadProviderSettings } from './providerSettings';
+
+// Load default provider settings
+const providerSettings = loadProviderSettings({
+  providerEnv: 'CLARIFICATION_PROVIDER', // Using clarification as default focus
+  timeoutEnv: 'AI_TIMEOUT_SECONDS',
+  temperatureEnv: 'AI_TEMPERATURE',
+  maxTokensEnv: 'AI_MAX_TOKENS',
+});
 
 // Question schema for OpenAI function calling
 const QUESTION_SPEC_SCHEMA = {
@@ -72,17 +81,13 @@ const SUGGESTION_SCHEMA = {
  * Get OpenAI client configuration
  */
 function getOpenAIClient(): OpenAI | null {
-  const apiKey = process.env.OPENAI_API_KEY;
-  const baseURL = process.env.OPENAI_API_BASE || 'https://api.openai.com/v1';
-  
-  if (!apiKey) {
-    console.warn('[AI] OpenAI API key not configured');
+  if (providerSettings.providerName !== 'openai' || !providerSettings.openai) {
     return null;
   }
 
   return new OpenAI({
-    apiKey,
-    baseURL,
+    apiKey: providerSettings.openai.apiKey,
+    baseURL: providerSettings.openai.apiBase,
   });
 }
 
@@ -90,14 +95,14 @@ function getOpenAIClient(): OpenAI | null {
  * Get OpenAI model name
  */
 function getModel(): string {
-  return process.env.OPENAI_MODEL || 'gpt-4o-mini';
+  return providerSettings.openai?.model || 'gpt-4o-mini';
 }
 
 /**
  * Check if AI is enabled
  */
 export function isAIEnabled(): boolean {
-  return !!process.env.OPENAI_API_KEY;
+  return providerSettings.providerName === 'openai' && !!providerSettings.openai?.apiKey;
 }
 
 /**
