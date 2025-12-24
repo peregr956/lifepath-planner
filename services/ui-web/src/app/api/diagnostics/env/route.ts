@@ -48,6 +48,7 @@ export async function GET() {
   ];
 
   const optionalVars: [string, boolean][] = [
+    ['DATABASE_URL', true], // Check DATABASE_URL as well (used by Prisma integrations)
     ['VERCEL_ENV', false],
     ['VERCEL_URL', false],
   ];
@@ -68,8 +69,15 @@ export async function GET() {
   if (!requiredStatus['OPENAI_MODEL'].is_set) {
     issues.push('OPENAI_MODEL is not set - will default to gpt-4o-mini');
   }
-  if (!requiredStatus['POSTGRES_URL'].is_set) {
-    issues.push('POSTGRES_URL is not set - using in-memory storage');
+  
+  // Check for database connection - support both POSTGRES_URL and DATABASE_URL
+  const hasPostgresUrl = requiredStatus['POSTGRES_URL'].is_set;
+  const hasDatabaseUrl = optionalStatus['DATABASE_URL'].is_set;
+  
+  if (!hasPostgresUrl && !hasDatabaseUrl) {
+    issues.push('Neither POSTGRES_URL nor DATABASE_URL is set - using in-memory storage');
+  } else if (hasDatabaseUrl && !hasPostgresUrl) {
+    issues.push('DATABASE_URL is set but POSTGRES_URL is not - app will use DATABASE_URL');
   }
 
   return NextResponse.json({
