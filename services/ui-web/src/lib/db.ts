@@ -1,17 +1,12 @@
 /**
- * Database connection and models for Vercel Postgres
+ * Database connection and models for PostgreSQL
  * 
- * This module provides database connectivity using Vercel Postgres.
+ * This module provides database connectivity using the standard pg library.
+ * Supports both POSTGRES_URL (Vercel Postgres) and DATABASE_URL (Prisma/other integrations).
  * For local development, it can fall back to in-memory storage.
  */
 
-// @vercel/postgres requires POSTGRES_URL, but Prisma integrations set DATABASE_URL
-// Set POSTGRES_URL from DATABASE_URL at module load time if needed
-if (process.env.DATABASE_URL && !process.env.POSTGRES_URL) {
-  process.env.POSTGRES_URL = process.env.DATABASE_URL;
-}
-
-import { sql } from '@vercel/postgres';
+import { Pool } from 'pg';
 
 // Types matching the SQLAlchemy models from the Python backend
 export interface BudgetSession {
@@ -42,11 +37,42 @@ const memoryStore: Map<string, BudgetSession> = new Map();
 const auditEvents: AuditEvent[] = [];
 let auditEventId = 1;
 
+// Database connection pool (lazy initialization)
+let pool: Pool | null = null;
+
 /**
- * Check if Vercel Postgres is available
+ * Get or create database connection pool
+ */
+function getPool(): Pool | null {
+  if (pool) {
+    return pool;
+  }
+
+  const connectionString = process.env.POSTGRES_URL || process.env.DATABASE_URL;
+  if (!connectionString) {
+    return null;
+  }
+
+  // Create connection pool with SSL for production
+  pool = new Pool({
+    connectionString,
+    ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
+    max: 1, // Serverless-friendly: use single connection
+    idleTimeoutMillis: 30000,
+    connectionTimeoutMillis: 10000,
+  });
+
+  // Handle pool errors
+  pool.on('error', (err) => {
+    console.error('[DB] Unexpected pool error:', err);
+  });
+
+  return pool;
+}
+
+/**
+ * Check if PostgreSQL is available
  * Supports both POSTGRES_URL (Vercel Postgres) and DATABASE_URL (Prisma/other integrations)
- * 
- * Note: POSTGRES_URL is set from DATABASE_URL at module load time if needed
  */
 function hasPostgres(): boolean {
   return !!(process.env.POSTGRES_URL || process.env.DATABASE_URL);
@@ -59,6 +85,11 @@ export async function initDatabase(): Promise<void> {
   if (!hasPostgres()) {
     console.log('[DB] Using in-memory storage (no POSTGRES_URL or DATABASE_URL configured)');
     return;
+  }
+
+  const dbPool = getPool();
+  if (!dbPool) {
+    throw new Error('Failed to create database connection pool');
   }
 
   // Log which env var is being used
@@ -83,10 +114,10 @@ export async function initDatabase(): Promise<void> {
 
   try {
     // Test connection with a simple query first
-    await sql`SELECT 1 as test`;
-    console.log('[DB] Database connection test successful');
+    const testResult = await dbPool.query('SELECT 1 as test');
+    console.log('[DB] Database connection test successful', { test: testResult.rows[0] });
 
-    await sql`
+    await dbPool.query(`
       CREATE TABLE IF NOT EXISTS budget_sessions (
         id VARCHAR(36) PRIMARY KEY,
         stage VARCHAR(32) NOT NULL DEFAULT 'draft',
@@ -98,9 +129,9 @@ export async function initDatabase(): Promise<void> {
         created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
         updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
       )
-    `;
+    `);
 
-    await sql`
+    await dbPool.query(`
       CREATE TABLE IF NOT EXISTS audit_events (
         id SERIAL PRIMARY KEY,
         session_id VARCHAR(36) NOT NULL REFERENCES budget_sessions(id) ON DELETE CASCADE,
@@ -111,7 +142,7 @@ export async function initDatabase(): Promise<void> {
         details JSONB,
         created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
       )
-    `;
+    `);
 
     const duration = Date.now() - startTime;
     console.log(`[DB] Tables initialized successfully in ${duration}ms`);
@@ -176,11 +207,17 @@ export async function createSession(
   const startTime = Date.now();
 
   if (hasPostgres()) {
+    const dbPool = getPool();
+    if (!dbPool) {
+      throw new Error('Database connection pool not available');
+    }
+
     try {
-      await sql`
-        INSERT INTO budget_sessions (id, stage, draft, created_at, updated_at)
-        VALUES (${sessionId}, 'draft', ${JSON.stringify(draftPayload)}, ${now.toISOString()}, ${now.toISOString()})
-      `;
+      await dbPool.query(
+        `INSERT INTO budget_sessions (id, stage, draft, created_at, updated_at)
+         VALUES ($1, 'draft', $2::jsonb, $3, $4)`,
+        [sessionId, JSON.stringify(draftPayload), now.toISOString(), now.toISOString()]
+      );
 
       await recordAuditEvent({
         session_id: sessionId,
@@ -232,12 +269,18 @@ export async function createSession(
  */
 export async function getSession(sessionId: string): Promise<BudgetSession | null> {
   if (hasPostgres()) {
+    const dbPool = getPool();
+    if (!dbPool) {
+      throw new Error('Database connection pool not available');
+    }
+
     console.log(`[DB] Fetching session ${sessionId} from Postgres...`);
     const startTime = Date.now();
     try {
-      const result = await sql`
-        SELECT * FROM budget_sessions WHERE id = ${sessionId}
-      `;
+      const result = await dbPool.query(
+        'SELECT * FROM budget_sessions WHERE id = $1',
+        [sessionId]
+      );
       const duration = Date.now() - startTime;
       
       if (result.rows.length === 0) {
@@ -289,11 +332,17 @@ export async function updateSessionPartial(
   const now = new Date();
 
   if (hasPostgres()) {
-    await sql`
-      UPDATE budget_sessions 
-      SET partial = ${JSON.stringify(partialModel)}, stage = 'partial', updated_at = ${now.toISOString()}
-      WHERE id = ${sessionId}
-    `;
+    const dbPool = getPool();
+    if (!dbPool) {
+      throw new Error('Database connection pool not available');
+    }
+
+    await dbPool.query(
+      `UPDATE budget_sessions 
+       SET partial = $1::jsonb, stage = 'partial', updated_at = $2
+       WHERE id = $3`,
+      [JSON.stringify(partialModel), now.toISOString(), sessionId]
+    );
 
     await recordAuditEvent({
       session_id: sessionId,
@@ -340,11 +389,17 @@ export async function updateSessionFinal(
   const now = new Date();
 
   if (hasPostgres()) {
-    await sql`
-      UPDATE budget_sessions 
-      SET final = ${JSON.stringify(finalModel)}, stage = 'final', updated_at = ${now.toISOString()}
-      WHERE id = ${sessionId}
-    `;
+    const dbPool = getPool();
+    if (!dbPool) {
+      throw new Error('Database connection pool not available');
+    }
+
+    await dbPool.query(
+      `UPDATE budget_sessions 
+       SET final = $1::jsonb, stage = 'final', updated_at = $2
+       WHERE id = $3`,
+      [JSON.stringify(finalModel), now.toISOString(), sessionId]
+    );
 
     await recordAuditEvent({
       session_id: sessionId,
@@ -390,11 +445,17 @@ export async function storeUserQuery(
   const now = new Date();
 
   if (hasPostgres()) {
-    await sql`
-      UPDATE budget_sessions 
-      SET user_query = ${query}, updated_at = ${now.toISOString()}
-      WHERE id = ${sessionId}
-    `;
+    const dbPool = getPool();
+    if (!dbPool) {
+      throw new Error('Database connection pool not available');
+    }
+
+    await dbPool.query(
+      `UPDATE budget_sessions 
+       SET user_query = $1, updated_at = $2
+       WHERE id = $3`,
+      [query, now.toISOString(), sessionId]
+    );
 
     await recordAuditEvent({
       session_id: sessionId,
@@ -441,11 +502,17 @@ export async function storeUserProfile(
   const now = new Date();
 
   if (hasPostgres()) {
-    await sql`
-      UPDATE budget_sessions 
-      SET user_profile = ${JSON.stringify(mergedProfile)}, updated_at = ${now.toISOString()}
-      WHERE id = ${sessionId}
-    `;
+    const dbPool = getPool();
+    if (!dbPool) {
+      throw new Error('Database connection pool not available');
+    }
+
+    await dbPool.query(
+      `UPDATE budget_sessions 
+       SET user_profile = $1::jsonb, updated_at = $2
+       WHERE id = $3`,
+      [JSON.stringify(mergedProfile), now.toISOString(), sessionId]
+    );
 
     await recordAuditEvent({
       session_id: sessionId,
@@ -490,17 +557,23 @@ export function getUserContext(session: BudgetSession): { user_query: string | n
  */
 async function recordAuditEvent(event: Omit<AuditEvent, 'id' | 'created_at'>): Promise<void> {
   if (hasPostgres()) {
-    await sql`
-      INSERT INTO audit_events (session_id, action, source_ip, from_stage, to_stage, details)
-      VALUES (
-        ${event.session_id}, 
-        ${event.action}, 
-        ${event.source_ip}, 
-        ${event.from_stage}, 
-        ${event.to_stage}, 
-        ${event.details ? JSON.stringify(event.details) : null}
-      )
-    `;
+    const dbPool = getPool();
+    if (!dbPool) {
+      console.error('[DB] Cannot record audit event: database pool not available');
+      return;
+    }
+
+    await dbPool.query(
+      `INSERT INTO audit_events (session_id, action, source_ip, from_stage, to_stage, details)
+       VALUES ($1, $2, $3, $4, $5, $6::jsonb)`,
+      [
+        event.session_id,
+        event.action,
+        event.source_ip,
+        event.from_stage,
+        event.to_stage,
+        event.details ? JSON.stringify(event.details) : null,
+      ]
+    );
   }
 }
-
