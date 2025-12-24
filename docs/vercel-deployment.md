@@ -68,10 +68,24 @@ In your Vercel project settings, add these environment variables:
 |----------|----------|-------------|
 | `OPENAI_API_KEY` | Optional | Your OpenAI API key for AI features |
 | `OPENAI_MODEL` | Optional | OpenAI model (defaults to `gpt-4o-mini`) |
-| `OPENAI_API_BASE` | Optional | OpenAI API base URL (defaults to `https://api.openai.com/v1`) |
+| `OPENAI_API_BASE` | Optional | OpenAI API base URL (defaults to `https://api.openai.com/v1`). Set to AI Gateway URL for enhanced features. |
+| `VERCEL_AI_GATEWAY_ENABLED` | Optional | Set to `true` to enable Vercel AI Gateway integration |
 | `POSTGRES_URL` | Optional | Vercel Postgres connection string for persistent storage |
 
 **Note**: If `OPENAI_API_KEY` is not set, the app falls back to deterministic (rule-based) suggestions.
+
+### AI Budget Normalization
+
+When AI is enabled, the app performs intelligent budget normalization:
+
+1. **AI Normalization**: Analyzes category labels and descriptions to correctly classify amounts
+   - Income (salary, wages, etc.) → Positive amounts
+   - Expenses (rent, groceries, etc.) → Negative amounts
+   - Debt payments → Negative amounts
+   
+2. **Deterministic Fallback**: If AI is unavailable, uses sign-based classification
+
+This ensures budgets with all positive amounts (common in many formats) are correctly interpreted.
 
 > **IMPORTANT: Do NOT set `NEXT_PUBLIC_LIFEPATH_API_BASE_URL`**
 >
@@ -102,6 +116,38 @@ Push to your main branch, and Vercel will automatically deploy.
 OPENAI_API_KEY=sk-your-api-key-here
 OPENAI_MODEL=gpt-4o-mini  # or gpt-4, gpt-4-turbo, etc.
 ```
+
+### For Vercel AI Gateway (Optional but Recommended)
+
+Vercel AI Gateway provides enhanced observability, rate limiting, and cost tracking for AI requests.
+
+```bash
+OPENAI_API_BASE=https://gateway.ai.vercel.sh/v1
+VERCEL_AI_GATEWAY_ENABLED=true
+```
+
+To configure AI Gateway automatically, run the setup script:
+
+```bash
+# Set your credentials
+export VERCEL_TOKEN=your-vercel-api-token
+export VERCEL_PROJECT_ID=your-project-id
+
+# Run the configuration script
+./scripts/setup-vercel-ai-gateway.sh
+```
+
+Or use the TypeScript version:
+
+```bash
+npx ts-node scripts/setup-vercel-ai-gateway.ts --token=YOUR_TOKEN --project=YOUR_PROJECT_ID
+```
+
+**Benefits of AI Gateway:**
+- Centralized rate limiting and budget controls
+- Request/response logging for debugging
+- Usage analytics and cost tracking
+- Automatic failover capabilities
 
 ### For Persistent Storage
 
@@ -154,6 +200,13 @@ The app defaults to using same-origin API routes (`/api/*`) which is the correct
 **AI features not working:**
 - Verify `OPENAI_API_KEY` is set in Vercel environment variables
 - Check `/api/diagnostics/env` to see if the key is detected
+- If using AI Gateway, verify `OPENAI_API_BASE` and `VERCEL_AI_GATEWAY_ENABLED` are set
+
+**Budget items all classified as income:**
+- This indicates AI normalization is not running
+- Ensure `OPENAI_API_KEY` is set correctly
+- Check the diagnostics endpoint for `normalization_enabled: true`
+- Verify there are no API errors in Vercel function logs
 
 **Data not persisting:**
 - Set up Vercel Postgres and add `POSTGRES_URL`

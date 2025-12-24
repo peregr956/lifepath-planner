@@ -8,7 +8,7 @@
 import OpenAI from 'openai';
 import type { UnifiedBudgetModel, QuestionSpec, Suggestion } from './budgetModel';
 import { ESSENTIAL_PREFIX, SUPPORTED_SIMPLE_FIELD_IDS, parseDebtFieldId } from './normalization';
-import { loadProviderSettings } from './providerSettings';
+import { loadProviderSettings, isAIGatewayEnabled } from './providerSettings';
 
 // Load default provider settings
 const providerSettings = loadProviderSettings({
@@ -112,14 +112,19 @@ export function getProviderMetadata(): {
   clarification_provider: string;
   suggestion_provider: string;
   ai_enabled: boolean;
+  ai_gateway_enabled: boolean;
+  model: string;
 } {
   const aiEnabled = isAIEnabled();
+  const aiGatewayEnabled = isAIGatewayEnabled();
   const provider = aiEnabled ? 'openai' : 'deterministic';
   
   return {
     clarification_provider: provider,
     suggestion_provider: provider,
     ai_enabled: aiEnabled,
+    ai_gateway_enabled: aiGatewayEnabled,
+    model: getModel(),
   };
 }
 

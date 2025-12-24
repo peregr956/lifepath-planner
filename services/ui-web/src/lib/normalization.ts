@@ -3,6 +3,10 @@
  * 
  * Converts raw draft budgets into unified budget models.
  * Ported from Python clarification-service normalization logic.
+ * 
+ * Two-stage normalization:
+ * 1. AI normalization: Analyzes category labels to correctly sign amounts (income positive, expenses negative)
+ * 2. Deterministic conversion: Converts normalized draft into structured UnifiedBudgetModel
  */
 
 import type { RawBudgetLine, DraftBudgetModel } from './parsers';
@@ -16,6 +20,7 @@ import type {
 } from './budgetModel';
 import { enrichBudgetModel } from './aiEnrichment';
 import { isAIEnabled } from './ai';
+import { normalizeDraftBudget, isNormalizationAIEnabled } from './aiNormalization';
 
 // Default preferences
 const DEFAULT_PREFERENCES: Preferences = {
@@ -46,28 +51,73 @@ const DEBT_KEYWORDS = [
 
 /**
  * Convert a draft budget to a unified budget model
+ * 
+ * This performs two-stage normalization:
+ * 1. AI normalization: Analyzes category labels and descriptions to correctly classify
+ *    amounts as income (positive) or expenses (negative), regardless of original format.
+ * 2. Deterministic conversion: Converts the normalized draft into the structured model.
+ * 
+ * @param draft - The raw draft budget from parsing
+ * @param enrich - Whether to apply AI enrichment after conversion (default: true)
+ * @param skipAINormalization - Skip AI normalization (use for already-normalized drafts)
  */
 export async function draftToUnifiedModel(
   draft: DraftBudgetModel,
-  enrich: boolean = true
+  enrich: boolean = true,
+  skipAINormalization: boolean = false
 ): Promise<UnifiedBudgetModel> {
+  // Stage 1: AI-powered normalization to correctly sign amounts
+  let normalizedDraft = draft;
+  
+  if (!skipAINormalization && isNormalizationAIEnabled()) {
+    try {
+      console.log('[normalization] Running AI normalization...');
+      const normalizationResult = await normalizeDraftBudget(draft);
+      normalizedDraft = normalizationResult.normalizedDraft;
+      console.log('[normalization] AI normalization complete:', {
+        provider: normalizationResult.providerUsed,
+        incomeCount: normalizationResult.incomeCount,
+        expenseCount: normalizationResult.expenseCount,
+        debtCount: normalizationResult.debtCount,
+      });
+    } catch (error) {
+      console.error('[normalization] AI normalization failed, using original draft:', error);
+      // Fall through to use original draft
+    }
+  }
+
+  // Stage 2: Deterministic conversion to unified model
   const income: Income[] = [];
   const expenses: Expense[] = [];
   const debts: Debt[] = [];
 
-  for (const line of draft.lines) {
+  for (const line of normalizedDraft.lines) {
     const category = line.category_label.toLowerCase();
     const amount = Math.abs(line.amount);
 
     // Skip zero amounts
     if (amount === 0) continue;
 
-    // Classify the line
-    if (isIncomeCategory(category) || (line.amount > 0 && !isDebtCategory(category))) {
+    // Check AI line type metadata if available
+    const aiLineType = line.metadata?.ai_line_type as string | undefined;
+    
+    // Classify the line based on:
+    // 1. AI classification (if available)
+    // 2. Amount sign (positive = income, negative = expense)
+    // 3. Category keywords (fallback)
+    if (aiLineType === 'income' || aiLineType === 'transfer') {
+      income.push(createIncome(line, income.length));
+    } else if (aiLineType === 'debt_payment') {
+      debts.push(createDebt(line, debts.length));
+    } else if (aiLineType === 'expense' || aiLineType === 'savings') {
+      expenses.push(createExpense(line, expenses.length));
+    } else if (isIncomeCategory(category) || (line.amount > 0 && !isDebtCategory(category) && !isExpenseCategory(category))) {
+      // Fallback to keyword and sign-based classification
       income.push(createIncome(line, income.length));
     } else if (isDebtCategory(category)) {
       debts.push(createDebt(line, debts.length));
     } else {
+      // Default to expense for negative amounts or unclassified items
       expenses.push(createExpense(line, expenses.length));
     }
   }
@@ -97,6 +147,15 @@ export async function draftToUnifiedModel(
   }
 
   return model;
+}
+
+/**
+ * Check if a category represents an expense (used as fallback)
+ */
+function isExpenseCategory(category: string): boolean {
+  const lower = category.toLowerCase();
+  return ESSENTIAL_CATEGORIES.some(keyword => lower.includes(keyword)) ||
+    ['subscription', 'entertainment', 'dining', 'shopping', 'travel'].some(keyword => lower.includes(keyword));
 }
 
 /**
