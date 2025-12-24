@@ -450,3 +450,4 @@ function hasDenseDateCadence(lines: RawBudgetLine[]): boolean {
   return typicalGap <= 7;
 }
 
+

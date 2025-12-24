@@ -4,12 +4,17 @@ OpenAI-powered suggestion provider for budget optimization.
 This module implements the SuggestionProvider protocol using ChatGPT to generate
 personalized financial recommendations based on the user's clarified budget model,
 computed summary, and chosen financial ideology (framework).
+
+Prompt Version History:
+- v1.0: Original rule-focused prompts with structured suggestions
+- v2.0: Analysis-first approach, more creative and personalized, conversational tone
 """
 
 from __future__ import annotations
 
 import json
 import logging
+import os
 from dataclasses import asdict
 
 # Inline dataclass definition to avoid circular import issues
@@ -21,6 +26,13 @@ if TYPE_CHECKING:
 
 from openai import APIError, APITimeoutError, OpenAI
 from shared.observability.privacy import hash_payload
+
+# Prompt versioning for A/B testing
+PROMPT_VERSION = os.getenv("SUGGESTION_PROMPT_VERSION", "2.0")
+PROMPT_VERSION_NOTES = {
+    "1.0": "Original rule-focused prompts with structured suggestions",
+    "2.0": "Analysis-first approach, more creative and personalized, conversational tone",
+}
 
 
 @_dataclass
@@ -41,9 +53,30 @@ from budget_model import Summary, UnifiedBudgetModel
 logger = logging.getLogger(__name__)
 
 # JSON schema for structured suggestion outputs via function calling
+# Updated to include analysis and more detailed suggestions
 SUGGESTION_SCHEMA = {
     "type": "object",
     "properties": {
+        "analysis": {
+            "type": "object",
+            "properties": {
+                "budget_assessment": {
+                    "type": "string",
+                    "description": "Brief assessment of the user's current financial position.",
+                },
+                "key_observations": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Important observations about the budget (positive and negative).",
+                },
+                "answer_to_question": {
+                    "type": "string",
+                    "description": "Direct, concise answer to the user's specific question before diving into suggestions.",
+                },
+            },
+            "required": ["budget_assessment", "key_observations", "answer_to_question"],
+            "description": "Initial analysis before providing suggestions.",
+        },
         "suggestions": {
             "type": "array",
             "items": {
@@ -51,135 +84,138 @@ SUGGESTION_SCHEMA = {
                 "properties": {
                     "id": {
                         "type": "string",
-                        "description": "Unique identifier (e.g., 'debt-credit_card', 'flex-subscriptions').",
+                        "description": "Unique identifier (e.g., 'surplus-allocation', 'debt-acceleration').",
                     },
                     "title": {
                         "type": "string",
-                        "description": "Short action-oriented headline (under 60 chars).",
+                        "description": "Action-oriented headline that directly relates to their question.",
                     },
                     "description": {
                         "type": "string",
-                        "description": "2-3 sentence explanation of the recommendation.",
+                        "description": "Detailed explanation with specific steps on HOW to implement this recommendation.",
                     },
                     "expected_monthly_impact": {
                         "type": "number",
-                        "description": "Estimated monthly dollar impact (positive = savings/freed cash).",
+                        "description": "Estimated monthly dollar impact (positive = savings/freed cash). Use 0 if not applicable.",
                     },
                     "rationale": {
                         "type": "string",
-                        "description": "Why this recommendation makes sense for the user's situation.",
+                        "description": "Why this makes sense for THEIR specific situation. Reference their question and budget numbers.",
                     },
                     "tradeoffs": {
                         "type": "string",
-                        "description": "What the user gives up or risks by following this advice.",
+                        "description": "What they give up, risks to consider, or alternative approaches.",
+                    },
+                    "timeline": {
+                        "type": "string",
+                        "description": "When they should do this and how long it takes to see results.",
                     },
                 },
                 "required": ["id", "title", "description", "expected_monthly_impact", "rationale", "tradeoffs"],
             },
-            "description": "Ordered list of optimization suggestions (3-6 items).",
+            "description": "Ordered list of suggestions (3-6 items), with most relevant to their question first.",
+        },
+        "what_comes_next": {
+            "type": "string",
+            "description": "Brief explanation of what they should do after reviewing these suggestions.",
         },
     },
-    "required": ["suggestions"],
+    "required": ["analysis", "suggestions", "what_comes_next"],
 }
 
-SYSTEM_PROMPT = """You are a personal finance advisor generating actionable budget optimization suggestions.
+SYSTEM_PROMPT = """You are a thoughtful financial advisor helping someone make better decisions with their money.
 
-## CRITICAL PRIORITY: USER'S QUESTION COMES FIRST
-The user has asked a specific question. Your FIRST 1-2 suggestions MUST directly and specifically address their exact question.
-DO NOT start with generic advice (like "build emergency fund" or "cut expenses") unless that directly answers their question.
+Your approach:
+1. First UNDERSTAND their specific question and situation
+2. Provide a DIRECT ANSWER to their question before anything else
+3. Then offer ACTIONABLE SUGGESTIONS with specific steps, dollar amounts, and timelines
 
-## GOAL-SPECIFIC GUIDANCE
-When the user asks about specific goals, provide targeted advice:
+## Your Response Structure
 
-### Down Payment / House Savings:
-- Calculate monthly savings needed: (target amount - current savings) / months to goal
-- Recommend high-yield savings accounts or money market accounts (NOT investment accounts)
-- Suggest dedicated "house fund" separate from other savings
-- Discuss the 20% down payment benchmark vs PMI tradeoffs
-- Consider closing cost reserves (2-5% of home price)
+**Analysis First:**
+- Assess their financial position honestly (strengths and concerns)
+- Make key observations about their budget
+- Directly answer their question in 1-2 sentences
 
-### Debt Payoff:
-- Compare avalanche (highest rate first) vs snowball (smallest balance first)
-- Calculate payoff timeline with extra payments
-- Discuss balance transfer options for high-rate credit cards
-- Consider debt consolidation if multiple high-rate debts
+**Then Suggestions:**
+- Lead with what's MOST RELEVANT to their question
+- Be specific: use their actual numbers, calculate real impacts
+- Explain HOW to do things, not just WHAT to do
+- Acknowledge tradeoffs honestly
 
-### Retirement Savings:
-- Start with employer 401k match (free money)
-- Discuss Roth vs Traditional based on current vs expected future tax bracket
-- Target 15-20% of gross income as a long-term goal
-- Consider IRA contribution limits and catch-up contributions
+## Be Specific and Helpful
 
-### Emergency Fund:
-- Target 3-6 months of essential expenses
-- Recommend high-yield savings account
-- Calculate specific dollar target based on their expenses
+Instead of: "Consider reducing discretionary spending"
+Say: "Your dining out ($150/mo) and subscriptions ($30/mo) total $180. Cutting dining to $100 and reviewing subscriptions could free up $60-80/month toward your goal."
 
-## STRUCTURE YOUR SUGGESTIONS
-1. FIRST suggestion: Directly answers their question with specific action steps
-2. SECOND suggestion: Related action that supports their goal
-3. REMAINING suggestions: Other relevant optimizations (only if helpful)
+Instead of: "Build an emergency fund"
+Say: "Based on your essential expenses of $X, a 3-month emergency fund is $Y. At your current surplus of $Z, you could reach this in N months by..."
 
-## SUGGESTION QUALITY REQUIREMENTS
-- Every rationale MUST explicitly reference their question (e.g., "To save for your down payment...")
-- Include specific dollar amounts calculated from their budget
-- Provide timelines when goals are mentioned
-- Explain HOW to implement each suggestion, not just WHAT to do
+## For Common Goals
 
-## DO NOT
-- Lead with generic advice like "build emergency fund" unless they asked about it
-- Suggest cutting $8 from entertainment when they're asking about saving $50k for a house
-- Provide suggestions that don't relate to their question
-- Be vague about dollar amounts or timelines
+**Surplus allocation:** Consider their debts (interest rates), savings status, and goals. Don't give a generic answer - tell them specifically what to do with their money based on their situation.
 
-## Profile-aware suggestions:
-- If user is conservative → emphasize safety, stability, guaranteed returns
-- If user is aggressive → can mention growth-oriented options with appropriate caveats
-- If user follows r/personalfinance → follow flowchart priorities
-- If user follows money_guy → follow their order of operations
+**Debt payoff:** Calculate actual payoff timelines. Compare strategies. Use their real debt numbers.
 
-## Financial frameworks:
-- r/personalfinance: Follow the subreddit flowchart priorities (emergency fund → employer match → high-interest debt → max tax-advantaged → taxable investing)
-- money_guy: Money Guy Show Financial Order of Operations (emergency fund → employer match → eliminate high-rate debt → max Roth → 15% gross to retirement → max HSA → taxable)
-- neutral: General best practices balanced across debt, savings, and lifestyle
+**Saving for goals:** Calculate how long it takes. Suggest where to keep the money. Be realistic about timelines.
 
-CRITICAL: Suggestions should be educational and thought-provoking. Never guarantee outcomes or provide specific investment advice. Frame recommendations as ideas to consider.
+**Retirement:** Consider their age, income, and existing contributions. Reference actual contribution limits and employer matching.
 
-Return structured JSON matching the provided function schema exactly."""
+## Personalization
 
-USER_PROMPT_TEMPLATE = """## USER'S QUESTION (Generate suggestions that answer this)
+If they've indicated a financial philosophy or risk tolerance, respect it. If they follow r/personalfinance or Money Guy frameworks, align your suggestions accordingly - but always prioritize their specific question first.
+
+## Tone
+
+Be conversational and helpful, like a knowledgeable friend. Explain your reasoning. Acknowledge that personal finance involves tradeoffs and there's rarely one "right" answer.
+
+Never guarantee outcomes. Frame suggestions as ideas to consider. Be honest about uncertainty.
+
+Return structured JSON matching the provided schema."""
+
+USER_PROMPT_TEMPLATE = """This person is asking for financial advice. Their question:
+
 "{user_query}"
+
+Please analyze their budget and provide targeted suggestions that directly address their question.
+
+---
+
+## Their Financial Situation
+
+**Monthly Cash Flow:**
+- Income: ${total_income:,.2f}
+- Expenses: ${total_expenses:,.2f}
+- Net Position: ${surplus:,.2f} ({surplus_status})
 
 {user_profile_section}
 
-Generate suggestions that directly address their question above.
+---
 
-## Financial Summary
-- Total Monthly Income: ${total_income:,.2f}
-- Total Monthly Expenses: ${total_expenses:,.2f}
-- Monthly Surplus: ${surplus:,.2f}
-- Surplus Ratio: {surplus_ratio:.1%} of income
-
-## Income Breakdown ({income_count} sources)
+## Income Details ({income_count} sources)
 {income_section}
 
-## Expense Breakdown ({expense_count} categories)
+---
+
+## Expenses ({expense_count} categories)
 {expense_section}
 
-## Debt Profile ({debt_count} accounts)
+---
+
+## Debts ({debt_count} accounts)
 {debt_section}
-Total Monthly Debt Service: ${total_debt_payments:,.2f}
+{debt_summary}
 
-## User Preferences
-- Primary Optimization Focus: {optimization_focus}
-- Protect Essential Expenses: {protect_essentials}
-- Maximum Category Adjustment: {max_change:.0%}
+---
 
-## Financial Framework
-{framework_description}
+## Their Preferences
+- Focus: {optimization_focus}
+- Protect essential expenses: {protect_essentials}
+{framework_section}
 
-Generate 3-6 prioritized suggestions that answer: "{user_query}"
-Lead with suggestions most relevant to their question. Reference their question in your rationale."""
+---
+
+Remember: Start by directly answering their question ("{user_query}"), then provide 3-6 specific, actionable suggestions. Use their actual numbers. Be helpful and conversational."""
 
 
 def _format_income_section(model: UnifiedBudgetModel) -> str:
@@ -192,18 +228,35 @@ def _format_income_section(model: UnifiedBudgetModel) -> str:
 
 
 def _format_expense_section(model: UnifiedBudgetModel) -> str:
+    """Format expenses grouped by essential status with totals."""
     if not model.expenses:
         return "No expenses detected."
+    
     # Group by essential vs flexible
-    essential = [e for e in model.expenses if e.essential]
-    flexible = [e for e in model.expenses if not e.essential]
-
-    lines = ["Essential:"]
+    essential = [e for e in model.expenses if e.essential is True]
+    flexible = [e for e in model.expenses if e.essential is False]
+    unknown = [e for e in model.expenses if e.essential is None]
+    
+    lines = []
+    
+    if essential:
+        essential_total = sum(abs(e.monthly_amount) for e in essential)
+        lines.append(f"**Essential (${essential_total:,.2f}/mo total):**")
     for exp in essential:
-        lines.append(f"  - {exp.category}: ${exp.monthly_amount:,.2f}/mo")
-    lines.append("Flexible:")
+            lines.append(f"  - {exp.category}: ${abs(exp.monthly_amount):,.2f}")
+    
+    if flexible:
+        flexible_total = sum(abs(e.monthly_amount) for e in flexible)
+        lines.append(f"**Flexible (${flexible_total:,.2f}/mo total):**")
     for exp in flexible:
-        lines.append(f"  - {exp.category}: ${exp.monthly_amount:,.2f}/mo")
+            lines.append(f"  - {exp.category}: ${abs(exp.monthly_amount):,.2f}")
+    
+    if unknown:
+        unknown_total = sum(abs(e.monthly_amount) for e in unknown)
+        lines.append(f"**Unclassified (${unknown_total:,.2f}/mo total):**")
+        for exp in unknown:
+            lines.append(f"  - {exp.category}: ${abs(exp.monthly_amount):,.2f}")
+    
     return "\n".join(lines)
 
 
@@ -385,9 +438,9 @@ def _build_user_profile_section(context: dict[str, Any]) -> str:
 
 
 def _build_user_prompt(model: UnifiedBudgetModel, summary: Summary, context: dict[str, Any]) -> str:
+    """Build the user prompt with budget context and the user's question."""
     framework = context.get("framework", "neutral")
     total_debt_payments = sum(d.min_payment for d in model.debts)
-    surplus_ratio = summary.surplus / summary.total_income if summary.total_income > 0 else 0
 
     # Get user query from context
     user_query = context.get("user_query", "")
@@ -397,6 +450,28 @@ def _build_user_prompt(model: UnifiedBudgetModel, summary: Summary, context: dic
     # Build user profile section
     user_profile_section = _build_user_profile_section(context)
     
+    # Determine surplus status description
+    if summary.surplus > 0:
+        surplus_status = f"${summary.surplus:,.2f}/month surplus"
+    elif summary.surplus < 0:
+        surplus_status = f"${abs(summary.surplus):,.2f}/month deficit"
+    else:
+        surplus_status = "breaking even"
+    
+    # Build debt summary
+    if model.debts:
+        total_debt = sum(d.balance for d in model.debts)
+        highest_rate = max((d.interest_rate for d in model.debts), default=0)
+        debt_summary = f"**Total Debt: ${total_debt:,.2f} | Monthly Payments: ${total_debt_payments:,.2f} | Highest Rate: {highest_rate}%**"
+    else:
+        debt_summary = "**No debts - great position for savings!**"
+    
+    # Build framework section
+    if framework != "neutral":
+        framework_section = f"- Financial approach: {_get_framework_description(framework)}"
+    else:
+        framework_section = ""
+    
     # Detect goal type and build goal-specific context
     goal_type = _detect_goal_type(user_query)
     goal_context = _build_goal_context(goal_type, model, summary)
@@ -405,25 +480,24 @@ def _build_user_prompt(model: UnifiedBudgetModel, summary: Summary, context: dic
         user_query=user_query,
         user_profile_section=user_profile_section,
         total_income=summary.total_income,
-        total_expenses=summary.total_expenses,
+        total_expenses=abs(summary.total_expenses),  # Show as positive
         surplus=summary.surplus,
-        surplus_ratio=surplus_ratio,
+        surplus_status=surplus_status,
         income_count=len(model.income),
         income_section=_format_income_section(model),
         expense_count=len(model.expenses),
         expense_section=_format_expense_section(model),
         debt_count=len(model.debts),
         debt_section=_format_debt_section(model),
-        total_debt_payments=total_debt_payments,
+        debt_summary=debt_summary,
         optimization_focus=model.preferences.optimization_focus,
         protect_essentials=model.preferences.protect_essentials,
-        max_change=model.preferences.max_desired_change_per_category,
-        framework_description=_get_framework_description(framework),
+        framework_section=framework_section,
     )
     
     # Append goal-specific context after the base prompt
     if goal_context:
-        return base_prompt + goal_context
+        return base_prompt + "\n" + goal_context
     return base_prompt
 
 
@@ -451,8 +525,8 @@ class OpenAISuggestionProvider:
         else:
             self._client = None
             self._model = None
-            self._temperature = 0.3
-            self._max_tokens = 2048
+            self._temperature = 0.7  # Higher for more creative, personalized responses
+            self._max_tokens = 4096  # Increased for analysis + detailed suggestions
 
     def generate(self, request: SuggestionProviderRequest) -> SuggestionProviderResponse:
         # Use try/except to handle different import contexts (test vs runtime)
@@ -482,6 +556,7 @@ class OpenAISuggestionProvider:
                 "event": "openai_suggestion_request",
                 "provider": self.name,
                 "model": self._model,
+                "prompt_version": PROMPT_VERSION,
                 "prompt_hash": prompt_hash,
                 "budget_model_hash": hash_payload(model_dict),
                 "summary_hash": hash_payload(summary_dict),
@@ -555,18 +630,35 @@ class OpenAISuggestionProvider:
             return self._fallback_to_deterministic(request)
 
     def _parse_suggestions(self, parsed: dict[str, Any]) -> list[Suggestion]:
-        """Convert OpenAI response into validated Suggestion objects."""
+        """Convert OpenAI response into validated Suggestion objects.
+        
+        Handles the new schema with analysis section and is more lenient
+        with optional fields.
+        """
         suggestions: list[Suggestion] = []
+        
+        # Log analysis if present (for observability)
+        analysis = parsed.get("analysis", {})
+        if analysis:
+            logger.info(
+                {
+                    "event": "openai_budget_analysis",
+                    "provider": self.name,
+                    "has_assessment": bool(analysis.get("budget_assessment")),
+                    "observations_count": len(analysis.get("key_observations", [])),
+                    "has_answer": bool(analysis.get("answer_to_question")),
+                }
+            )
+        
         raw_suggestions = parsed.get("suggestions", [])
 
         for item in raw_suggestions:
             try:
-                # Validate required fields
-                required_fields = ["id", "title", "description", "expected_monthly_impact", "rationale", "tradeoffs"]
-                if not all(field in item for field in required_fields):
+                # Require minimum fields - be lenient with others
+                if not item.get("title") or not item.get("description"):
                     logger.warning(
                         {
-                            "event": "openai_suggestion_skip_missing_fields",
+                            "event": "openai_suggestion_skip_missing_title_or_description",
                             "provider": self.name,
                             "item_id": item.get("id", "unknown"),
                         }
@@ -580,18 +672,27 @@ class OpenAISuggestionProvider:
                 except (TypeError, ValueError):
                     impact = 0.0
 
-                # Validate string fields are non-empty
-                if not item.get("title") or not item.get("description"):
-                    continue
+                # Generate an ID if missing
+                suggestion_id = str(item.get("id", f"suggestion_{len(suggestions) + 1}"))
+                
+                # Get optional fields with defaults
+                rationale = str(item.get("rationale", ""))[:500] if item.get("rationale") else ""
+                tradeoffs = str(item.get("tradeoffs", ""))[:500] if item.get("tradeoffs") else ""
+                
+                # Include timeline in description if present
+                description = str(item["description"])
+                timeline = item.get("timeline")
+                if timeline:
+                    description = f"{description}\n\n**Timeline:** {timeline}"
 
                 suggestions.append(
                     Suggestion(
-                        id=str(item["id"]),
-                        title=str(item["title"])[:100],  # Cap title length
-                        description=str(item["description"])[:500],  # Cap description
+                        id=suggestion_id,
+                        title=str(item["title"])[:100],
+                        description=description[:800],  # Increased cap for timeline
                         expected_monthly_impact=round(impact, 2),
-                        rationale=str(item["rationale"])[:500],
-                        tradeoffs=str(item["tradeoffs"])[:500],
+                        rationale=rationale,
+                        tradeoffs=tradeoffs,
                     )
                 )
             except Exception as exc:

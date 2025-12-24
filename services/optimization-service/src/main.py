@@ -33,6 +33,8 @@ def _load_suggestion_provider_settings() -> ProviderSettings:
         temperature_env="SUGGESTION_PROVIDER_TEMPERATURE",
         max_tokens_env="SUGGESTION_PROVIDER_MAX_TOKENS",
         default_timeout=60.0,  # Increased default for OpenAI suggestion generation
+        default_temperature=0.7,  # Higher for more creative, personalized responses
+        default_max_tokens=4096,  # Increased for analysis + detailed suggestions
     )
 
 

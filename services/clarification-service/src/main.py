@@ -54,6 +54,9 @@ def _load_clarification_provider_settings() -> ProviderSettings:
         timeout_env="CLARIFICATION_PROVIDER_TIMEOUT_SECONDS",
         temperature_env="CLARIFICATION_PROVIDER_TEMPERATURE",
         max_tokens_env="CLARIFICATION_PROVIDER_MAX_TOKENS",
+        default_timeout=60.0,  # Longer timeout for analysis + questions
+        default_temperature=0.6,  # Higher for more natural, conversational responses
+        default_max_tokens=2048,  # Increased for analysis + grouped questions
     )
 
 
@@ -71,8 +74,8 @@ def _load_normalization_provider_settings() -> ProviderSettings:
         max_tokens_env="BUDGET_NORMALIZATION_MAX_TOKENS",
         default_provider="openai",  # Default to AI normalization
         default_timeout=30.0,  # Longer timeout for normalization
-        default_temperature=0.1,  # Low temperature for consistent normalization
-        default_max_tokens=2048,  # Larger to handle full budget data
+        default_temperature=0.3,  # Slightly higher for better classification decisions
+        default_max_tokens=4096,  # Increased for larger budgets
     )
 
 
