@@ -25,6 +25,11 @@ type DiagnosticInfo = {
     suggestionProvider?: string;
     aiEnabled?: boolean;
   };
+  misconfiguration: {
+    detected: boolean;
+    type?: 'external_url_on_vercel' | 'localhost_in_production';
+    externalUrl?: string;
+  };
 };
 
 export default function DiagnosticsPage() {
@@ -37,6 +42,7 @@ export default function DiagnosticsPage() {
     apiHealth: { status: 'checking' },
     corsTest: { status: 'checking' },
     providerStatus: { status: 'not_checked' },
+    misconfiguration: { detected: false },
   });
 
   useEffect(() => {
@@ -53,11 +59,39 @@ export default function DiagnosticsPage() {
       'GATEWAY_BASE_URL': process.env.GATEWAY_BASE_URL,
     };
 
+    // Detect misconfiguration: external URL being used on Vercel deployment
+    const currentApiBase = getActiveApiBase();
+    const isVercelDeployment = 
+      window.location.hostname.includes('.vercel.app') ||
+      window.location.hostname.includes('.vercel.sh');
+    const isExternalUrl = currentApiBase && 
+      currentApiBase !== '/api' && 
+      (currentApiBase.startsWith('http://') || currentApiBase.startsWith('https://'));
+    const isLocalhostUrl = currentApiBase && 
+      (currentApiBase.includes('localhost') || currentApiBase.includes('127.0.0.1'));
+
+    let misconfiguration: DiagnosticInfo['misconfiguration'] = { detected: false };
+    
+    if (isVercelDeployment && isExternalUrl) {
+      misconfiguration = {
+        detected: true,
+        type: 'external_url_on_vercel',
+        externalUrl: currentApiBase,
+      };
+    } else if (isVercelDeployment && isLocalhostUrl) {
+      misconfiguration = {
+        detected: true,
+        type: 'localhost_in_production',
+        externalUrl: currentApiBase,
+      };
+    }
+
     setDiagnostics((prev) => ({
       ...prev,
       envVars,
-      apiBase: getActiveApiBase(),
+      apiBase: currentApiBase,
       candidates: getApiBaseCandidates(),
+      misconfiguration,
     }));
 
     // Check if the API is cross-origin (different host than current page)
@@ -176,6 +210,58 @@ export default function DiagnosticsPage() {
           environment variable and API connectivity issues.
         </p>
       </div>
+
+      {/* Misconfiguration Warning */}
+      {diagnostics.misconfiguration.detected && (
+        <div className="card border-red-500/50 bg-red-500/20">
+          <h3 className="text-xl font-semibold text-red-300 mb-3">
+            Configuration Issue Detected
+          </h3>
+          {diagnostics.misconfiguration.type === 'external_url_on_vercel' && (
+            <div className="space-y-3 text-sm">
+              <p className="text-white">
+                Your Vercel deployment is configured to use an external API URL instead of
+                same-origin API routes. This is likely causing API calls to fail.
+              </p>
+              <div className="font-mono text-xs bg-black/30 p-2 rounded break-all">
+                <span className="text-red-400">Current API URL:</span>{' '}
+                <span className="text-white">{diagnostics.misconfiguration.externalUrl}</span>
+              </div>
+              <div className="mt-4">
+                <p className="text-amber-300 font-semibold mb-2">To fix this issue:</p>
+                <ol className="list-decimal list-inside space-y-2 text-white/90">
+                  <li>Go to <strong>Vercel Dashboard</strong> → Your Project → <strong>Settings</strong> → <strong>Environment Variables</strong></li>
+                  <li>Find and <strong>delete</strong> the <code className="bg-black/30 px-1 rounded">NEXT_PUBLIC_LIFEPATH_API_BASE_URL</code> variable</li>
+                  <li><strong>Redeploy</strong> your application (this is required because NEXT_PUBLIC_* variables are embedded at build time)</li>
+                </ol>
+              </div>
+              <p className="text-white/70 mt-3">
+                The app will automatically use same-origin API routes (<code className="bg-black/30 px-1 rounded">/api/*</code>) 
+                which is the correct configuration for Vercel deployments.
+              </p>
+            </div>
+          )}
+          {diagnostics.misconfiguration.type === 'localhost_in_production' && (
+            <div className="space-y-3 text-sm">
+              <p className="text-white">
+                Your production deployment is configured to use a localhost API URL, which will not work.
+              </p>
+              <div className="font-mono text-xs bg-black/30 p-2 rounded break-all">
+                <span className="text-red-400">Current API URL:</span>{' '}
+                <span className="text-white">{diagnostics.misconfiguration.externalUrl}</span>
+              </div>
+              <div className="mt-4">
+                <p className="text-amber-300 font-semibold mb-2">To fix this issue:</p>
+                <ol className="list-decimal list-inside space-y-2 text-white/90">
+                  <li>Go to <strong>Vercel Dashboard</strong> → Your Project → <strong>Settings</strong> → <strong>Environment Variables</strong></li>
+                  <li>Find and <strong>delete</strong> any API base URL variables pointing to localhost</li>
+                  <li><strong>Redeploy</strong> your application</li>
+                </ol>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Environment Info */}
       <div className="card">

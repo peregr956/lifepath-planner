@@ -266,6 +266,33 @@ if (typeof window !== 'undefined' && initialCandidates.length > 0) {
   const activeBase = initialCandidates[0];
   const isLocalhost = isLocalhostEnvironment();
   
+  // Detect if we're running on Vercel
+  const isVercelDeployment = typeof window !== 'undefined' && (
+    window.location.hostname.includes('.vercel.app') ||
+    window.location.hostname.includes('.vercel.sh')
+  );
+  
+  // Check if using an external URL (not same-origin)
+  const isExternalUrl = activeBase && 
+    activeBase !== SAME_ORIGIN_API_BASE && 
+    activeBase !== '/api' &&
+    (activeBase.startsWith('http://') || activeBase.startsWith('https://'));
+  
+  // Warn if using an external URL on Vercel - this is likely a misconfiguration
+  if (isVercelDeployment && isExternalUrl) {
+    console.error(
+      '[API Client] MISCONFIGURATION DETECTED: Using external API URL on Vercel!',
+      '\n\nYour Vercel deployment has NEXT_PUBLIC_LIFEPATH_API_BASE_URL set to an external URL.',
+      '\nThis is incorrect for Vercel deployments which should use same-origin API routes (/api/*).',
+      '\n\nTo fix:',
+      '\n1. Go to Vercel Dashboard → Project Settings → Environment Variables',
+      '\n2. DELETE the NEXT_PUBLIC_LIFEPATH_API_BASE_URL variable',
+      '\n3. Redeploy your application',
+      '\n\nSee /diagnostics for more details.',
+      { activeBase, candidates: initialCandidates, hostname: window.location.hostname }
+    );
+  }
+  
   // Warn if using localhost in production
   if (!isLocalhost && activeBase && (activeBase.includes('localhost') || activeBase.includes('127.0.0.1'))) {
     console.warn(
