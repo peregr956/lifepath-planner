@@ -31,8 +31,10 @@ const BudgetSessionContext = createContext<BudgetSessionContextValue | undefined
 export function BudgetSessionProvider({ children }: { children: ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
+  // useSearchParams must be used in a component wrapped in Suspense
+  // This is handled by the layout.tsx file
   const searchParams = useSearchParams();
-  const searchParamsString = searchParams.toString();
+  const searchParamsString = searchParams?.toString() ?? '';
   const [session, setSession] = useState<BudgetSession | null>(null);
   const [hydrated, setHydrated] = useState(false);
 

@@ -74,6 +74,18 @@ type EnvSource = Record<string, string | undefined>;
 
 const listeners = new Set<() => void>();
 
+function getEnvSource(): EnvSource {
+  // In Next.js, NEXT_PUBLIC_* variables are embedded at build time
+  // They should be available directly on process.env in client components
+  if (typeof process !== 'undefined' && process?.env) {
+    return process.env as EnvSource;
+  }
+  // Fallback for edge cases
+  const globalProcess = (globalThis as typeof globalThis & { process?: { env?: EnvSource } })
+    .process;
+  return (globalProcess?.env ?? {}) as EnvSource;
+}
+
 // In Next.js, NEXT_PUBLIC_* variables are replaced at build time with their literal values.
 // We must access them directly, not through dynamic key access.
 function firstDefined(keys: readonly string[]): string | undefined {
@@ -161,17 +173,37 @@ function coerceCandidateValues(value?: string | null): string[] {
   return dedupe(parts);
 }
 
+function isLocalhostEnvironment(): boolean {
+  if (typeof window === 'undefined') {
+    // Server-side: assume localhost for SSR
+    return true;
+  }
+  const hostname = window.location.hostname;
+  return (
+    hostname === 'localhost' ||
+    hostname === '127.0.0.1' ||
+    hostname === '[::1]' ||
+    hostname.startsWith('192.168.') ||
+    hostname.startsWith('10.') ||
+    hostname.startsWith('172.16.') ||
+    hostname.endsWith('.local')
+  );
+}
+
 function resolveInitialCandidates(): string[] {
+  const env = getEnvSource();
   const manualBase = normalizeBaseUrl(firstDefined(ENV_API_BASE_KEYS));
   const candidateBlob = firstDefined(ENV_API_CANDIDATE_KEYS);
   const envCandidates = coerceCandidateValues(candidateBlob);
 
   // Debug logging in development
   if (typeof window !== 'undefined' && process.env.NODE_ENV === 'development') {
-    console.log('[API Client] Environment variable check:', {
+    const foundValue = firstDefined(ENV_API_BASE_KEYS);
+    console.log('[API Client] Environment check:', {
       'NEXT_PUBLIC_LIFEPATH_API_BASE_URL': process.env.NEXT_PUBLIC_LIFEPATH_API_BASE_URL,
-      'manualBase': manualBase,
-      'candidateBlob': candidateBlob,
+      'Found value': foundValue,
+      'Normalized base': manualBase,
+      'All env keys checked': ENV_API_BASE_KEYS,
     });
   }
 
@@ -180,33 +212,83 @@ function resolveInitialCandidates(): string[] {
     combined.push(manualBase);
   }
   combined.push(...envCandidates);
-  combined.push(...DEFAULT_API_BASE_CANDIDATES);
+  
+  // Only include localhost candidates if we're actually in a localhost environment
+  const isLocalhost = isLocalhostEnvironment();
+  if (isLocalhost) {
+    combined.push(...DEFAULT_API_BASE_CANDIDATES);
+  }
 
   const resolved = dedupe(combined);
   
-  // Warn if falling back to localhost in production
-  if (typeof window !== 'undefined' && resolved[0] === 'http://localhost:8000') {
-    const isProduction = window.location.hostname !== 'localhost' && !window.location.hostname.includes('127.0.0.1');
-    if (isProduction) {
-      console.error(
-        '[API Client] WARNING: Falling back to localhost:8000 in production!',
-        'NEXT_PUBLIC_LIFEPATH_API_BASE_URL should be set in Vercel environment variables.',
-        'Current env check:', {
-          'NEXT_PUBLIC_LIFEPATH_API_BASE_URL': process.env.NEXT_PUBLIC_LIFEPATH_API_BASE_URL,
-          'process.env available': typeof process !== 'undefined' && !!process.env,
-        }
-      );
-    }
+  // In production (non-localhost), require an explicit API URL
+  if (!isLocalhost && resolved.length === 0) {
+    const errorMsg = 
+      'No API base URL configured. Please set NEXT_PUBLIC_LIFEPATH_API_BASE_URL environment variable in Vercel and redeploy.';
+    const envValues: Record<string, string | undefined> = {};
+    ENV_API_BASE_KEYS.forEach(key => {
+      switch (key) {
+        case 'NEXT_PUBLIC_LIFEPATH_API_BASE_URL':
+          envValues[key] = process.env.NEXT_PUBLIC_LIFEPATH_API_BASE_URL;
+          break;
+        case 'LIFEPATH_API_BASE_URL':
+          envValues[key] = process.env.LIFEPATH_API_BASE_URL;
+          break;
+        case 'NEXT_PUBLIC_API_BASE_URL':
+          envValues[key] = process.env.NEXT_PUBLIC_API_BASE_URL;
+          break;
+        case 'API_BASE_URL':
+          envValues[key] = process.env.API_BASE_URL;
+          break;
+        case 'NEXT_PUBLIC_GATEWAY_BASE_URL':
+          envValues[key] = process.env.NEXT_PUBLIC_GATEWAY_BASE_URL;
+          break;
+        case 'GATEWAY_BASE_URL':
+          envValues[key] = process.env.GATEWAY_BASE_URL;
+          break;
+      }
+    });
+    console.error('[API Client]', errorMsg, {
+      'Checked env vars': ENV_API_BASE_KEYS,
+      'Current env values': envValues,
+    });
   }
   
-  return resolved.length ? resolved : ['http://localhost:8000'];
+  return resolved.length ? resolved : (isLocalhost ? ['http://localhost:8000'] : []);
 }
 
 const initialCandidates = resolveInitialCandidates();
+
+// Log the resolved API base for debugging (only in development)
+if (typeof window !== 'undefined' && process.env.NODE_ENV === 'development') {
+  console.log('[API Client] Initial API base candidates:', initialCandidates);
+  console.log('[API Client] Active API base:', initialCandidates[0]);
+  // Check if NEXT_PUBLIC_ vars are accessible
+  const envCheck = {
+    NEXT_PUBLIC_LIFEPATH_API_BASE_URL: process.env.NEXT_PUBLIC_LIFEPATH_API_BASE_URL,
+    NEXT_PUBLIC_API_BASE_URL: process.env.NEXT_PUBLIC_API_BASE_URL,
+    NEXT_PUBLIC_GATEWAY_BASE_URL: process.env.NEXT_PUBLIC_GATEWAY_BASE_URL,
+  };
+  console.log('[API Client] Environment variables check:', envCheck);
+}
+
 let apiBaseStore: ApiBaseSnapshot = {
-  active: initialCandidates[0],
+  active: initialCandidates[0] || '',
   candidates: initialCandidates,
 };
+
+// Warn in production if we're using localhost
+if (typeof window !== 'undefined' && initialCandidates.length > 0) {
+  const activeBase = initialCandidates[0];
+  const isLocalhost = isLocalhostEnvironment();
+  if (!isLocalhost && activeBase && (activeBase.includes('localhost') || activeBase.includes('127.0.0.1'))) {
+    console.warn(
+      '[API Client] WARNING: Using localhost API URL in production!',
+      'This will not work. Please set NEXT_PUBLIC_LIFEPATH_API_BASE_URL in Vercel and redeploy.',
+      { activeBase, candidates: initialCandidates }
+    );
+  }
+}
 
 function emitChange(): void {
   listeners.forEach((listener) => listener());
@@ -297,10 +379,10 @@ export function ApiBaseProvider({ children }: { children: ReactNode }) {
     () => ({
       activeApiBase: snapshot.active,
       candidates: snapshot.candidates,
-      setActiveApiBase: (base: string) => {
+      setActiveApiBase: (base) => {
         setActiveApiBase(base);
       },
-      addCandidate: (base: string) => {
+      addCandidate: (base) => {
         addApiBaseCandidate(base);
       },
       refreshCandidates: () => {
@@ -430,6 +512,15 @@ export class ApiClient {
   private async request<T>(path: string, options: RequestOptions = {}): Promise<T> {
     const { query, headers, body, ...rest } = options;
     const activeBaseUrl = this.getBaseUrl();
+    
+    // Check if API base URL is configured
+    if (!activeBaseUrl || activeBaseUrl.trim() === '') {
+      throw new ApiError(
+        'API server URL is not configured. Please set the NEXT_PUBLIC_LIFEPATH_API_BASE_URL environment variable in your Vercel project settings.',
+        503,
+      );
+    }
+    
     const url = this.buildUrl(path, query, activeBaseUrl);
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), this.timeoutMs);
@@ -438,6 +529,11 @@ export class ApiClient {
         ? JSON.stringify(body)
         : (body ?? undefined);
     const finalHeaders = this.buildHeaders(headers, finalBody);
+
+    // Log request details in development
+    if (typeof window !== 'undefined' && process.env.NODE_ENV === 'development') {
+      console.log('[API Client] Making request:', { method: options.method || 'GET', url, path });
+    }
 
     try {
       const response = await fetch(url, {
@@ -449,6 +545,16 @@ export class ApiClient {
       const payload = await this.parsePayload(response);
       if (!response.ok) {
         const errorMessage = this.describeError(response, payload);
+        // Log error details in development
+        if (typeof window !== 'undefined' && process.env.NODE_ENV === 'development') {
+          console.error('[API Client] Request failed:', {
+            status: response.status,
+            statusText: response.statusText,
+            url,
+            errorMessage,
+            payload,
+          });
+        }
         // For 400 errors with validation details, include the full payload
         if (
           response.status === 400 &&
@@ -466,10 +572,39 @@ export class ApiClient {
         throw new ApiError('Request timed out while contacting the API gateway.', 408);
       }
       if (error instanceof TypeError) {
-        throw new ApiError(
-          `Unable to reach the API gateway at ${activeBaseUrl}. Ensure the gateway is running and reachable from this browser.`,
-          503,
-        );
+        // Check if this is likely a CORS error
+        const isLikelyCors = error.message.includes('Failed to fetch') || 
+                            error.message.includes('NetworkError') ||
+                            error.message.includes('CORS');
+        
+        // Enhanced error message for network errors
+        let enhancedMessage = `Unable to reach the API gateway at ${activeBaseUrl}. `;
+        if (isLikelyCors) {
+          enhancedMessage += `This appears to be a CORS (Cross-Origin Resource Sharing) error. ` +
+            `Ensure the backend has GATEWAY_CORS_ORIGINS configured to include this origin: ${window.location.origin}. `;
+        } else {
+          const isLocalhost = activeBaseUrl.includes('localhost') || activeBaseUrl.includes('127.0.0.1');
+          if (isLocalhost) {
+            enhancedMessage += `Ensure the server is running and reachable from this browser. `;
+          } else {
+            enhancedMessage += `Please check that NEXT_PUBLIC_LIFEPATH_API_BASE_URL is correctly configured in your Vercel project settings. `;
+          }
+          enhancedMessage += `This could also be due to: (1) CORS configuration on the backend, (2) Network connectivity issues, ` +
+            `or (3) The API gateway is not running. `;
+        }
+        enhancedMessage += `Check the browser console and network tab for more details.`;
+        
+        if (typeof window !== 'undefined' && process.env.NODE_ENV === 'development') {
+          console.error('[API Client] Network error:', {
+            error,
+            activeBaseUrl,
+            url,
+            currentOrigin: window.location.origin,
+            isLikelyCors,
+            message: enhancedMessage,
+          });
+        }
+        throw new ApiError(enhancedMessage, 503);
       }
       throw error;
     } finally {
