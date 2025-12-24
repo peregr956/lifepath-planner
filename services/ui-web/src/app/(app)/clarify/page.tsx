@@ -11,6 +11,8 @@ import {
   submitClarificationAnswers,
   submitUserQuery,
 } from '@/utils/apiClient';
+import { Card, CardContent, Button, Skeleton } from '@/components/ui';
+import { AlertCircle, Loader2, Pencil } from 'lucide-react';
 
 type ClarifyStep = 'query' | 'questions';
 
@@ -24,13 +26,11 @@ async function safeNavigate(
 ): Promise<boolean> {
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     try {
-      // Cast to any to handle Next.js strict route typing
-      router.push(path as any);
+      router.push(path as Parameters<typeof router.push>[0]);
       return true;
     } catch (error) {
       console.error(`Navigation attempt ${attempt + 1} failed:`, error);
       if (attempt < maxRetries) {
-        // Wait before retrying
         await new Promise((resolve) => setTimeout(resolve, 100));
       }
     }
@@ -46,13 +46,11 @@ export default function ClarifyPage() {
   const budgetId = session?.budgetId;
   const existingUserQuery = session?.userQuery;
 
-  // Determine initial step based on whether user has already provided a query
   const [step, setStep] = useState<ClarifyStep>(() => (existingUserQuery ? 'questions' : 'query'));
   const [localUserQuery, setLocalUserQuery] = useState(existingUserQuery || '');
   const [navigationError, setNavigationError] = useState<string | null>(null);
   const isNavigatingRef = useRef(false);
 
-  // Sync step with session when it changes
   useEffect(() => {
     if (existingUserQuery && step === 'query') {
       setStep('questions');
@@ -66,7 +64,6 @@ export default function ClarifyPage() {
     }
   }, [budgetId, hydrated, router]);
 
-  // Query submission mutation
   const queryMutation = useMutation({
     mutationFn: async (query: string) => {
       if (!budgetId) {
@@ -81,15 +78,13 @@ export default function ClarifyPage() {
     },
   });
 
-  // Handle query submission
   const handleQuerySubmit = useCallback(
     async (query: string) => {
       await queryMutation.mutateAsync(query);
     },
-    [queryMutation],
+    [queryMutation]
   );
 
-  // Fetch clarification questions only after user has provided a query
   const clarificationQuery = useQuery({
     queryKey: ['clarification-questions', budgetId, localUserQuery],
     queryFn: () => fetchClarificationQuestions(budgetId!, localUserQuery || undefined),
@@ -101,10 +96,9 @@ export default function ClarifyPage() {
       return;
     }
     if (!clarificationQuery.data.needsClarification) {
-      // Prevent duplicate navigation attempts
       if (isNavigatingRef.current) return;
       isNavigatingRef.current = true;
-      
+
       const navigateToSummary = async () => {
         if (!session?.clarified) {
           await markClarified();
@@ -112,7 +106,9 @@ export default function ClarifyPage() {
         const success = await safeNavigate(router, '/summarize');
         if (!success) {
           isNavigatingRef.current = false;
-          setNavigationError('Unable to navigate to results. Please try clicking the Results step above.');
+          setNavigationError(
+            'Unable to navigate to results. Please try clicking the Results step above.'
+          );
         }
       };
       navigateToSummary();
@@ -127,20 +123,17 @@ export default function ClarifyPage() {
       return await submitClarificationAnswers(budgetId, answers);
     },
     onSuccess: async (response) => {
-      // Clear any previous navigation errors
       setNavigationError(null);
-      
-      // Await session state updates before navigation to ensure state is persisted
       await markClarified();
       if (response.readyForSummary) {
         await markReadyForSummary();
       }
       await queryClient.invalidateQueries({ queryKey: ['summary-and-suggestions', budgetId] });
-      
-      // Navigate with retry logic
       const success = await safeNavigate(router, '/summarize');
       if (!success) {
-        setNavigationError('Your answers were saved, but navigation failed. Please click the Results step above to continue.');
+        setNavigationError(
+          'Your answers were saved, but navigation failed. Please click the Results step above to continue.'
+        );
       }
     },
   });
@@ -151,11 +144,12 @@ export default function ClarifyPage() {
   // Render query input step
   if (step === 'query') {
     return (
-      <div className="flex flex-col gap-4">
+      <div className="flex flex-col gap-4 animate-fade-in">
         {queryMutation.isError && (
-          <p className="rounded border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-100">
-            Something went wrong. Please try again.
-          </p>
+          <div className="flex items-center gap-3 rounded-lg border border-destructive/30 bg-destructive/10 p-4">
+            <AlertCircle className="h-5 w-5 shrink-0 text-destructive" />
+            <p className="text-sm text-destructive">Something went wrong. Please try again.</p>
+          </div>
         )}
         <QueryInput
           onSubmit={handleQuerySubmit}
@@ -169,80 +163,109 @@ export default function ClarifyPage() {
 
   // Render clarification questions step
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-4 animate-fade-in">
       {/* Show user's query as context */}
       {localUserQuery && (
-        <div className="rounded-xl border border-indigo-500/20 bg-indigo-500/10 px-4 py-3">
-          <p className="text-xs font-medium uppercase tracking-wide text-indigo-300">
-            Your Question
-          </p>
-          <p className="mt-1 text-sm text-white">&ldquo;{localUserQuery}&rdquo;</p>
-          <button
-            type="button"
-            onClick={() => setStep('query')}
-            className="mt-2 text-xs text-indigo-300 underline-offset-2 hover:text-indigo-200 hover:underline"
-          >
-            Edit question
-          </button>
+        <Card className="border-primary/20 bg-gradient-to-r from-primary/10 to-accent/10">
+          <CardContent className="pt-6">
+            <p className="text-xs font-medium uppercase tracking-wide text-primary">Your Question</p>
+            <p className="mt-1 text-sm text-foreground">&ldquo;{localUserQuery}&rdquo;</p>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setStep('query')}
+              className="mt-2 h-auto p-0 text-xs text-primary hover:text-primary/80"
+            >
+              <Pencil className="mr-1 h-3 w-3" />
+              Edit question
+            </Button>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Loading state */}
+      {clarificationQuery.isLoading && (
+        <Card>
+          <CardContent className="pt-6">
+            <div className="flex items-center gap-3">
+              <Loader2 className="h-5 w-5 animate-spin text-primary" />
+              <p className="text-sm text-muted-foreground">
+                Preparing personalized questions for you…
+              </p>
+            </div>
+            <div className="mt-4 space-y-3">
+              <Skeleton className="h-20 w-full" />
+              <Skeleton className="h-20 w-full" />
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Error states */}
+      {clarificationQuery.isError && (
+        <div className="rounded-lg border border-destructive/30 bg-destructive/10 p-4">
+          <div className="flex items-start gap-3">
+            <AlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-destructive" />
+            <div>
+              <p className="font-medium text-destructive">Unable to load questions</p>
+              <p className="mt-1 text-sm text-destructive/80">
+                {clarificationQuery.error instanceof Error
+                  ? clarificationQuery.error.message
+                      .replace(/gateway/gi, 'server')
+                      .replace(/clarification/gi, '')
+                  : 'Something went wrong. Please try again.'}
+              </p>
+              {clarificationQuery.error instanceof Error &&
+                (clarificationQuery.error.message.includes('Unable to reach') ||
+                  clarificationQuery.error.message.includes('localhost') ||
+                  clarificationQuery.error.message.includes('127.0.0.1')) && (
+                  <p className="mt-2 text-xs text-destructive/70">
+                    Tip: Make sure the API is working correctly. Check Vercel logs for any
+                    server-side errors.
+                  </p>
+                )}
+            </div>
+          </div>
         </div>
       )}
 
-      {clarificationQuery.isLoading && (
-        <p className="rounded border border-white/10 bg-white/5 px-3 py-2 text-sm text-white/70">
-          Preparing personalized questions for you…
-        </p>
-      )}
-      {clarificationQuery.isError && (
-        <div className="rounded border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-100">
-          <p className="font-medium">Unable to load questions</p>
-          <p className="mt-1 text-red-200/80">
-            {clarificationQuery.error instanceof Error
-              ? clarificationQuery.error.message
-                  .replace(/gateway/gi, 'server')
-                  .replace(/clarification/gi, '')
-              : 'Something went wrong. Please try again.'}
+      {submitMutation.isError && (
+        <div className="flex items-center gap-3 rounded-lg border border-destructive/30 bg-destructive/10 p-4">
+          <AlertCircle className="h-5 w-5 shrink-0 text-destructive" />
+          <p className="text-sm text-destructive">
+            There was a problem saving your answers. Please check your responses and try again.
           </p>
-          {clarificationQuery.error instanceof Error &&
-            (clarificationQuery.error.message.includes('Unable to reach') ||
-              clarificationQuery.error.message.includes('localhost') ||
-              clarificationQuery.error.message.includes('127.0.0.1')) && (
-              <p className="mt-2 text-xs text-red-200/70">
-                Tip: Make sure the API is working correctly. Check Vercel logs for any server-side
-                errors. In local development, ensure the server is running.
-              </p>
-            )}
         </div>
       )}
-      {submitMutation.isError && (
-        <p className="rounded border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-100">
-          {submitMutation.error instanceof Error
-            ? 'There was a problem saving your answers. Please check your responses and try again.'
-            : 'Unable to submit answers. Please try again.'}
-        </p>
-      )}
+
       {navigationError && (
-        <div className="rounded border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-100">
-          <p>{navigationError}</p>
-          <button
-            type="button"
+        <div className="rounded-lg border border-warning/30 bg-warning/10 p-4">
+          <p className="text-sm text-warning">{navigationError}</p>
+          <Button
+            variant="outline"
+            size="sm"
+            className="mt-2"
             onClick={() => {
               setNavigationError(null);
               router.push('/summarize');
             }}
-            className="mt-2 rounded bg-amber-500/20 px-3 py-1 text-xs font-medium hover:bg-amber-500/30"
           >
             Try again
-          </button>
+          </Button>
         </div>
       )}
-      <ClarificationForm
-        questions={questions}
-        needsClarification={needsClarification}
-        disabled={!budgetId || clarificationQuery.isLoading || submitMutation.isPending}
-        onSubmit={async (answers) => {
-          await submitMutation.mutateAsync(answers);
-        }}
-      />
+
+      {/* Clarification form */}
+      {!clarificationQuery.isLoading && !clarificationQuery.isError && (
+        <ClarificationForm
+          questions={questions}
+          needsClarification={needsClarification}
+          disabled={!budgetId || clarificationQuery.isLoading || submitMutation.isPending}
+          onSubmit={async (answers) => {
+            await submitMutation.mutateAsync(answers);
+          }}
+        />
+      )}
     </div>
   );
 }
