@@ -38,9 +38,15 @@ let auditEventId = 1;
 
 /**
  * Check if Vercel Postgres is available
+ * Supports both POSTGRES_URL (Vercel Postgres) and DATABASE_URL (Prisma/other integrations)
  */
 function hasPostgres(): boolean {
-  return !!process.env.POSTGRES_URL;
+  // If DATABASE_URL is set but POSTGRES_URL is not, use DATABASE_URL
+  // This allows the app to work with Prisma integrations that set DATABASE_URL
+  if (process.env.DATABASE_URL && !process.env.POSTGRES_URL) {
+    process.env.POSTGRES_URL = process.env.DATABASE_URL;
+  }
+  return !!(process.env.POSTGRES_URL || process.env.DATABASE_URL);
 }
 
 /**
@@ -48,9 +54,14 @@ function hasPostgres(): boolean {
  */
 export async function initDatabase(): Promise<void> {
   if (!hasPostgres()) {
-    console.log('[DB] Using in-memory storage (no POSTGRES_URL configured)');
+    console.log('[DB] Using in-memory storage (no POSTGRES_URL or DATABASE_URL configured)');
     return;
   }
+
+  // Log which env var is being used
+  const dbUrl = process.env.POSTGRES_URL || process.env.DATABASE_URL;
+  const envVarName = process.env.POSTGRES_URL ? 'POSTGRES_URL' : 'DATABASE_URL';
+  console.log(`[DB] Using database connection from ${envVarName}`);
 
   console.log('[DB] Initializing database connection...');
   const startTime = Date.now();
@@ -86,8 +97,20 @@ export async function initDatabase(): Promise<void> {
     const duration = Date.now() - startTime;
     console.log(`[DB] Tables initialized successfully in ${duration}ms`);
   } catch (error) {
-    console.error('[DB] Failed to initialize tables:', error);
-    throw error;
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    console.error('[DB] Failed to initialize tables:', {
+      error: errorMessage,
+      stack: error instanceof Error ? error.stack : undefined,
+      envVar: process.env.POSTGRES_URL ? 'POSTGRES_URL' : 'DATABASE_URL',
+    });
+    // Wrap the error with more context
+    const dbError = new Error(
+      `Database initialization failed: ${errorMessage}. Check your database connection string and permissions.`
+    );
+    if (error instanceof Error && error.stack) {
+      dbError.stack = error.stack;
+    }
+    throw dbError;
   }
 }
 
@@ -120,7 +143,7 @@ export async function createSession(
     try {
       await sql`
         INSERT INTO budget_sessions (id, stage, draft, created_at, updated_at)
-        VALUES (${sessionId}, 'draft', ${JSON.stringify(draftPayload)}, ${now.toISOString()}, ${now.toISOString()})
+        VALUES (${sessionId}, 'draft', ${draftPayload}, ${now.toISOString()}, ${now.toISOString()})
       `;
 
       await recordAuditEvent({
@@ -135,8 +158,20 @@ export async function createSession(
       const duration = Date.now() - startTime;
       console.log(`[DB] Session ${sessionId} created in Postgres (${duration}ms)`);
     } catch (error) {
-      console.error(`[DB] Failed to create session ${sessionId} in Postgres:`, error);
-      throw error;
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      console.error(`[DB] Failed to create session ${sessionId} in Postgres:`, {
+        error: errorMessage,
+        stack: error instanceof Error ? error.stack : undefined,
+        sessionId,
+      });
+      // Wrap the error with more context
+      const dbError = new Error(
+        `Failed to create database session: ${errorMessage}. This may indicate a database connection or permissions issue.`
+      );
+      if (error instanceof Error && error.stack) {
+        dbError.stack = error.stack;
+      }
+      throw dbError;
     }
   } else {
     memoryStore.set(sessionId, session);
@@ -220,7 +255,7 @@ export async function updateSessionPartial(
   if (hasPostgres()) {
     await sql`
       UPDATE budget_sessions 
-      SET partial = ${JSON.stringify(partialModel)}, stage = 'partial', updated_at = ${now.toISOString()}
+      SET partial = ${partialModel}, stage = 'partial', updated_at = ${now.toISOString()}
       WHERE id = ${sessionId}
     `;
 
@@ -271,7 +306,7 @@ export async function updateSessionFinal(
   if (hasPostgres()) {
     await sql`
       UPDATE budget_sessions 
-      SET final = ${JSON.stringify(finalModel)}, stage = 'final', updated_at = ${now.toISOString()}
+      SET final = ${finalModel}, stage = 'final', updated_at = ${now.toISOString()}
       WHERE id = ${sessionId}
     `;
 
@@ -372,7 +407,7 @@ export async function storeUserProfile(
   if (hasPostgres()) {
     await sql`
       UPDATE budget_sessions 
-      SET user_profile = ${JSON.stringify(mergedProfile)}, updated_at = ${now.toISOString()}
+      SET user_profile = ${mergedProfile}, updated_at = ${now.toISOString()}
       WHERE id = ${sessionId}
     `;
 
@@ -427,7 +462,7 @@ async function recordAuditEvent(event: Omit<AuditEvent, 'id' | 'created_at'>): P
         ${event.source_ip}, 
         ${event.from_stage}, 
         ${event.to_stage}, 
-        ${event.details ? JSON.stringify(event.details) : null}
+        ${event.details ?? null}
       )
     `;
   }

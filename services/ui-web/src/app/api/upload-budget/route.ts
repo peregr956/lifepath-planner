@@ -37,7 +37,26 @@ function getFileType(contentType: string | null, filename: string): 'csv' | 'xls
 
 export async function POST(request: NextRequest) {
   try {
-    await ensureDbInitialized();
+    // Initialize database
+    try {
+      await ensureDbInitialized();
+    } catch (dbError) {
+      const errorMessage = dbError instanceof Error ? dbError.message : String(dbError);
+      console.error('[upload-budget] Database initialization error:', {
+        error: errorMessage,
+        stack: dbError instanceof Error ? dbError.stack : undefined,
+      });
+      return NextResponse.json(
+        { 
+          error: 'database_error', 
+          details: 'Failed to initialize database connection. Please check your database configuration.',
+          ...(process.env.NODE_ENV === 'development' && { 
+            technical_details: errorMessage 
+          })
+        },
+        { status: 500 }
+      );
+    }
 
     const formData = await request.formData();
     const file = formData.get('file');
@@ -77,9 +96,21 @@ export async function POST(request: NextRequest) {
         draftBudget = parseXlsxToDraftModel(arrayBuffer);
       }
     } catch (parseError) {
-      console.error('[upload-budget] Parse error:', parseError);
+      const errorMessage = parseError instanceof Error ? parseError.message : String(parseError);
+      console.error('[upload-budget] Parse error:', {
+        error: errorMessage,
+        stack: parseError instanceof Error ? parseError.stack : undefined,
+        filename: file.name,
+        fileType,
+      });
       return NextResponse.json(
-        { error: 'parse_error', details: 'Failed to parse the budget file.' },
+        { 
+          error: 'parse_error', 
+          details: 'Failed to parse the budget file. Please ensure the file is a valid CSV or XLSX format.',
+          ...(process.env.NODE_ENV === 'development' && { 
+            technical_details: errorMessage 
+          })
+        },
         { status: 400 }
       );
     }
@@ -99,16 +130,36 @@ export async function POST(request: NextRequest) {
     const budgetId = uuidv4();
     const sourceIp = request.headers.get('x-forwarded-for') || request.headers.get('x-real-ip') || null;
     
-    await createSession(
-      budgetId,
-      draftBudget as unknown as Record<string, unknown>,
-      sourceIp,
-      { 
-        filename: file.name, 
-        detected_income_lines: detectedIncomeLines,
-        detected_expense_lines: detectedExpenseLines,
-      }
-    );
+    try {
+      await createSession(
+        budgetId,
+        draftBudget as unknown as Record<string, unknown>,
+        sourceIp,
+        { 
+          filename: file.name, 
+          detected_income_lines: detectedIncomeLines,
+          detected_expense_lines: detectedExpenseLines,
+        }
+      );
+    } catch (sessionError) {
+      const errorMessage = sessionError instanceof Error ? sessionError.message : String(sessionError);
+      console.error('[upload-budget] Session creation error:', {
+        error: errorMessage,
+        stack: sessionError instanceof Error ? sessionError.stack : undefined,
+        budgetId,
+        filename: file.name,
+      });
+      return NextResponse.json(
+        { 
+          error: 'session_creation_error', 
+          details: 'Failed to save budget session. Please try again.',
+          ...(process.env.NODE_ENV === 'development' && { 
+            technical_details: errorMessage 
+          })
+        },
+        { status: 500 }
+      );
+    }
 
     console.log(`[upload-budget] Created session ${budgetId} from ${file.name}`);
 
@@ -123,9 +174,19 @@ export async function POST(request: NextRequest) {
       },
     });
   } catch (error) {
-    console.error('[upload-budget] Unexpected error:', error);
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    console.error('[upload-budget] Unexpected error:', {
+      error: errorMessage,
+      stack: error instanceof Error ? error.stack : undefined,
+    });
     return NextResponse.json(
-      { error: 'internal_error', details: 'An unexpected error occurred.' },
+      { 
+        error: 'internal_error', 
+        details: 'An unexpected error occurred. Please try again.',
+        ...(process.env.NODE_ENV === 'development' && { 
+          technical_details: errorMessage 
+        })
+      },
       { status: 500 }
     );
   }
