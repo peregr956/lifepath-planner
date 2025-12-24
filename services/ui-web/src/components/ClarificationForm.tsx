@@ -5,6 +5,15 @@ import { useForm } from 'react-hook-form';
 import type { FieldErrors, Resolver } from 'react-hook-form';
 import { z } from 'zod';
 import { QuestionRenderer } from './QuestionRenderer';
+import {
+  Button,
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from '@/components/ui';
+import { CheckCircle2, AlertCircle, MessageSquareText } from 'lucide-react';
 import type {
   ClarificationAnswerValue,
   ClarificationAnswers,
@@ -37,7 +46,7 @@ export function ClarificationForm({
   const formSchema = useMemo(() => buildClarificationSchema(questions), [questions]);
   const resolver = useMemo(
     () => createFormResolver(formSchema, fieldLabels),
-    [fieldLabels, formSchema],
+    [fieldLabels, formSchema]
   );
 
   const {
@@ -69,7 +78,7 @@ export function ClarificationForm({
       setWasSuccessful(true);
     } catch (submissionError) {
       setSubmitError(
-        submissionError instanceof Error ? submissionError.message : 'Unable to submit right now.',
+        submissionError instanceof Error ? submissionError.message : 'Unable to submit right now.'
       );
     }
   });
@@ -79,53 +88,74 @@ export function ClarificationForm({
   const showSuccess = wasSuccessful && !isDirty;
 
   return (
-    <form
-      onSubmit={handleFormSubmit}
-      className="card flex flex-col gap-6"
-      aria-label="clarification form"
-    >
-      <div>
-        <h2 className="text-xl font-semibold text-white">A few quick questions</h2>
-        <p className="mt-1 text-sm text-white/70">
-          Help us understand your budget better so we can give you more relevant suggestions.
-        </p>
-      </div>
+    <form onSubmit={handleFormSubmit} className="animate-fade-in" aria-label="clarification form">
+      <Card>
+        <CardHeader>
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10">
+              <MessageSquareText className="h-5 w-5 text-primary" />
+            </div>
+            <div>
+              <CardTitle>A few quick questions</CardTitle>
+              <CardDescription>
+                Help us understand your budget better so we can give you more relevant suggestions.
+              </CardDescription>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          {noQuestionsAvailable ? (
+            <div className="flex items-center gap-3 rounded-lg border border-success/30 bg-success/10 p-4">
+              <CheckCircle2 className="h-5 w-5 text-success" />
+              <p className="text-sm text-success">No questions needed right now. You&apos;re all set!</p>
+            </div>
+          ) : (
+            <div className="flex flex-col gap-4">
+              {questions.map((question, index) => (
+                <div
+                  key={question.id}
+                  className="animate-fade-in-up"
+                  style={{ animationDelay: `${index * 100}ms` }}
+                >
+                  <QuestionRenderer
+                    question={question}
+                    control={control}
+                    disabled={inputsDisabled}
+                  />
+                </div>
+              ))}
+            </div>
+          )}
 
-      {noQuestionsAvailable ? (
-        <p className="rounded border border-white/10 bg-white/5 px-3 py-2 text-sm text-white/70">
-          No questions needed right now. You&apos;re all set!
-        </p>
-      ) : (
-        <div className="flex flex-col gap-5">
-          {questions.map((question) => (
-            <QuestionRenderer
-              key={question.id}
-              question={question}
-              control={control}
-              disabled={inputsDisabled}
-            />
-          ))}
-        </div>
-      )}
+          {/* Error message */}
+          {submitError && (
+            <div className="flex items-center gap-3 rounded-lg border border-destructive/30 bg-destructive/10 p-4">
+              <AlertCircle className="h-5 w-5 shrink-0 text-destructive" />
+              <p className="text-sm text-destructive">{submitError}</p>
+            </div>
+          )}
 
-      {submitError && (
-        <p className="rounded bg-red-500/20 px-3 py-2 text-sm text-red-100">{submitError}</p>
-      )}
-      {showSuccess && (
-        <p className="rounded bg-emerald-500/20 px-3 py-2 text-sm text-emerald-100">
-          Saved! Preparing your results…
-        </p>
-      )}
+          {/* Success message */}
+          {showSuccess && (
+            <div className="flex items-center gap-3 rounded-lg border border-success/30 bg-success/10 p-4">
+              <CheckCircle2 className="h-5 w-5 shrink-0 text-success" />
+              <p className="text-sm text-success">Saved! Preparing your results…</p>
+            </div>
+          )}
 
-      <div className="flex items-center justify-end gap-3">
-        <button
-          type="submit"
-          className="inline-flex items-center justify-center rounded-lg bg-indigo-500 px-4 py-2 text-sm font-semibold text-white transition hover:bg-indigo-400 disabled:cursor-not-allowed disabled:bg-white/30"
-          disabled={inputsDisabled || noQuestionsAvailable}
-        >
-          {isSubmitting ? 'Saving…' : 'Continue'}
-        </button>
-      </div>
+          {/* Submit button */}
+          <div className="flex items-center justify-end gap-3 pt-2">
+            <Button
+              type="submit"
+              size="lg"
+              disabled={inputsDisabled || noQuestionsAvailable}
+              loading={isSubmitting}
+            >
+              {isSubmitting ? 'Saving…' : 'Continue'}
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
     </form>
   );
 }
@@ -162,7 +192,7 @@ function prepareAnswers(values: FormValues): ClarificationAnswers {
 }
 
 function deriveDefaultValue(
-  component: ClarificationComponentDescriptor,
+  component: ClarificationComponentDescriptor
 ): ClarificationAnswerValue | undefined {
   switch (component.component) {
     case 'number_input':
@@ -184,9 +214,7 @@ function deriveDefaultValue(
 }
 
 type ClarificationSchema = z.ZodObject<Record<string, z.ZodTypeAny>>;
-type NumericComponentDescriptor =
-  | ClarificationNumberInputDescriptor
-  | ClarificationSliderDescriptor;
+type NumericComponentDescriptor = ClarificationNumberInputDescriptor | ClarificationSliderDescriptor;
 
 function buildClarificationSchema(questions: ClarificationQuestion[]): ClarificationSchema {
   const shape: Record<string, z.ZodTypeAny> = {};
@@ -200,7 +228,7 @@ function buildClarificationSchema(questions: ClarificationQuestion[]): Clarifica
 
 function createFormResolver(
   schema: ClarificationSchema,
-  labels: Record<string, string>,
+  labels: Record<string, string>
 ): Resolver<FormValues> {
   return async (values) => {
     const result = await schema.safeParseAsync(values);
@@ -272,7 +300,7 @@ function deriveComponentSchema(component: ClarificationComponentDescriptor): z.Z
 
 function buildNumberSchema(
   component: NumericComponentDescriptor,
-  _requiredMessage: string,
+  _requiredMessage: string
 ): z.ZodTypeAny {
   let schema: z.ZodNumber = z.number({ message: `${component.label} must be a number.` });
 
@@ -280,13 +308,13 @@ function buildNumberSchema(
   if (constraints?.minimum !== undefined) {
     schema = schema.min(
       constraints.minimum,
-      `${component.label} must be at least ${constraints.minimum}.`,
+      `${component.label} must be at least ${constraints.minimum}.`
     );
   }
   if (constraints?.maximum !== undefined) {
     schema = schema.max(
       constraints.maximum,
-      `${component.label} must be less than or equal to ${constraints.maximum}.`,
+      `${component.label} must be less than or equal to ${constraints.maximum}.`
     );
   }
   return schema;

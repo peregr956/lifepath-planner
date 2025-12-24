@@ -6,6 +6,17 @@ import type { ReactNode } from 'react';
 import { useMemo } from 'react';
 import { DeveloperPanel } from '@/components';
 import { useBudgetSession } from '@/hooks/useBudgetSession';
+import { Button, Progress, Separator } from '@/components/ui';
+import { cn } from '@/lib/utils';
+import {
+  Upload,
+  MessageSquareText,
+  TrendingUp,
+  Check,
+  ChevronRight,
+  RotateCcw,
+  Settings,
+} from 'lucide-react';
 
 const steps = [
   {
@@ -13,18 +24,21 @@ const steps = [
     label: 'Upload',
     description: 'Share your budget file',
     href: '/upload',
+    icon: Upload,
   },
   {
     key: 'clarify',
     label: 'Clarify',
     description: 'Answer a few questions',
     href: '/clarify',
+    icon: MessageSquareText,
   },
   {
     key: 'summarize',
     label: 'Results',
     description: 'Get personalized suggestions',
     href: '/summarize',
+    icon: TrendingUp,
   },
 ] as const;
 
@@ -41,7 +55,7 @@ export function FlowShell({ children }: { children: ReactNode }) {
     const getCompletion = (key: StepKey) => {
       if (key === 'upload') return hasBudget;
       if (key === 'clarify') return clarificationsDone;
-      return false; // Step 3 (Results) is never "complete" in the same way, it's the destination
+      return false;
     };
     return steps.map((step, index) => {
       const prevStep = index > 0 ? steps[index - 1] : undefined;
@@ -60,99 +74,166 @@ export function FlowShell({ children }: { children: ReactNode }) {
 
   const activeIndex = Math.max(
     0,
-    stepMeta.findIndex((step) => step.isActive),
+    stepMeta.findIndex((step) => step.isActive)
   );
   const progressPercent = ((activeIndex + 1) / stepMeta.length) * 100;
 
   return (
-    <main className="mx-auto flex max-w-6xl flex-col gap-6 px-4 py-10 lg:py-16">
-      <header className="flex flex-col gap-2">
-        <p className="text-sm uppercase tracking-[0.4em] text-indigo-200">LifePath Planner</p>
-        <h1 className="text-3xl font-semibold text-white sm:text-4xl">
-          Get personalized financial guidance
-        </h1>
-        <p className="text-white/70">
-          Upload your budget in the format you already use. We&apos;ll understand it, ask what we
-          need, and give you thoughtful suggestions.
-        </p>
+    <main className="mx-auto flex max-w-6xl flex-col gap-8 px-4 py-10 lg:py-16">
+      {/* Header */}
+      <header className="flex flex-col gap-4 animate-fade-in">
+        <div className="flex items-center justify-between">
+          <Link href="/" className="group flex items-center gap-2 transition-opacity hover:opacity-80">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary">
+              <TrendingUp className="h-6 w-6 text-primary-foreground" />
+            </div>
+            <div>
+              <p className="text-xs font-medium uppercase tracking-[0.3em] text-primary">
+                LifePath Planner
+              </p>
+            </div>
+          </Link>
+
+          {/* Quick actions */}
+          {hydrated && session && (
+            <div className="flex items-center gap-2">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={clearSession}
+                className="text-muted-foreground hover:text-foreground"
+              >
+                <RotateCcw className="mr-2 h-4 w-4" />
+                Start over
+              </Button>
+            </div>
+          )}
+        </div>
+
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight text-foreground sm:text-4xl">
+            Get personalized financial guidance
+          </h1>
+          <p className="mt-2 text-muted-foreground">
+            Upload your budget in the format you already use. We&apos;ll understand it, ask what we
+            need, and give you thoughtful suggestions.
+          </p>
+        </div>
       </header>
 
-      <section className="rounded-2xl border border-white/10 bg-white/5 p-4 shadow-lg shadow-indigo-500/5">
+      {/* Step indicator */}
+      <section className="rounded-2xl border border-border bg-card/50 p-4 shadow-lg animate-fade-in-up stagger-1">
         <div className="flex flex-col gap-4">
-          <ol className="flex flex-col gap-2 md:flex-row md:items-stretch md:gap-4">
+          {/* Steps */}
+          <ol className="grid gap-3 md:grid-cols-3">
             {stepMeta.map((step, index) => {
+              const Icon = step.icon;
               const state = step.isComplete ? 'complete' : step.isActive ? 'active' : 'upcoming';
-              const statusDot =
-                state === 'complete'
-                  ? 'bg-emerald-400'
-                  : state === 'active'
-                    ? 'bg-indigo-400'
-                    : 'bg-white/30';
+
               return (
-                <li
-                  key={step.key}
-                  className="flex flex-1 items-center rounded-xl border border-white/10 bg-white/5 px-3 py-2"
-                >
+                <li key={step.key}>
                   <Link
                     href={step.href}
                     aria-disabled={!step.isUnlocked}
-                    className="flex flex-1 items-center gap-3 text-left text-white/80 aria-disabled:cursor-not-allowed aria-disabled:text-white/30"
+                    className={cn(
+                      'group relative flex items-center gap-4 rounded-xl border p-4 transition-all duration-200',
+                      state === 'complete' &&
+                        'border-success/30 bg-success/5 hover:border-success/50 hover:bg-success/10',
+                      state === 'active' &&
+                        'border-primary bg-primary/10 shadow-md shadow-primary/10',
+                      state === 'upcoming' && 'border-border bg-background hover:bg-accent/50',
+                      !step.isUnlocked && 'pointer-events-none opacity-50'
+                    )}
                     onClick={(event) => {
                       if (!step.isUnlocked) {
                         event.preventDefault();
                       }
                     }}
                   >
-                    <span
-                      className={`flex h-3 w-3 items-center justify-center rounded-full ${statusDot}`}
-                      aria-hidden
-                    />
-                    <span className="flex flex-col">
-                      <span className="text-sm font-semibold text-white">{`${index + 1}. ${
-                        step.label
-                      }`}</span>
-                      <span className="text-xs text-white/60">{step.description}</span>
-                    </span>
+                    {/* Step number / check */}
+                    <div
+                      className={cn(
+                        'flex h-10 w-10 shrink-0 items-center justify-center rounded-full transition-colors',
+                        state === 'complete' && 'bg-success text-success-foreground',
+                        state === 'active' && 'bg-primary text-primary-foreground',
+                        state === 'upcoming' && 'bg-muted text-muted-foreground'
+                      )}
+                    >
+                      {state === 'complete' ? (
+                        <Check className="h-5 w-5" />
+                      ) : (
+                        <Icon className="h-5 w-5" />
+                      )}
+                    </div>
+
+                    {/* Step info */}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span
+                          className={cn(
+                            'text-sm font-semibold',
+                            state === 'active' && 'text-foreground',
+                            state === 'complete' && 'text-success',
+                            state === 'upcoming' && 'text-muted-foreground'
+                          )}
+                        >
+                          {`${index + 1}. ${step.label}`}
+                        </span>
+                        {state === 'active' && (
+                          <span className="inline-flex h-2 w-2 rounded-full bg-primary animate-pulse" />
+                        )}
+                      </div>
+                      <span
+                        className={cn(
+                          'text-xs',
+                          state === 'active' ? 'text-muted-foreground' : 'text-muted-foreground/70'
+                        )}
+                      >
+                        {step.description}
+                      </span>
+                    </div>
+
+                    {/* Arrow for navigation hint */}
+                    {step.isUnlocked && state !== 'active' && (
+                      <ChevronRight className="h-4 w-4 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100" />
+                    )}
                   </Link>
                 </li>
               );
             })}
           </ol>
-          <div className="h-2 rounded-full bg-white/10">
-            <div
-              className="h-full rounded-full bg-gradient-to-r from-indigo-400 to-emerald-400 transition-all"
-              style={{ width: `${progressPercent}%` }}
-            />
-          </div>
+
+          {/* Progress bar */}
+          <Progress
+            value={progressPercent}
+            className="h-2"
+            indicatorClassName="bg-gradient-to-r from-primary to-success transition-all duration-500"
+          />
         </div>
       </section>
 
-      {/* User-facing session controls */}
-      {hydrated && session && (
-        <div className="flex justify-end">
-          <button
-            type="button"
-            className="text-xs font-medium text-white/60 underline underline-offset-4 transition hover:text-white"
-            onClick={clearSession}
-          >
-            Start over with a new budget
-          </button>
+      {/* Main content */}
+      <section className="animate-fade-in-up stagger-2">{children}</section>
+
+      {/* Footer links */}
+      <footer className="flex items-center justify-between pt-4 text-sm text-muted-foreground">
+        <div className="flex items-center gap-4">
+          <Link href="/" className="transition-colors hover:text-foreground">
+            Home
+          </Link>
         </div>
-      )}
 
-      <section>{children}</section>
-
-      {/* Diagnostics link - visible in all environments for troubleshooting */}
-      {process.env.NODE_ENV === 'production' && (
-        <div className="flex justify-end">
-          <a
+        {/* Diagnostics link */}
+        {process.env.NODE_ENV === 'production' && (
+          <Link
             href="/diagnostics"
-            className="text-xs font-medium text-white/40 underline-offset-4 transition hover:text-white/60 hover:underline"
+            className="flex items-center gap-1 transition-colors hover:text-foreground"
           >
+            <Settings className="h-3.5 w-3.5" />
             Diagnostics
-          </a>
-        </div>
-      )}
+          </Link>
+        )}
+      </footer>
 
       {/* Developer panel - floating, only visible in dev mode */}
       <DeveloperPanel
@@ -160,10 +241,8 @@ export function FlowShell({ children }: { children: ReactNode }) {
           session
             ? {
                 ...session,
-                detectedFormat:
-                  session.detectedFormat === null ? undefined : session.detectedFormat,
-                summaryPreview:
-                  session.summaryPreview === null ? undefined : session.summaryPreview,
+                detectedFormat: session.detectedFormat === null ? undefined : session.detectedFormat,
+                summaryPreview: session.summaryPreview === null ? undefined : session.summaryPreview,
                 userQuery: session.userQuery === null ? undefined : session.userQuery,
               }
             : null
