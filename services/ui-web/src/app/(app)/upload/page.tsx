@@ -21,7 +21,8 @@ async function safeNavigate(
 ): Promise<boolean> {
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     try {
-      router.push(path);
+      // Cast to any to handle Next.js strict route typing
+      router.push(path as any);
       return true;
     } catch (error) {
       console.error(`Navigation attempt ${attempt + 1} failed:`, error);
