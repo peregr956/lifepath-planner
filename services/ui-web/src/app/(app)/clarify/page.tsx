@@ -147,13 +147,25 @@ export default function ClarifyPage() {
         </p>
       )}
       {clarificationQuery.isError && (
-        <p className="rounded border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-100">
-          {clarificationQuery.error instanceof Error
-            ? clarificationQuery.error.message
-                .replace(/gateway/gi, 'server')
-                .replace(/clarification/gi, '')
-            : 'Something went wrong. Please try again.'}
-        </p>
+        <div className="rounded border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-100">
+          <p className="font-medium">Unable to load questions</p>
+          <p className="mt-1 text-red-200/80">
+            {clarificationQuery.error instanceof Error
+              ? clarificationQuery.error.message
+                  .replace(/gateway/gi, 'server')
+                  .replace(/clarification/gi, '')
+              : 'Something went wrong. Please try again.'}
+          </p>
+          {clarificationQuery.error instanceof Error &&
+            (clarificationQuery.error.message.includes('Unable to reach') ||
+              clarificationQuery.error.message.includes('localhost') ||
+              clarificationQuery.error.message.includes('127.0.0.1')) && (
+              <p className="mt-2 text-xs text-red-200/70">
+                Tip: Make sure the API server is running and configured correctly. In production,
+                ensure NEXT_PUBLIC_LIFEPATH_API_BASE_URL is set.
+              </p>
+            )}
+        </div>
       )}
       {submitMutation.isError && (
         <p className="rounded border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-100">
