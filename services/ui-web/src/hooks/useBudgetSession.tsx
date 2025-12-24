@@ -21,8 +21,8 @@ type BudgetSessionContextValue = {
   hydrated: boolean;
   saveSession: (next: BudgetSession) => void;
   setUserQuery: (query: string) => void;
-  markClarified: () => void;
-  markReadyForSummary: () => void;
+  markClarified: () => Promise<void>;
+  markReadyForSummary: () => Promise<void>;
   clearSession: () => void;
 };
 
@@ -127,21 +127,35 @@ export function BudgetSessionProvider({ children }: { children: ReactNode }) {
     [persist],
   );
 
-  const markClarified = useCallback(() => {
-    setSession((prev) => {
-      if (!prev) return prev;
-      const nextSession = { ...prev, clarified: true };
-      persist(nextSession);
-      return nextSession;
+  const markClarified = useCallback((): Promise<void> => {
+    return new Promise((resolve) => {
+      setSession((prev) => {
+        if (!prev) {
+          resolve();
+          return prev;
+        }
+        const nextSession = { ...prev, clarified: true };
+        persist(nextSession);
+        // Resolve after state update is scheduled
+        queueMicrotask(resolve);
+        return nextSession;
+      });
     });
   }, [persist]);
 
-  const markReadyForSummary = useCallback(() => {
-    setSession((prev) => {
-      if (!prev) return prev;
-      const nextSession = { ...prev, readyForSummary: true };
-      persist(nextSession);
-      return nextSession;
+  const markReadyForSummary = useCallback((): Promise<void> => {
+    return new Promise((resolve) => {
+      setSession((prev) => {
+        if (!prev) {
+          resolve();
+          return prev;
+        }
+        const nextSession = { ...prev, readyForSummary: true };
+        persist(nextSession);
+        // Resolve after state update is scheduled
+        queueMicrotask(resolve);
+        return nextSession;
+      });
     });
   }, [persist]);
 

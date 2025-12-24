@@ -1,7 +1,7 @@
 'use client';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import type { ClarificationAnswers } from '@/types';
 import { ClarificationForm, QueryInput } from '@/components';
@@ -14,6 +14,29 @@ import {
 
 type ClarifyStep = 'query' | 'questions';
 
+/**
+ * Safe navigation wrapper with retry logic
+ */
+async function safeNavigate(
+  router: ReturnType<typeof useRouter>,
+  path: string,
+  maxRetries = 2
+): Promise<boolean> {
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      router.push(path);
+      return true;
+    } catch (error) {
+      console.error(`Navigation attempt ${attempt + 1} failed:`, error);
+      if (attempt < maxRetries) {
+        // Wait before retrying
+        await new Promise((resolve) => setTimeout(resolve, 100));
+      }
+    }
+  }
+  return false;
+}
+
 export default function ClarifyPage() {
   const router = useRouter();
   const queryClient = useQueryClient();
@@ -25,6 +48,8 @@ export default function ClarifyPage() {
   // Determine initial step based on whether user has already provided a query
   const [step, setStep] = useState<ClarifyStep>(() => (existingUserQuery ? 'questions' : 'query'));
   const [localUserQuery, setLocalUserQuery] = useState(existingUserQuery || '');
+  const [navigationError, setNavigationError] = useState<string | null>(null);
+  const isNavigatingRef = useRef(false);
 
   // Sync step with session when it changes
   useEffect(() => {
@@ -75,10 +100,21 @@ export default function ClarifyPage() {
       return;
     }
     if (!clarificationQuery.data.needsClarification) {
-      if (!session?.clarified) {
-        markClarified();
-      }
-      router.push('/summarize');
+      // Prevent duplicate navigation attempts
+      if (isNavigatingRef.current) return;
+      isNavigatingRef.current = true;
+      
+      const navigateToSummary = async () => {
+        if (!session?.clarified) {
+          await markClarified();
+        }
+        const success = await safeNavigate(router, '/summarize');
+        if (!success) {
+          isNavigatingRef.current = false;
+          setNavigationError('Unable to navigate to results. Please try clicking the Results step above.');
+        }
+      };
+      navigateToSummary();
     }
   }, [clarificationQuery.data, markClarified, router, session?.clarified]);
 
@@ -90,12 +126,21 @@ export default function ClarifyPage() {
       return await submitClarificationAnswers(budgetId, answers);
     },
     onSuccess: async (response) => {
-      markClarified();
+      // Clear any previous navigation errors
+      setNavigationError(null);
+      
+      // Await session state updates before navigation to ensure state is persisted
+      await markClarified();
       if (response.readyForSummary) {
-        markReadyForSummary();
+        await markReadyForSummary();
       }
       await queryClient.invalidateQueries({ queryKey: ['summary-and-suggestions', budgetId] });
-      router.push('/summarize');
+      
+      // Navigate with retry logic
+      const success = await safeNavigate(router, '/summarize');
+      if (!success) {
+        setNavigationError('Your answers were saved, but navigation failed. Please click the Results step above to continue.');
+      }
     },
   });
 
@@ -173,6 +218,21 @@ export default function ClarifyPage() {
             ? 'There was a problem saving your answers. Please check your responses and try again.'
             : 'Unable to submit answers. Please try again.'}
         </p>
+      )}
+      {navigationError && (
+        <div className="rounded border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-100">
+          <p>{navigationError}</p>
+          <button
+            type="button"
+            onClick={() => {
+              setNavigationError(null);
+              router.push('/summarize');
+            }}
+            className="mt-2 rounded bg-amber-500/20 px-3 py-1 text-xs font-medium hover:bg-amber-500/30"
+          >
+            Try again
+          </button>
+        </div>
       )}
       <ClarificationForm
         questions={questions}

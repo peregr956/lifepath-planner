@@ -86,7 +86,7 @@ def mock_settings() -> ProviderSettings:
         provider_name="openai",
         timeout_seconds=15.0,
         temperature=0.3,
-        max_output_tokens=1024,
+        max_output_tokens=2048,
         openai=OpenAIConfig(
             api_key="test-api-key",
             model="gpt-4o-mini",
