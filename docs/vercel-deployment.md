@@ -73,6 +73,12 @@ In your Vercel project settings, add these environment variables:
 
 **Note**: If `OPENAI_API_KEY` is not set, the app falls back to deterministic (rule-based) suggestions.
 
+> **IMPORTANT: Do NOT set `NEXT_PUBLIC_LIFEPATH_API_BASE_URL`**
+>
+> This variable should NOT be set for Vercel deployments. The app automatically uses same-origin API routes (`/api/*`) which eliminates CORS issues and simplifies deployment.
+>
+> If you previously deployed to Railway or another external backend, make sure to **delete** `NEXT_PUBLIC_LIFEPATH_API_BASE_URL` from your Vercel environment variables. Since `NEXT_PUBLIC_*` variables are embedded at build time, any old external URL will be baked into the client bundle and cause API calls to fail.
+
 ### 3. Set Up Vercel Postgres (Optional)
 
 For persistent storage across function invocations:
@@ -132,6 +138,18 @@ curl https://your-app.vercel.app/api/diagnostics/env
 ```
 
 ### Common Issues
+
+**API calls failing with "Unable to reach the API server" or pointing to wrong URL (e.g., Railway):**
+
+This is typically caused by having `NEXT_PUBLIC_LIFEPATH_API_BASE_URL` set to an external URL in your Vercel environment variables.
+
+To fix:
+1. Go to Vercel Dashboard → Your Project → Settings → Environment Variables
+2. Find `NEXT_PUBLIC_LIFEPATH_API_BASE_URL`
+3. **Delete it** (recommended) or set it to `/api`
+4. **Redeploy your application** (required because `NEXT_PUBLIC_*` variables are embedded at build time)
+
+The app defaults to using same-origin API routes (`/api/*`) which is the correct configuration for Vercel deployments. Setting this variable to an external URL will override that behavior and cause API calls to fail.
 
 **AI features not working:**
 - Verify `OPENAI_API_KEY` is set in Vercel environment variables
