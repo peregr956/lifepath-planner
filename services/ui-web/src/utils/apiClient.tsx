@@ -74,19 +74,55 @@ type EnvSource = Record<string, string | undefined>;
 
 const listeners = new Set<() => void>();
 
-function getEnvSource(): EnvSource {
-  if (typeof process !== 'undefined' && process?.env) {
-    return process.env as EnvSource;
-  }
-  const globalProcess = (globalThis as typeof globalThis & { process?: { env?: EnvSource } })
-    .process;
-  return (globalProcess?.env ?? {}) as EnvSource;
-}
-
+// In Next.js, NEXT_PUBLIC_* variables are replaced at build time with their literal values.
+// We must access them directly, not through dynamic key access.
 function firstDefined(keys: readonly string[]): string | undefined {
-  const env = getEnvSource();
+  // Access process.env directly - Next.js will have replaced NEXT_PUBLIC_* vars at build time
+  if (typeof process === 'undefined' || !process.env) {
+    return undefined;
+  }
+  
+  // Check each key directly - Next.js only replaces direct property access
   for (const key of keys) {
-    const value = env[key];
+    let value: string | undefined;
+    
+    // Direct property access for Next.js build-time replacement
+    switch (key) {
+      case 'NEXT_PUBLIC_LIFEPATH_API_BASE_URL':
+        value = process.env.NEXT_PUBLIC_LIFEPATH_API_BASE_URL;
+        break;
+      case 'LIFEPATH_API_BASE_URL':
+        value = process.env.LIFEPATH_API_BASE_URL;
+        break;
+      case 'NEXT_PUBLIC_API_BASE_URL':
+        value = process.env.NEXT_PUBLIC_API_BASE_URL;
+        break;
+      case 'API_BASE_URL':
+        value = process.env.API_BASE_URL;
+        break;
+      case 'NEXT_PUBLIC_GATEWAY_BASE_URL':
+        value = process.env.NEXT_PUBLIC_GATEWAY_BASE_URL;
+        break;
+      case 'GATEWAY_BASE_URL':
+        value = process.env.GATEWAY_BASE_URL;
+        break;
+      case 'NEXT_PUBLIC_LIFEPATH_API_BASE_CANDIDATES':
+        value = process.env.NEXT_PUBLIC_LIFEPATH_API_BASE_CANDIDATES;
+        break;
+      case 'LIFEPATH_API_BASE_CANDIDATES':
+        value = process.env.LIFEPATH_API_BASE_CANDIDATES;
+        break;
+      case 'NEXT_PUBLIC_API_BASE_CANDIDATES':
+        value = process.env.NEXT_PUBLIC_API_BASE_CANDIDATES;
+        break;
+      case 'API_BASE_CANDIDATES':
+        value = process.env.API_BASE_CANDIDATES;
+        break;
+      default:
+        // Fallback to dynamic access for non-NEXT_PUBLIC vars (won't work in browser but won't break)
+        value = (process.env as Record<string, string | undefined>)[key];
+    }
+    
     if (typeof value === 'string' && value.trim().length > 0) {
       return value.trim();
     }
@@ -130,6 +166,15 @@ function resolveInitialCandidates(): string[] {
   const candidateBlob = firstDefined(ENV_API_CANDIDATE_KEYS);
   const envCandidates = coerceCandidateValues(candidateBlob);
 
+  // Debug logging in development
+  if (typeof window !== 'undefined' && process.env.NODE_ENV === 'development') {
+    console.log('[API Client] Environment variable check:', {
+      'NEXT_PUBLIC_LIFEPATH_API_BASE_URL': process.env.NEXT_PUBLIC_LIFEPATH_API_BASE_URL,
+      'manualBase': manualBase,
+      'candidateBlob': candidateBlob,
+    });
+  }
+
   const combined: string[] = [];
   if (manualBase) {
     combined.push(manualBase);
@@ -138,6 +183,22 @@ function resolveInitialCandidates(): string[] {
   combined.push(...DEFAULT_API_BASE_CANDIDATES);
 
   const resolved = dedupe(combined);
+  
+  // Warn if falling back to localhost in production
+  if (typeof window !== 'undefined' && resolved[0] === 'http://localhost:8000') {
+    const isProduction = window.location.hostname !== 'localhost' && !window.location.hostname.includes('127.0.0.1');
+    if (isProduction) {
+      console.error(
+        '[API Client] WARNING: Falling back to localhost:8000 in production!',
+        'NEXT_PUBLIC_LIFEPATH_API_BASE_URL should be set in Vercel environment variables.',
+        'Current env check:', {
+          'NEXT_PUBLIC_LIFEPATH_API_BASE_URL': process.env.NEXT_PUBLIC_LIFEPATH_API_BASE_URL,
+          'process.env available': typeof process !== 'undefined' && !!process.env,
+        }
+      );
+    }
+  }
+  
   return resolved.length ? resolved : ['http://localhost:8000'];
 }
 
