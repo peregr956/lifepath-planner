@@ -33,23 +33,17 @@ export default function DiagnosticsPage() {
 
   useEffect(() => {
     // Check environment variables (what's actually available in the browser)
-    const envVars: Record<string, string | undefined> = {};
-    const envKeys = [
-      'NEXT_PUBLIC_LIFEPATH_API_BASE_URL',
-      'LIFEPATH_API_BASE_URL',
-      'NEXT_PUBLIC_API_BASE_URL',
-      'API_BASE_URL',
-      'NEXT_PUBLIC_GATEWAY_BASE_URL',
-      'GATEWAY_BASE_URL',
-    ];
-
-    envKeys.forEach((key) => {
-      // In Next.js, NEXT_PUBLIC_ vars are embedded at build time
-      // Access them directly
-      if (typeof process !== 'undefined' && process.env) {
-        envVars[key] = process.env[key];
-      }
-    });
+    // IMPORTANT: Next.js only replaces NEXT_PUBLIC_* variables at build time
+    // when using DIRECT property access (e.g., process.env.NEXT_PUBLIC_LIFEPATH_API_BASE_URL).
+    // Dynamic access like process.env[key] does NOT work for NEXT_PUBLIC_* vars.
+    const envVars: Record<string, string | undefined> = {
+      'NEXT_PUBLIC_LIFEPATH_API_BASE_URL': process.env.NEXT_PUBLIC_LIFEPATH_API_BASE_URL,
+      'LIFEPATH_API_BASE_URL': process.env.LIFEPATH_API_BASE_URL,
+      'NEXT_PUBLIC_API_BASE_URL': process.env.NEXT_PUBLIC_API_BASE_URL,
+      'API_BASE_URL': process.env.API_BASE_URL,
+      'NEXT_PUBLIC_GATEWAY_BASE_URL': process.env.NEXT_PUBLIC_GATEWAY_BASE_URL,
+      'GATEWAY_BASE_URL': process.env.GATEWAY_BASE_URL,
+    };
 
     setDiagnostics((prev) => ({
       ...prev,
@@ -58,9 +52,22 @@ export default function DiagnosticsPage() {
       candidates: getApiBaseCandidates(),
     }));
 
-    // Test API Gateway health endpoint
-    const testApiHealth = async () => {
+    // Check if the API is cross-origin (different host than current page)
+    const isCrossOrigin = (apiUrl: string): boolean => {
+      try {
+        const apiOrigin = new URL(apiUrl).origin;
+        return apiOrigin !== window.location.origin;
+      } catch {
+        return true; // Assume cross-origin if we can't parse
+      }
+    };
+
+    // Test API Gateway health endpoint and infer CORS status
+    // If a cross-origin fetch succeeds, CORS is working (browsers block cross-origin requests without proper CORS)
+    const testApiHealthAndCors = async () => {
       const baseUrl = getActiveApiBase();
+      const crossOrigin = isCrossOrigin(baseUrl);
+
       try {
         const response = await fetch(`${baseUrl}/health`, {
           method: 'GET',
@@ -78,6 +85,16 @@ export default function DiagnosticsPage() {
               message: 'API Gateway is reachable and healthy',
               response: data,
             },
+            // If health check succeeds on a cross-origin request, CORS is working
+            corsTest: crossOrigin
+              ? {
+                  status: 'success',
+                  message: 'CORS is working (cross-origin health check succeeded)',
+                }
+              : {
+                  status: 'success',
+                  message: 'Same-origin request (CORS not required)',
+                },
           }));
         } else {
           setDiagnostics((prev) => ({
@@ -86,66 +103,42 @@ export default function DiagnosticsPage() {
               status: 'error',
               message: `API Gateway returned status ${response.status}: ${response.statusText}`,
             },
+            corsTest: {
+              status: 'success',
+              message: 'Request reached server (CORS allowed the request)',
+            },
           }));
         }
       } catch (error) {
         const errorMessage =
           error instanceof Error ? error.message : 'Unknown error';
+        
+        // Check if this looks like a CORS error
+        const isCorsError =
+          errorMessage.includes('Failed to fetch') ||
+          errorMessage.includes('NetworkError') ||
+          errorMessage.includes('CORS');
+
         setDiagnostics((prev) => ({
           ...prev,
           apiHealth: {
             status: 'error',
             message: `Failed to reach API Gateway: ${errorMessage}`,
           },
+          corsTest: crossOrigin && isCorsError
+            ? {
+                status: 'error',
+                message: 'CORS may be blocking requests. Ensure GATEWAY_CORS_ORIGINS includes this origin.',
+              }
+            : {
+                status: 'error',
+                message: `Could not verify CORS: ${errorMessage}`,
+              },
         }));
       }
     };
 
-    // Test CORS
-    const testCors = async () => {
-      const baseUrl = getActiveApiBase();
-      try {
-        const response = await fetch(`${baseUrl}/health`, {
-          method: 'OPTIONS',
-          headers: {
-            Origin: window.location.origin,
-            'Access-Control-Request-Method': 'GET',
-          },
-        });
-
-        const corsHeader = response.headers.get('access-control-allow-origin');
-        if (corsHeader) {
-          setDiagnostics((prev) => ({
-            ...prev,
-            corsTest: {
-              status: 'success',
-              message: `CORS is configured. Allowed origin: ${corsHeader}`,
-            },
-          }));
-        } else {
-          setDiagnostics((prev) => ({
-            ...prev,
-            corsTest: {
-              status: 'error',
-              message: 'CORS headers not found. Backend may not be configured for this origin.',
-            },
-          }));
-        }
-      } catch (error) {
-        const errorMessage =
-          error instanceof Error ? error.message : 'Unknown error';
-        setDiagnostics((prev) => ({
-          ...prev,
-          corsTest: {
-            status: 'error',
-            message: `CORS test failed: ${errorMessage}`,
-          },
-        }));
-      }
-    };
-
-    testApiHealth();
-    testCors();
+    testApiHealthAndCors();
   }, [activeApiBase, candidates]);
 
   return (
@@ -314,8 +307,10 @@ export default function DiagnosticsPage() {
             directly in your browser.
           </li>
           <li>
-            <strong className="text-white">4. Fix CORS:</strong> If CORS test fails, add your
-            Vercel URL to GATEWAY_CORS_ORIGINS on Railway and restart the service.
+            <strong className="text-white">4. CORS:</strong> If the health check succeeds,
+            CORS is working correctly. CORS status is inferred from whether cross-origin
+            requests succeed. If both health and CORS fail, ensure GATEWAY_CORS_ORIGINS
+            on Railway includes this origin and restart the service.
           </li>
         </ol>
       </div>
