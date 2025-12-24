@@ -485,43 +485,130 @@ ${goalContext}`;
 }
 
 /**
- * Validate generated question field IDs against the model
+ * Map a field ID to a valid format, attempting to fix common variations.
+ * This is more permissive than strict validation - it tries to map
+ * semantic field IDs to the expected format.
+ */
+function mapFieldId(fieldId: string, model: UnifiedBudgetModel): string | null {
+  // If it's already a supported simple field ID, use it
+  if (SUPPORTED_SIMPLE_FIELD_IDS.has(fieldId)) {
+    return fieldId;
+  }
+
+  // Build lookup maps
+  const expenseByCategory: Record<string, string> = {};
+  const expenseIds = new Set<string>();
+  for (const exp of model.expenses) {
+    expenseByCategory[exp.category.toLowerCase().replace(/ /g, '_')] = exp.id;
+    expenseIds.add(exp.id);
+  }
+
+  const debtByName: Record<string, string> = {};
+  const debtIds = new Set<string>();
+  for (const debt of model.debts) {
+    debtByName[debt.name.toLowerCase().replace(/ /g, '_')] = debt.id;
+    debtIds.add(debt.id);
+  }
+
+  const fieldLower = fieldId.toLowerCase();
+
+  // Handle essential_* pattern
+  if (fieldLower.startsWith(ESSENTIAL_PREFIX.toLowerCase())) {
+    const suffix = fieldId.slice(ESSENTIAL_PREFIX.length);
+    const suffixLower = suffix.toLowerCase().replace(/ /g, '_');
+
+    // Check if suffix is already a valid expense ID
+    if (expenseIds.has(suffix)) {
+      return `${ESSENTIAL_PREFIX}${suffix}`;
+    }
+
+    // Try to match by category name
+    if (expenseByCategory[suffixLower]) {
+      return `${ESSENTIAL_PREFIX}${expenseByCategory[suffixLower]}`;
+    }
+
+    // Fuzzy match
+    for (const [catName, expId] of Object.entries(expenseByCategory)) {
+      if (suffixLower.includes(catName) || catName.includes(suffixLower)) {
+        return `${ESSENTIAL_PREFIX}${expId}`;
+      }
+    }
+  }
+
+  // Check if it's already a valid expense essential
+  if (fieldId.startsWith(ESSENTIAL_PREFIX)) {
+    const expenseId = fieldId.slice(ESSENTIAL_PREFIX.length);
+    if (expenseIds.has(expenseId)) {
+      return fieldId;
+    }
+  }
+
+  // Handle debt field patterns like "credit_card_interest_rate"
+  const debtFields = ['balance', 'interest_rate', 'min_payment', 'priority', 'approximate'];
+  for (const debtField of debtFields) {
+    if (fieldLower.endsWith(`_${debtField}`)) {
+      const prefix = fieldId.slice(0, -(debtField.length + 1));
+      const prefixLower = prefix.toLowerCase().replace(/ /g, '_');
+
+      // Check if prefix is already a valid debt ID
+      if (debtIds.has(prefix)) {
+        return `${prefix}_${debtField}`;
+      }
+
+      // Try to match by debt name
+      if (debtByName[prefixLower]) {
+        return `${debtByName[prefixLower]}_${debtField}`;
+      }
+
+      // Fuzzy match
+      for (const [debtName, debtId] of Object.entries(debtByName)) {
+        if (prefixLower.includes(debtName) || debtName.includes(prefixLower)) {
+          return `${debtId}_${debtField}`;
+        }
+      }
+    }
+  }
+
+  // Check debt fields with existing validation
+  const debtTarget = parseDebtFieldId(fieldId);
+  if (debtTarget) {
+    const [debtId] = debtTarget;
+    if (debtIds.has(debtId)) {
+      return fieldId;
+    }
+  }
+
+  // If we can't map it, return it anyway - it might be a new field type
+  // that will be handled by the answer processing
+  console.log(`[AI] Field ID unmapped, allowing through: ${fieldId}`);
+  return fieldId;
+}
+
+/**
+ * Validate and map generated question field IDs against the model.
+ * More permissive than before - tries to map field IDs rather than reject them.
  */
 function validateQuestionFieldIds(
   questions: QuestionSpec[],
   model: UnifiedBudgetModel
 ): QuestionSpec[] {
-  const expenseIds = new Set(model.expenses.map(e => e.id));
-  const debtIds = new Set(model.debts.map(d => d.id));
-
   return questions.map(question => {
-    const validComponents = question.components.filter(comp => {
-      const fieldId = comp.field_id;
-
-      // Check expense essentials
-      if (fieldId.startsWith(ESSENTIAL_PREFIX)) {
-        const expenseId = fieldId.slice(ESSENTIAL_PREFIX.length);
-        return expenseIds.has(expenseId);
+    const mappedComponents = question.components.map(comp => {
+      const mappedFieldId = mapFieldId(comp.field_id, model);
+      if (mappedFieldId) {
+        return {
+          ...comp,
+          field_id: mappedFieldId,
+          // Add binding if missing
+          binding: comp.binding || `answers.${mappedFieldId}`,
+        };
       }
-
-      // Check simple field IDs
-      if (SUPPORTED_SIMPLE_FIELD_IDS.has(fieldId)) {
-        return true;
-      }
-
-      // Check debt fields
-      const debtTarget = parseDebtFieldId(fieldId);
-      if (debtTarget) {
-        const [debtId] = debtTarget;
-        return debtIds.has(debtId);
-      }
-
-      return false;
-    });
+      return null;
+    }).filter((comp): comp is NonNullable<typeof comp> => comp !== null);
 
     return {
       ...question,
-      components: validComponents,
+      components: mappedComponents,
     };
   }).filter(q => q.components.length > 0);
 }
@@ -559,8 +646,8 @@ export async function generateClarificationQuestions(
         },
       ],
       tool_choice: { type: 'function', function: { name: 'generate_clarification_questions' } },
-      temperature: 0.2,
-      max_tokens: 1536,
+      temperature: 0.6,  // Higher for more natural, conversational responses
+      max_tokens: 2048,  // Increased for analysis + grouped questions
     });
 
     const toolCalls = response.choices[0]?.message?.tool_calls;
@@ -613,8 +700,8 @@ export async function generateSuggestions(
         },
       ],
       tool_choice: { type: 'function', function: { name: 'generate_optimization_suggestions' } },
-      temperature: 0.3,
-      max_tokens: 2048,
+      temperature: 0.7,  // Higher for more creative, personalized responses
+      max_tokens: 4096,  // Increased for analysis + detailed suggestions
     });
 
     const toolCalls = response.choices[0]?.message?.tool_calls;

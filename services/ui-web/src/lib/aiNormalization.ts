@@ -19,8 +19,8 @@ const normalizationSettings = loadProviderSettings({
   maxTokensEnv: 'NORMALIZATION_MAX_TOKENS',
   defaultProvider: process.env.OPENAI_API_KEY ? 'openai' : 'deterministic',
   defaultTimeout: 30,
-  defaultTemperature: 0.1, // Low temperature for consistent normalization
-  defaultMaxTokens: 2048, // Larger to handle full budget data
+  defaultTemperature: 0.3, // Slightly higher for better classification decisions
+  defaultMaxTokens: 4096, // Increased for larger budgets
 });
 
 // JSON schema for OpenAI function calling
