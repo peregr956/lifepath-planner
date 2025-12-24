@@ -29,6 +29,10 @@ import type {
   UserQueryResponse,
 } from '@/types';
 
+// Default to same-origin API routes (Vercel serverless functions)
+// This eliminates CORS issues since API is on the same origin
+const SAME_ORIGIN_API_BASE = '/api';
+
 const DEFAULT_HOST_PORTS: Array<[string, number]> = [
   ['localhost', 8000],
   ['127.0.0.1', 8000],
@@ -191,7 +195,6 @@ function isLocalhostEnvironment(): boolean {
 }
 
 function resolveInitialCandidates(): string[] {
-  const env = getEnvSource();
   const manualBase = normalizeBaseUrl(firstDefined(ENV_API_BASE_KEYS));
   const candidateBlob = firstDefined(ENV_API_CANDIDATE_KEYS);
   const envCandidates = coerceCandidateValues(candidateBlob);
@@ -208,10 +211,16 @@ function resolveInitialCandidates(): string[] {
   }
 
   const combined: string[] = [];
+  
+  // If an external API URL is explicitly set, use it first
   if (manualBase) {
     combined.push(manualBase);
   }
   combined.push(...envCandidates);
+  
+  // Default to same-origin API routes (Vercel serverless functions)
+  // This is the primary approach for the Vercel deployment - no CORS needed!
+  combined.push(SAME_ORIGIN_API_BASE);
   
   // Only include localhost candidates if we're actually in a localhost environment
   const isLocalhost = isLocalhostEnvironment();
@@ -221,40 +230,15 @@ function resolveInitialCandidates(): string[] {
 
   const resolved = dedupe(combined);
   
-  // In production (non-localhost), require an explicit API URL
-  if (!isLocalhost && resolved.length === 0) {
-    const errorMsg = 
-      'No API base URL configured. Please set NEXT_PUBLIC_LIFEPATH_API_BASE_URL environment variable in Vercel and redeploy.';
-    const envValues: Record<string, string | undefined> = {};
-    ENV_API_BASE_KEYS.forEach(key => {
-      switch (key) {
-        case 'NEXT_PUBLIC_LIFEPATH_API_BASE_URL':
-          envValues[key] = process.env.NEXT_PUBLIC_LIFEPATH_API_BASE_URL;
-          break;
-        case 'LIFEPATH_API_BASE_URL':
-          envValues[key] = process.env.LIFEPATH_API_BASE_URL;
-          break;
-        case 'NEXT_PUBLIC_API_BASE_URL':
-          envValues[key] = process.env.NEXT_PUBLIC_API_BASE_URL;
-          break;
-        case 'API_BASE_URL':
-          envValues[key] = process.env.API_BASE_URL;
-          break;
-        case 'NEXT_PUBLIC_GATEWAY_BASE_URL':
-          envValues[key] = process.env.NEXT_PUBLIC_GATEWAY_BASE_URL;
-          break;
-        case 'GATEWAY_BASE_URL':
-          envValues[key] = process.env.GATEWAY_BASE_URL;
-          break;
-      }
-    });
-    console.error('[API Client]', errorMsg, {
-      'Checked env vars': ENV_API_BASE_KEYS,
-      'Current env values': envValues,
+  // Log what we're using
+  if (typeof window !== 'undefined' && process.env.NODE_ENV === 'development') {
+    console.log('[API Client] Using API base:', resolved[0], {
+      'All candidates': resolved,
+      'Using same-origin': resolved[0] === SAME_ORIGIN_API_BASE,
     });
   }
   
-  return resolved.length ? resolved : (isLocalhost ? ['http://localhost:8000'] : []);
+  return resolved.length ? resolved : [SAME_ORIGIN_API_BASE];
 }
 
 const initialCandidates = resolveInitialCandidates();
@@ -277,16 +261,23 @@ let apiBaseStore: ApiBaseSnapshot = {
   candidates: initialCandidates,
 };
 
-// Warn in production if we're using localhost
+// Log API configuration in production
 if (typeof window !== 'undefined' && initialCandidates.length > 0) {
   const activeBase = initialCandidates[0];
   const isLocalhost = isLocalhostEnvironment();
+  
+  // Warn if using localhost in production
   if (!isLocalhost && activeBase && (activeBase.includes('localhost') || activeBase.includes('127.0.0.1'))) {
     console.warn(
       '[API Client] WARNING: Using localhost API URL in production!',
       'This will not work. Please set NEXT_PUBLIC_LIFEPATH_API_BASE_URL in Vercel and redeploy.',
       { activeBase, candidates: initialCandidates }
     );
+  }
+  
+  // Log when using same-origin API (Vercel serverless)
+  if (activeBase === SAME_ORIGIN_API_BASE) {
+    console.log('[API Client] Using same-origin API routes (no CORS required)');
   }
 }
 
@@ -513,12 +504,10 @@ export class ApiClient {
     const { query, headers, body, ...rest } = options;
     const activeBaseUrl = this.getBaseUrl();
     
-    // Check if API base URL is configured
+    // Check if API base URL is configured (allow same-origin API)
     if (!activeBaseUrl || activeBaseUrl.trim() === '') {
-      throw new ApiError(
-        'API server URL is not configured. Please set the NEXT_PUBLIC_LIFEPATH_API_BASE_URL environment variable in your Vercel project settings.',
-        503,
-      );
+      // Default to same-origin API if not configured
+      console.warn('[API Client] No API base URL configured, using same-origin API routes');
     }
     
     const url = this.buildUrl(path, query, activeBaseUrl);
@@ -615,6 +604,26 @@ export class ApiClient {
   private buildUrl(path: string, query?: QueryParams, baseUrl?: string): string {
     const normalizedPath = path.startsWith('/') ? path : `/${path}`;
     const resolvedBase = baseUrl ?? this.getBaseUrl();
+    
+    // For same-origin API routes, build a relative URL
+    if (resolvedBase === SAME_ORIGIN_API_BASE || resolvedBase === '/api') {
+      let url = `${resolvedBase}${normalizedPath}`;
+      if (query) {
+        const params = new URLSearchParams();
+        Object.entries(query).forEach(([key, value]) => {
+          if (value !== undefined && value !== null) {
+            params.set(key, String(value));
+          }
+        });
+        const queryString = params.toString();
+        if (queryString) {
+          url += `?${queryString}`;
+        }
+      }
+      return url;
+    }
+    
+    // For external APIs, use the full URL
     const url = new URL(normalizedPath, resolvedBase);
     if (query) {
       Object.entries(query).forEach(([key, value]) => {

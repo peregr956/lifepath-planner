@@ -272,13 +272,9 @@ function deriveComponentSchema(component: ClarificationComponentDescriptor): z.Z
 
 function buildNumberSchema(
   component: NumericComponentDescriptor,
-  requiredMessage: string,
-): z.ZodNumber {
-  let schema = z
-    .number({ message: `${component.label} must be a number.` })
-    .refine((value) => value !== undefined, {
-      message: requiredMessage,
-    });
+  _requiredMessage: string,
+): z.ZodTypeAny {
+  let schema: z.ZodNumber = z.number({ message: `${component.label} must be a number.` });
 
   const { constraints } = component;
   if (constraints?.minimum !== undefined) {
