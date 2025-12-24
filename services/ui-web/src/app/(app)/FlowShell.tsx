@@ -40,7 +40,8 @@ export function FlowShell({ children }: { children: ReactNode }) {
   const stepMeta = useMemo(() => {
     const getCompletion = (key: StepKey) => {
       if (key === 'upload') return hasBudget;
-      return clarificationsDone;
+      if (key === 'clarify') return clarificationsDone;
+      return false; // Step 3 (Results) is never "complete" in the same way, it's the destination
     };
     return steps.map((step, index) => {
       const prevStep = index > 0 ? steps[index - 1] : undefined;

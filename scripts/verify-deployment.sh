@@ -18,43 +18,88 @@ NC='\033[0m' # No Color
 # Default Vercel URL or from argument
 VERCEL_URL="${1:-https://lifepath-planner.vercel.app}"
 
-echo "1. Testing Vercel API Health..."
-echo "   App URL: $VERCEL_URL"
-echo "   API Health: $VERCEL_URL/api/health"
+# Function to test an endpoint
+test_endpoint() {
+    local endpoint=$1
+    local method=${2:-GET}
+    local description=$3
+    local data=$4
+    
+    echo -n "   Testing $description ($endpoint)... "
+    
+    local start_time=$(date +%s%3N)
+    local response
+    local status_code
+    
+    if [ "$method" == "POST" ]; then
+        response=$(curl -s -w "\n%{http_code}" -X POST -H "Content-Type: application/json" -d "$data" "$VERCEL_URL$endpoint")
+    else
+        response=$(curl -s -w "\n%{http_code}" "$VERCEL_URL$endpoint")
+    fi
+    
+    status_code=$(echo "$response" | tail -n1)
+    content=$(echo "$response" | sed '$d')
+    local end_time=$(date +%s%3N)
+    local duration=$((end_time - start_time))
+    
+    if [ "$status_code" -ge 200 ] && [ "$status_code" -lt 300 ]; then
+        echo -e "${GREEN}✓ Success${NC} (${duration}ms)"
+        return 0
+    else
+        echo -e "${RED}✗ Failed${NC} (Status: $status_code, ${duration}ms)"
+        echo "      Response: $content"
+        return 1
+    fi
+}
 
-if curl -s -f "$VERCEL_URL/api/health" > /dev/null; then
-    echo -e "   ${GREEN}✓ API is accessible and healthy${NC}"
-    HEALTH_RESPONSE=$(curl -s "$VERCEL_URL/api/health")
-    echo "   Response: $HEALTH_RESPONSE"
+echo "1. Testing Core API Endpoints..."
+test_endpoint "/api/health" "GET" "Health Check"
+test_endpoint "/api/diagnostics/env" "GET" "Environment Diagnostics"
+
+echo ""
+echo "2. Smoke Testing Functional API Endpoints (Basic Validation)..."
+# These might return 400 if called without proper data/session, which is fine for a existence check
+test_endpoint "/api/upload-budget" "POST" "Upload Budget" "{}"
+test_endpoint "/api/clarification-questions" "GET" "Clarification Questions"
+test_endpoint "/api/summary-and-suggestions" "GET" "Summary and Suggestions"
+
+echo ""
+echo "3. Environment Variable & Infrastructure Check..."
+DIAGNOSTICS=$(curl -s "$VERCEL_URL/api/diagnostics/env")
+
+if [ -z "$DIAGNOSTICS" ]; then
+    echo -e "   ${RED}✗ Could not retrieve diagnostics from $VERCEL_URL/api/diagnostics/env${NC}"
 else
-    echo -e "   ${RED}✗ API is not accessible at $VERCEL_URL/api/health${NC}"
-    echo "   Check if the deployment is successful and API routes are working."
-    # Don't exit here, continue with checklist
+    # Check OpenAI
+    if echo "$DIAGNOSTICS" | grep -q "\"OPENAI_API_KEY\":{\"key\":\"OPENAI_API_KEY\",\"is_set\":true"; then
+        echo -e "   ${GREEN}✓ OPENAI_API_KEY is configured${NC}"
+    else
+        echo -e "   ${YELLOW}⚠ OPENAI_API_KEY is NOT configured (AI features disabled)${NC}"
+    fi
+
+    # Check Postgres
+    if echo "$DIAGNOSTICS" | grep -q "\"POSTGRES_URL\":{\"key\":\"POSTGRES_URL\",\"is_set\":true"; then
+        echo -e "   ${GREEN}✓ POSTGRES_URL is configured${NC}"
+    else
+        echo -e "   ${YELLOW}⚠ POSTGRES_URL is NOT configured (using in-memory storage)${NC}"
+    fi
+    
+    # Check overall status
+    if echo "$DIAGNOSTICS" | grep -q "\"status\":\"ok\""; then
+        echo -e "   ${GREEN}✓ Environment status is OK${NC}"
+    else
+        echo -e "   ${YELLOW}⚠ Environment has issues or warnings${NC}"
+    fi
 fi
 
 echo ""
-echo "2. Environment Variable Checklist:"
-echo ""
-echo "   ${YELLOW}Vercel Configuration:${NC}"
-echo "   - Go to: https://vercel.com/dashboard"
-echo "   - Select your project"
-echo "   - Go to: Settings → Environment Variables"
-echo "   - Verify the following are set (if using AI features):"
-echo "     - OPENAI_API_KEY"
-echo "     - POSTGRES_URL (optional, for persistent storage)"
-echo ""
-echo "   ${YELLOW}Same-Origin API:${NC}"
-echo "   - This deployment uses same-origin API routes (/api/*)."
-echo "   - NEXT_PUBLIC_LIFEPATH_API_BASE_URL is NOT required."
-echo "   - CORS configuration is NOT required for the same-origin API."
-echo ""
+echo "4. Deployment Checklist:"
+echo "   - Vercel Dashboard: https://vercel.com/dashboard"
+echo "   - Root Directory: services/ui-web"
+echo "   - Node.js Version: 20+"
+echo "   - Logs: Check Vercel Function logs for any runtime exceptions"
 
-echo "3. Next Steps:"
-echo "   - Visit your Vercel app at $VERCEL_URL"
-echo "   - Navigate to /diagnostics to see runtime configuration"
-echo "   - Check Vercel logs in the dashboard for any runtime errors"
 echo ""
-
 echo "=========================================="
 echo "  Verification Complete"
 echo "=========================================="

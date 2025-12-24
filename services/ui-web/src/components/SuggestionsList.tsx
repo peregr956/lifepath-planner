@@ -92,14 +92,19 @@ export function SuggestionsList({ suggestions, providerMetadata, userQuery }: Pr
               <p className="text-sm font-semibold text-emerald-200">
                 Expected monthly impact: {currency.format(suggestion.expectedMonthlyImpact)}
               </p>
-              <div className="text-xs text-white/70">
+              <div className="mt-2 flex flex-col gap-2 rounded-lg bg-white/5 p-3 text-xs text-white/70">
                 <p>
-                  <span className="font-semibold text-white">Rationale:</span>{' '}
-                  {suggestion.rationale}
+                  <span className="block font-semibold uppercase tracking-wider text-white/50">
+                    Rationale
+                  </span>
+                  <span className="mt-1 block">{suggestion.rationale}</span>
                 </p>
-                <p className="mt-1">
-                  <span className="font-semibold text-white">Tradeoffs:</span>{' '}
-                  {suggestion.tradeoffs}
+                <div className="h-px bg-white/10" />
+                <p>
+                  <span className="block font-semibold uppercase tracking-wider text-white/50">
+                    Tradeoffs
+                  </span>
+                  <span className="mt-1 block">{suggestion.tradeoffs}</span>
                 </p>
               </div>
             </div>
