@@ -156,9 +156,9 @@ export default function DiagnosticsPage() {
         providerStatus: {
           status: 'success',
           message:
-            'Provider status is determined by Railway environment variables. Check Railway logs or API responses to verify.',
-          clarificationProvider: 'Check Railway logs',
-          suggestionProvider: 'Check Railway logs',
+            'Provider status is determined by Vercel environment variables. Check Vercel logs or API responses to verify.',
+          clarificationProvider: 'Check Vercel logs',
+          suggestionProvider: 'Check Vercel logs',
           aiEnabled: undefined,
         },
       }));
@@ -275,10 +275,10 @@ export default function DiagnosticsPage() {
               <div className="text-sm text-white/70 mt-2">
                 Possible causes:
                 <ul className="list-disc list-inside mt-1 space-y-1">
-                  <li>API Gateway is not running</li>
+                  <li>API routes are not working (check Vercel logs)</li>
                   <li>Incorrect API base URL configured</li>
                   <li>Network connectivity issues</li>
-                  <li>CORS blocking the request</li>
+                  <li>CORS blocking the request (if using external API)</li>
                 </ul>
               </div>
             </div>

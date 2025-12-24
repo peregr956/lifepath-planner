@@ -18,7 +18,7 @@ This guide explains how to operate the LifePath Planner services now that Step 7
    - `op read "op://LifePath/LLM/OpenAI Dev/api_key" | xargs -I{} sed -i '' 's|OPENAI_API_KEY=.*|OPENAI_API_KEY={}|' .env`
    - `op read "op://LifePath/LLM/OpenAI Dev/model" | xargs -I{} sed -i '' 's|OPENAI_MODEL=.*|OPENAI_MODEL={}|' .env`
    - `op read "op://LifePath/LLM/OpenAI Dev/api_base" | xargs -I{} sed -i '' 's|OPENAI_API_BASE=.*|OPENAI_API_BASE={}|' .env`
-4. Run `op run --env-file=.env -- npm run dev` (or `uvicorn ...`) to ensure processes inherit the secrets without leaving them in shell history.
+4. Run `op run --env-file=.env -- npm run dev` to ensure processes inherit the secrets without leaving them in shell history.
 5. Never commit `.env`; `.gitignore` already enforces this, and pre-commit hooks should block accidental additions.
 
 ### GitHub Actions & hosted environments
@@ -43,14 +43,13 @@ This guide explains how to operate the LifePath Planner services now that Step 7
 
 ### Rate-limit & telemetry guardrails
 
-- Tie OpenAI usage back to the API Gateway limiter. Keep `GATEWAY_RATE_LIMIT_PER_MIN` and `GATEWAY_RATE_LIMIT_BURST` at conservative defaults (60/20) for staging to prevent runaway token burn.
-- For load tests, temporarily raise both values and add `request_id` to the test logs so any spike can be attributed to a known campaign.
-- Telemetry (`ENABLE_TELEMETRY=true`) should remain enabled in staging/prod so that trace sampling reveals sudden increases in `/ai/*` calls. Pair traces with structured logs containing the OpenAI `model` and hashed payload metadata (see `observability/privacy.py`).
-- If telemetry detects rate-limit hits >5% of requests, increase burst only after validating that caching or queueing cannot absorb the spike.
+- Vercel Serverless Functions have built-in rate limiting and timeouts.
+- For AI usage, monitor token burn in the OpenAI dashboard.
+- Telemetry can be enabled in the Next.js application via environment variables.
 
 ## Telemetry & Tracing
 
-All FastAPI services call `observability.telemetry.setup_telemetry` at startup. The helper emits JSON logs plus OpenTelemetry spans when enabled via environment variables:
+The Next.js application can emit logs and OpenTelemetry spans when enabled via environment variables.
 
 | Env var | Default | Description |
 | --- | --- | --- |
@@ -74,7 +73,7 @@ Disable spans entirely (useful for smoke tests) by unsetting `ENABLE_TELEMETRY` 
 
 1. Start an OTLP collector (e.g., `docker run -p4318:4318 otel/opentelemetry-collector-contrib`).
 2. Export `ENABLE_TELEMETRY=true OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318/v1/traces`.
-3. Trigger `POST /upload-budget`; confirm spans appear in the collector and that log lines include both `request_id` and `trace_id`.
+3. Trigger `/api/upload-budget`; confirm spans appear in the collector and that log lines include both `request_id` and `trace_id`.
 
 ## Rate Limiting
 

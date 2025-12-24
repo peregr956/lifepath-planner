@@ -37,6 +37,7 @@ Transform LifePath Planner into a platform that:
 ### MVP Core Complete
 
 - **Phases 0-4 Complete**: Foundation, ingestion, clarification, deterministic engine, and optimization engine are all implemented and functional.
+- **Vercel Migration Complete**: The application has been migrated from a multi-service Python architecture to a **unified Vercel serverless architecture**.
 - **AI Integration Complete**: OpenAI integration for clarification questions, budget normalization, and suggestions is fully implemented and operational.
 - Deterministic clarification UI schema, persistence, retry logic, telemetry, and rate limiting landed (see `docs/archive/pre_integration_prompts.md` for the execution history).
 - LLM adapter boundary and operational guardrails are documented in `docs/llm_adapter.md` and `docs/operations.md`.
@@ -731,8 +732,8 @@ This section outlines the future phases that will transform LifePath Planner fro
 ### Architecture Evolution
 
 The system will evolve from:
-- **Current**: 4 services (Gateway, Ingestion, Clarification, Optimization)
-- **Future**: 7+ services (add Calculator, Projection, Account services)
+- **Current**: Vercel Serverless Functions (consolidating Ingestion, Clarification, Optimization)
+- **Future**: Extended serverless capabilities or additional services (add Calculator, Projection, Account services)
 
 ### Data Model Expansion
 

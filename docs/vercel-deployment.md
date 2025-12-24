@@ -163,16 +163,3 @@ export OPENAI_API_KEY=sk-your-api-key
 npm run dev
 ```
 
-## Migration from Railway
-
-If you're migrating from the Railway-based architecture:
-
-1. No changes needed to the frontend code
-2. API calls now go to `/api/*` instead of external Railway URLs
-3. Remove the following environment variables from Vercel:
-   - `NEXT_PUBLIC_LIFEPATH_API_BASE_URL`
-   - `GATEWAY_CORS_ORIGINS` (no longer needed)
-   - Any other Railway-specific variables
-
-The app will automatically use the same-origin API routes.
-

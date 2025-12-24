@@ -1,12 +1,8 @@
 # API Contracts (MVP Draft)
 
-This document describes the HTTP JSON contracts between the frontend (`ui-web`), the API gateway, and the backend services:
+This document describes the HTTP JSON contracts for the **Vercel serverless API**.
 
-- `budget-ingestion-service`
-- `clarification-service`
-- `optimization-service`
-
-For the MVP, contracts are intentionally simple and focused on a single budget “session” at a time. All examples assume JSON over HTTP, with the API gateway as the only entrypoint used by the frontend.
+For the MVP, contracts are intentionally simple and focused on a single budget “session” at a time. All examples assume JSON over HTTP, with the same-origin API routes (`/api/*`) as the entrypoint used by the frontend.
 
 ---
 
@@ -246,47 +242,15 @@ Suggestions list — each suggestion contains:
 
 ---
 
-## 5. Internal Service Contracts (High-Level)
+## 5. Implementation Notes
 
-The API gateway will call internal services over HTTP or an internal interface. At MVP, these can mirror the gateway contracts, but with some simplifications.
+The Vercel serverless architecture combines the functionality of several previously separate services into a single Next.js application:
 
-### A. `budget-ingestion-service`
+- **Ingestion:** File parsing and format detection.
+- **Clarification:** AI-powered question generation and normalization.
+- **Optimization:** Deterministic summaries and AI suggestions.
 
-- **Endpoint:** e.g., `POST /ingest`
-- **Input:** file data or pre-parsed tabular representation.
-- **Output:**
-  - Draft budget model (income, expenses, possible debts).
-  - Detected format.
-  - Any ambiguity flags.
-
-### B. `clarification-service`
-
-- **Endpoint:** e.g., `POST /clarify`
-- **Input:** draft or partially completed budget model.
-- **Output:** questions list + component descriptors.
-- **Note:** Before generating questions, the service performs AI normalization to correctly classify amounts as income (positive) or expenses (negative). This handles budgets in any format.
-
-Optional second endpoint:
-
-- **Endpoint:** `POST /apply-answers`
-- **Input:** budget model + answers.
-- **Output:** updated unified budget model.
-
-AI Normalization details:
-- Amounts are normalized before the deterministic engine processes them
-- Falls back to passthrough if AI is unavailable
-- Original amounts are preserved in metadata for traceability
-
-### C. `optimization-service`
-
-- **Endpoint:** `POST /summarize-and-optimize`
-- **Input:** unified budget model.
-- **Output:** summary object + suggestions array.
-
-Internal contracts can evolve, but they should remain consistent with:
-
-- The unified budget model in `budget_schema.md`.
-- The UI component specification in `ui_components_spec.md`.
+All these capabilities are exposed through the public `/api/*` routes.
 
 ---
 
@@ -296,25 +260,12 @@ Internal contracts can evolve, but they should remain consistent with:
 - All amounts are modeled as monthly values in the MVP.
 - All APIs use JSON responses for non-file data.
 - Error handling should be explicit and descriptive but not overly complex.
-- The gateway is the only public API. Direct calls to underlying services are internal.
+- The same-origin `/api/*` routes are the only public endpoints.
 
 ## 7. Provider Configuration Settings
 
-Clarification, optimization, and budget normalization all ship the same knobs for selecting and tuning AI providers. Each service reads the provider choice plus timeout, temperature, and token limits on startup so misconfiguration is caught before the first request.
+The Vercel serverless functions support selecting and tuning AI providers through environment variables.
 
-| Service                  | Provider env var               | Timeout env var                          | Temperature env var                         | Max token env var                           |
-| ------------------------ | ------------------------------ | ---------------------------------------- | ------------------------------------------- | ------------------------------------------- |
-| Clarification Service    | `CLARIFICATION_PROVIDER`       | `CLARIFICATION_PROVIDER_TIMEOUT_SECONDS` | `CLARIFICATION_PROVIDER_TEMPERATURE`        | `CLARIFICATION_PROVIDER_MAX_TOKENS`         |
-| Optimization Service     | `SUGGESTION_PROVIDER`          | `SUGGESTION_PROVIDER_TIMEOUT_SECONDS`    | `SUGGESTION_PROVIDER_TEMPERATURE`           | `SUGGESTION_PROVIDER_MAX_TOKENS`            |
-| Budget Normalization     | `BUDGET_NORMALIZATION_PROVIDER`| `BUDGET_NORMALIZATION_TIMEOUT`           | `BUDGET_NORMALIZATION_TEMPERATURE`          | `BUDGET_NORMALIZATION_MAX_TOKENS`           |
-
-Defaults:
-
-- Provider: `deterministic` (except Budget Normalization defaults to `openai` when configured)
-- Timeout: `10` seconds (Budget Normalization: `30` seconds)
-- Temperature: `0.2` (Budget Normalization: `0.1` for consistency)
-- Max output tokens: `512` (Budget Normalization: `2048` to handle full budget data)
-
-Supported provider values are `deterministic`, `mock`, and `openai`. Selecting `openai` requires the shared environment variables `OPENAI_API_KEY`, `OPENAI_MODEL`, and `OPENAI_API_BASE`. Services terminate during startup if any of those values are missing so deployments can catch misconfigurations early.
+Supported provider values are `deterministic` and `openai`. Selecting `openai` requires the Vercel environment variables `OPENAI_API_KEY`, `OPENAI_MODEL` (optional), and `OPENAI_API_BASE` (optional).
 
 Budget normalization gracefully falls back to deterministic (passthrough) if OpenAI is not configured, ensuring the pipeline continues to work with budgets that already use correct sign conventions.

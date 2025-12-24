@@ -95,13 +95,14 @@ describe('API Base URL Resolution', () => {
       expect(getActiveApiBase()).toBe('https://highest-priority.com');
     });
 
-    it('uses default localhost fallbacks when no env vars are set', async () => {
+    it('uses same-origin /api as default when no env vars are set', async () => {
       // No env vars set
       const { getActiveApiBase, getApiBaseCandidates } = await import('@/utils/apiClient');
 
-      expect(getActiveApiBase()).toBe('http://localhost:8000');
+      expect(getActiveApiBase()).toBe('/api');
+      expect(getApiBaseCandidates()).toContain('/api');
+      // Should still include localhost fallbacks in test/dev environment
       expect(getApiBaseCandidates()).toContain('http://localhost:8000');
-      expect(getApiBaseCandidates()).toContain('http://127.0.0.1:8000');
     });
   });
 
