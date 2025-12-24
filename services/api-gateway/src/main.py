@@ -171,6 +171,75 @@ def health_check() -> dict:
     return {"status": "ok", "service": "api-gateway"}
 
 
+@app.get("/diagnostics/env")
+def diagnostics_env() -> dict[str, Any]:
+    """
+    Diagnostic endpoint to check environment variable configuration.
+    
+    This helps verify that OpenAI configuration variables are set correctly.
+    Sensitive values (API keys) are redacted for security.
+    """
+    def check_var(key: str, redact: bool = False) -> dict[str, Any]:
+        value = os.getenv(key)
+        is_set = value is not None and value.strip() != ""
+        result: dict[str, Any] = {
+            "key": key,
+            "is_set": is_set,
+        }
+        if is_set:
+            if redact:
+                # Redact sensitive values
+                if len(value) > 11:
+                    result["value"] = f"{value[:7]}...{value[-4:]}"
+                else:
+                    result["value"] = "***REDACTED***"
+            else:
+                result["value"] = value
+        return result
+    
+    required_vars = [
+        ("CLARIFICATION_PROVIDER", False),
+        ("SUGGESTION_PROVIDER", False),
+        ("OPENAI_API_KEY", True),
+        ("OPENAI_MODEL", False),
+        ("OPENAI_API_BASE", False),
+    ]
+    
+    optional_vars = [
+        ("CLARIFICATION_PROVIDER_TIMEOUT_SECONDS", False),
+        ("SUGGESTION_PROVIDER_TIMEOUT_SECONDS", False),
+        ("CLARIFICATION_PROVIDER_TEMPERATURE", False),
+        ("SUGGESTION_PROVIDER_TEMPERATURE", False),
+    ]
+    
+    required_status = {var: check_var(var, redact) for var, redact in required_vars}
+    optional_status = {var: check_var(var, redact) for var, redact in optional_vars}
+    
+    # Check if providers are set correctly
+    clarification_provider = required_status["CLARIFICATION_PROVIDER"]["value"] if required_status["CLARIFICATION_PROVIDER"]["is_set"] else None
+    suggestion_provider = required_status["SUGGESTION_PROVIDER"]["value"] if required_status["SUGGESTION_PROVIDER"]["is_set"] else None
+    
+    issues = []
+    if not clarification_provider or clarification_provider.lower() != "openai":
+        issues.append("CLARIFICATION_PROVIDER is not set to 'openai'")
+    if not suggestion_provider or suggestion_provider.lower() != "openai":
+        issues.append("SUGGESTION_PROVIDER is not set to 'openai'")
+    if not required_status["OPENAI_API_KEY"]["is_set"]:
+        issues.append("OPENAI_API_KEY is not set")
+    if not required_status["OPENAI_MODEL"]["is_set"]:
+        issues.append("OPENAI_MODEL is not set")
+    if not required_status["OPENAI_API_BASE"]["is_set"]:
+        issues.append("OPENAI_API_BASE is not set")
+    
+    return {
+        "status": "ok" if not issues else "issues_found",
+        "issues": issues,
+        "required_variables": required_status,
+        "optional_variables": optional_status,
+        "provider_metadata": _build_provider_metadata(),
+    }
+
+
 @app.post("/upload-budget", response_model=None)
 async def upload_budget(
     request: Request,
