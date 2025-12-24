@@ -147,21 +147,51 @@ Return structured JSON matching the provided function schema exactly.`;
 
 const SUGGESTION_SYSTEM_PROMPT = `You are a personal finance advisor generating actionable budget optimization suggestions.
 
-CRITICAL: The user has asked a specific question. Your suggestions MUST directly address their question.
-Prioritize suggestions that answer what they asked about. Reference their question in your rationale.
+## CRITICAL PRIORITY: USER'S QUESTION COMES FIRST
+The user has asked a specific question. Your FIRST 1-2 suggestions MUST directly and specifically address their exact question.
+DO NOT start with generic advice (like "build emergency fund" or "cut expenses") unless that directly answers their question.
 
-Your role is to analyze the user's budget and provide 3-6 specific, realistic recommendations. Focus on:
-1. Directly answering the user's question first
-2. High-interest debt payoff strategies (if relevant to their question)
-3. Flexible expense reduction opportunities (if relevant)
-4. Savings and investment allocation (if relevant)
-5. Emergency fund adequacy (if relevant)
+## GOAL-SPECIFIC GUIDANCE
+When the user asks about specific goals, provide targeted advice:
 
-Important guidelines:
-- Start by addressing the user's specific question or concern
-- Be specific with dollar amounts when possible
-- Explain tradeoffs honestly
-- Focus on sustainable changes, not extreme cuts
+### Down Payment / House Savings:
+- Calculate monthly savings needed: (target amount - current savings) / months to goal
+- Recommend high-yield savings accounts or money market accounts (NOT investment accounts)
+- Suggest dedicated "house fund" separate from other savings
+- Discuss the 20% down payment benchmark vs PMI tradeoffs
+- Consider closing cost reserves (2-5% of home price)
+
+### Debt Payoff:
+- Compare avalanche (highest rate first) vs snowball (smallest balance first)
+- Calculate payoff timeline with extra payments
+- Discuss balance transfer options for high-rate credit cards
+
+### Retirement Savings:
+- Start with employer 401k match (free money)
+- Discuss Roth vs Traditional based on current vs expected future tax bracket
+- Target 15-20% of gross income as a long-term goal
+
+### Emergency Fund:
+- Target 3-6 months of essential expenses
+- Recommend high-yield savings account
+- Calculate specific dollar target based on their expenses
+
+## STRUCTURE YOUR SUGGESTIONS
+1. FIRST suggestion: Directly answers their question with specific action steps
+2. SECOND suggestion: Related action that supports their goal
+3. REMAINING suggestions: Other relevant optimizations (only if helpful)
+
+## SUGGESTION QUALITY REQUIREMENTS
+- Every rationale MUST explicitly reference their question (e.g., "To save for your down payment...")
+- Include specific dollar amounts calculated from their budget
+- Provide timelines when goals are mentioned
+- Explain HOW to implement each suggestion, not just WHAT to do
+
+## DO NOT
+- Lead with generic advice like "build emergency fund" unless they asked about it
+- Suggest cutting $8 from entertainment when they're asking about saving $50k for a house
+- Provide suggestions that don't relate to their question
+- Be vague about dollar amounts or timelines
 
 CRITICAL: Suggestions should be educational and thought-provoking. Never guarantee outcomes or provide specific investment advice. Frame recommendations as ideas to consider.
 
@@ -262,6 +292,116 @@ REMEMBER: Only ask questions that help answer: "${userQuery || 'Help me understa
 }
 
 /**
+ * Detect the primary financial goal from the user's query
+ */
+type GoalType = 'down_payment' | 'retirement' | 'debt_payoff' | 'emergency_fund' | 'savings' | null;
+
+function detectGoalType(userQuery: string): GoalType {
+  const queryLower = userQuery.toLowerCase();
+  
+  // Down payment / house related
+  if (['down payment', 'house', 'home', 'buy a home', 'buy a house', 'mortgage', 'first home', 'homeowner', 'property']
+      .some(keyword => queryLower.includes(keyword))) {
+    return 'down_payment';
+  }
+  
+  // Retirement related
+  if (['retirement', 'retire', '401k', 'ira', 'roth', 'pension', 'social security', 'retire early', 'fire']
+      .some(keyword => queryLower.includes(keyword))) {
+    return 'retirement';
+  }
+  
+  // Debt payoff related
+  if (['debt', 'pay off', 'payoff', 'credit card', 'student loan', 'loan', 'debt free', 'eliminate debt', 'pay down']
+      .some(keyword => queryLower.includes(keyword))) {
+    return 'debt_payoff';
+  }
+  
+  // Emergency fund related
+  if (['emergency fund', 'emergency savings', 'rainy day', 'safety net', 'buffer', 'unexpected expenses']
+      .some(keyword => queryLower.includes(keyword))) {
+    return 'emergency_fund';
+  }
+  
+  // Savings related (generic)
+  if (['save', 'saving', 'savings', 'save money', 'save more']
+      .some(keyword => queryLower.includes(keyword))) {
+    return 'savings';
+  }
+  
+  return null;
+}
+
+/**
+ * Build goal-specific context section for the prompt
+ */
+function buildGoalContext(goalType: GoalType, model: UnifiedBudgetModel): string {
+  if (!goalType) return '';
+  
+  const surplus = model.summary.surplus;
+  const essentialExpenses = model.expenses.filter(e => e.essential).reduce((sum, e) => sum + Math.abs(e.monthly_amount), 0);
+  const flexibleExpenses = model.expenses.filter(e => !e.essential).reduce((sum, e) => sum + Math.abs(e.monthly_amount), 0);
+  
+  const lines: string[] = ['\n## GOAL-SPECIFIC CONTEXT (Use this to provide targeted advice)'];
+  
+  switch (goalType) {
+    case 'down_payment':
+      lines.push('The user is asking about saving for a home purchase.');
+      lines.push(`- Current monthly surplus available: $${surplus.toLocaleString()}`);
+      lines.push(`- If they saved entire surplus: $${(surplus * 12).toLocaleString()}/year, $${(surplus * 24).toLocaleString()} in 2 years`);
+      lines.push('- Recommend: High-yield savings account (4-5% APY currently)');
+      lines.push('- Typical down payment: 20% to avoid PMI, or 3-5% with FHA/conventional');
+      lines.push("- Don't forget closing costs: 2-5% of home price");
+      break;
+    
+    case 'retirement':
+      lines.push('The user is asking about retirement savings.');
+      const income = model.summary.total_income;
+      const recommended15 = income * 0.15;
+      lines.push(`- Current monthly income: $${income.toLocaleString()}`);
+      lines.push(`- 15% of income (recommended target): $${recommended15.toLocaleString()}/month`);
+      lines.push('- 2024 401k limit: $23,000 ($30,500 if 50+)');
+      lines.push('- 2024 IRA limit: $7,000 ($8,000 if 50+)');
+      break;
+    
+    case 'debt_payoff':
+      lines.push('The user is asking about paying off debt.');
+      if (model.debts.length > 0) {
+        const totalDebt = model.debts.reduce((sum, d) => sum + d.balance, 0);
+        const totalMinPayments = model.debts.reduce((sum, d) => sum + d.min_payment, 0);
+        const highestRate = Math.max(...model.debts.map(d => d.interest_rate));
+        lines.push(`- Total debt: $${totalDebt.toLocaleString()}`);
+        lines.push(`- Total minimum payments: $${totalMinPayments.toLocaleString()}/month`);
+        lines.push(`- Highest interest rate: ${highestRate}%`);
+        lines.push(`- Extra available after minimums: $${surplus.toLocaleString()}/month`);
+      } else {
+        lines.push('- No debts detected in their budget');
+      }
+      break;
+    
+    case 'emergency_fund':
+      lines.push('The user is asking about building an emergency fund.');
+      lines.push(`- Monthly essential expenses: $${essentialExpenses.toLocaleString()}`);
+      lines.push(`- 3-month target: $${(essentialExpenses * 3).toLocaleString()}`);
+      lines.push(`- 6-month target: $${(essentialExpenses * 6).toLocaleString()}`);
+      if (surplus > 0) {
+        const monthsTo3mo = (essentialExpenses * 3) / surplus;
+        lines.push(`- Time to reach 3-month fund at current surplus: ${monthsTo3mo.toFixed(1)} months`);
+      }
+      break;
+    
+    case 'savings':
+      lines.push('The user is asking about saving money.');
+      lines.push(`- Current monthly surplus: $${surplus.toLocaleString()}`);
+      lines.push(`- Total flexible expenses: $${flexibleExpenses.toLocaleString()}/month`);
+      lines.push('- Areas to review: Subscriptions, dining out, entertainment');
+      break;
+  }
+  
+  return lines.join('\n');
+}
+
+/**
  * Build user prompt for suggestions
  */
 function buildSuggestionPrompt(
@@ -308,6 +448,10 @@ function buildSuggestionPrompt(
     }
   }
 
+  // Detect goal type and build goal-specific context
+  const goalType = detectGoalType(userQuery);
+  const goalContext = buildGoalContext(goalType, model);
+
   return `## USER'S QUESTION (Generate suggestions that answer this)
 "${userQuery || 'Help me optimize my budget and improve my financial situation'}"
 
@@ -336,7 +480,8 @@ Total Monthly Debt Service: $${totalDebtPayments.toLocaleString()}
 - Protect Essential Expenses: ${model.preferences.protect_essentials}
 - Maximum Category Adjustment: ${(model.preferences.max_desired_change_per_category * 100).toFixed(0)}%
 
-Generate 3-6 prioritized suggestions that answer: "${userQuery || 'Help me optimize my budget'}"`;
+Generate 3-6 prioritized suggestions that answer: "${userQuery || 'Help me optimize my budget'}"
+${goalContext}`;
 }
 
 /**
@@ -415,7 +560,7 @@ export async function generateClarificationQuestions(
       ],
       tool_choice: { type: 'function', function: { name: 'generate_clarification_questions' } },
       temperature: 0.2,
-      max_tokens: 1024,
+      max_tokens: 1536,
     });
 
     const toolCalls = response.choices[0]?.message?.tool_calls;
@@ -469,7 +614,7 @@ export async function generateSuggestions(
       ],
       tool_choice: { type: 'function', function: { name: 'generate_optimization_suggestions' } },
       temperature: 0.3,
-      max_tokens: 1024,
+      max_tokens: 2048,
     });
 
     const toolCalls = response.choices[0]?.message?.tool_calls;

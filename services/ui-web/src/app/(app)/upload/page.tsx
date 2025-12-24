@@ -1,6 +1,7 @@
 'use client';
 
 import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { useRouter } from 'next/navigation';
 import { useBudgetSession } from '@/hooks/useBudgetSession';
@@ -10,10 +11,33 @@ type UploadFormValues = {
   file: File | null;
 };
 
+/**
+ * Safe navigation wrapper with retry logic
+ */
+async function safeNavigate(
+  router: ReturnType<typeof useRouter>,
+  path: string,
+  maxRetries = 2
+): Promise<boolean> {
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      router.push(path);
+      return true;
+    } catch (error) {
+      console.error(`Navigation attempt ${attempt + 1} failed:`, error);
+      if (attempt < maxRetries) {
+        await new Promise((resolve) => setTimeout(resolve, 100));
+      }
+    }
+  }
+  return false;
+}
+
 export default function UploadPage() {
   const router = useRouter();
   const queryClient = useQueryClient();
   const { saveSession } = useBudgetSession();
+  const [navigationError, setNavigationError] = useState<string | null>(null);
 
   const {
     register,
@@ -30,16 +54,21 @@ export default function UploadPage() {
 
   const mutation = useMutation({
     mutationFn: async (file: File) => uploadBudget(file),
-    onSuccess: (response) => {
+    onSuccess: async (response) => {
+      setNavigationError(null);
       saveSession({
         budgetId: response.budgetId,
         detectedFormat: response.detectedFormat ?? undefined,
         summaryPreview: response.summaryPreview ?? undefined,
         clarified: false,
       });
-      queryClient.invalidateQueries({ queryKey: ['clarification-questions', response.budgetId] });
-      queryClient.invalidateQueries({ queryKey: ['summary-and-suggestions', response.budgetId] });
-      router.push('/clarify');
+      await queryClient.invalidateQueries({ queryKey: ['clarification-questions', response.budgetId] });
+      await queryClient.invalidateQueries({ queryKey: ['summary-and-suggestions', response.budgetId] });
+      
+      const success = await safeNavigate(router, '/clarify');
+      if (!success) {
+        setNavigationError('Your budget was uploaded successfully, but navigation failed. Please click the Clarify step above to continue.');
+      }
     },
   });
 
@@ -118,6 +147,22 @@ export default function UploadPage() {
                   errors. In local development, ensure the server is running.
                 </p>
               )}
+          </div>
+        )}
+
+        {navigationError && (
+          <div className="rounded border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-100">
+            <p>{navigationError}</p>
+            <button
+              type="button"
+              onClick={() => {
+                setNavigationError(null);
+                router.push('/clarify');
+              }}
+              className="mt-2 rounded bg-amber-500/20 px-3 py-1 text-xs font-medium hover:bg-amber-500/30"
+            >
+              Try again
+            </button>
           </div>
         )}
 

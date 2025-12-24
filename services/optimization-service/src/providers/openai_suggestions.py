@@ -84,32 +84,61 @@ SUGGESTION_SCHEMA = {
 
 SYSTEM_PROMPT = """You are a personal finance advisor generating actionable budget optimization suggestions.
 
-CRITICAL: The user has asked a specific question. Your suggestions MUST directly address their question.
-Prioritize suggestions that answer what they asked about. Reference their question in your rationale.
+## CRITICAL PRIORITY: USER'S QUESTION COMES FIRST
+The user has asked a specific question. Your FIRST 1-2 suggestions MUST directly and specifically address their exact question.
+DO NOT start with generic advice (like "build emergency fund" or "cut expenses") unless that directly answers their question.
 
-Your role is to analyze the user's budget and provide 3-6 specific, realistic recommendations. Focus on:
-1. Directly answering the user's question first
-2. High-interest debt payoff strategies (if relevant to their question)
-3. Flexible expense reduction opportunities (if relevant)
-4. Savings and investment allocation (if relevant)
-5. Emergency fund adequacy (if relevant)
+## GOAL-SPECIFIC GUIDANCE
+When the user asks about specific goals, provide targeted advice:
 
-Important guidelines:
-- Start by addressing the user's specific question or concern
-- Prioritize based on the user's chosen financial framework and risk tolerance
-- Reference the user's question in suggestion rationales (e.g., "To answer your question about...")
-- Be specific with dollar amounts when possible
-- Explain tradeoffs honestly
-- Focus on sustainable changes, not extreme cuts
-- Consider the user's risk tolerance and financial philosophy when applicable
+### Down Payment / House Savings:
+- Calculate monthly savings needed: (target amount - current savings) / months to goal
+- Recommend high-yield savings accounts or money market accounts (NOT investment accounts)
+- Suggest dedicated "house fund" separate from other savings
+- Discuss the 20% down payment benchmark vs PMI tradeoffs
+- Consider closing cost reserves (2-5% of home price)
 
-Profile-aware suggestions:
-- If user is conservative → emphasize safety, stability, emergency fund
+### Debt Payoff:
+- Compare avalanche (highest rate first) vs snowball (smallest balance first)
+- Calculate payoff timeline with extra payments
+- Discuss balance transfer options for high-rate credit cards
+- Consider debt consolidation if multiple high-rate debts
+
+### Retirement Savings:
+- Start with employer 401k match (free money)
+- Discuss Roth vs Traditional based on current vs expected future tax bracket
+- Target 15-20% of gross income as a long-term goal
+- Consider IRA contribution limits and catch-up contributions
+
+### Emergency Fund:
+- Target 3-6 months of essential expenses
+- Recommend high-yield savings account
+- Calculate specific dollar target based on their expenses
+
+## STRUCTURE YOUR SUGGESTIONS
+1. FIRST suggestion: Directly answers their question with specific action steps
+2. SECOND suggestion: Related action that supports their goal
+3. REMAINING suggestions: Other relevant optimizations (only if helpful)
+
+## SUGGESTION QUALITY REQUIREMENTS
+- Every rationale MUST explicitly reference their question (e.g., "To save for your down payment...")
+- Include specific dollar amounts calculated from their budget
+- Provide timelines when goals are mentioned
+- Explain HOW to implement each suggestion, not just WHAT to do
+
+## DO NOT
+- Lead with generic advice like "build emergency fund" unless they asked about it
+- Suggest cutting $8 from entertainment when they're asking about saving $50k for a house
+- Provide suggestions that don't relate to their question
+- Be vague about dollar amounts or timelines
+
+## Profile-aware suggestions:
+- If user is conservative → emphasize safety, stability, guaranteed returns
 - If user is aggressive → can mention growth-oriented options with appropriate caveats
 - If user follows r/personalfinance → follow flowchart priorities
 - If user follows money_guy → follow their order of operations
 
-Financial frameworks:
+## Financial frameworks:
 - r/personalfinance: Follow the subreddit flowchart priorities (emergency fund → employer match → high-interest debt → max tax-advantaged → taxable investing)
 - money_guy: Money Guy Show Financial Order of Operations (emergency fund → employer match → eliminate high-rate debt → max Roth → 15% gross to retirement → max HSA → taxable)
 - neutral: General best practices balanced across debt, savings, and lifestyle
@@ -191,6 +220,106 @@ def _format_debt_section(model: UnifiedBudgetModel) -> str:
     return "\n".join(lines)
 
 
+def _detect_goal_type(user_query: str) -> str | None:
+    """Detect the primary financial goal from the user's query."""
+    query_lower = user_query.lower()
+    
+    # Down payment / house related
+    if any(keyword in query_lower for keyword in [
+        'down payment', 'house', 'home', 'buy a home', 'buy a house',
+        'mortgage', 'first home', 'homeowner', 'property'
+    ]):
+        return 'down_payment'
+    
+    # Retirement related
+    if any(keyword in query_lower for keyword in [
+        'retirement', 'retire', '401k', 'ira', 'roth', 'pension',
+        'social security', 'retire early', 'fire'
+    ]):
+        return 'retirement'
+    
+    # Debt payoff related
+    if any(keyword in query_lower for keyword in [
+        'debt', 'pay off', 'payoff', 'credit card', 'student loan',
+        'loan', 'debt free', 'eliminate debt', 'pay down'
+    ]):
+        return 'debt_payoff'
+    
+    # Emergency fund related
+    if any(keyword in query_lower for keyword in [
+        'emergency fund', 'emergency savings', 'rainy day',
+        'safety net', 'buffer', 'unexpected expenses'
+    ]):
+        return 'emergency_fund'
+    
+    # Savings related (generic)
+    if any(keyword in query_lower for keyword in [
+        'save', 'saving', 'savings', 'save money', 'save more'
+    ]):
+        return 'savings'
+    
+    return None
+
+
+def _build_goal_context(goal_type: str | None, model: UnifiedBudgetModel, summary: Summary) -> str:
+    """Build goal-specific context section for the prompt."""
+    if not goal_type:
+        return ""
+    
+    context_lines = ["\n## GOAL-SPECIFIC CONTEXT (Use this to provide targeted advice)"]
+    
+    surplus = summary.surplus
+    monthly_flexible = sum(e.monthly_amount for e in model.expenses if not e.essential)
+    
+    if goal_type == 'down_payment':
+        context_lines.append("The user is asking about saving for a home purchase.")
+        context_lines.append(f"- Current monthly surplus available: ${surplus:,.2f}")
+        context_lines.append(f"- If they saved entire surplus: ${surplus * 12:,.2f}/year, ${surplus * 24:,.2f} in 2 years")
+        context_lines.append("- Recommend: High-yield savings account (4-5% APY currently)")
+        context_lines.append("- Typical down payment: 20% to avoid PMI, or 3-5% with FHA/conventional")
+        context_lines.append("- Don't forget closing costs: 2-5% of home price")
+    
+    elif goal_type == 'retirement':
+        context_lines.append("The user is asking about retirement savings.")
+        income = summary.total_income
+        recommended_15 = income * 0.15
+        context_lines.append(f"- Current monthly income: ${income:,.2f}")
+        context_lines.append(f"- 15% of income (recommended target): ${recommended_15:,.2f}/month")
+        context_lines.append("- 2024 401k limit: $23,000 ($30,500 if 50+)")
+        context_lines.append("- 2024 IRA limit: $7,000 ($8,000 if 50+)")
+    
+    elif goal_type == 'debt_payoff':
+        context_lines.append("The user is asking about paying off debt.")
+        if model.debts:
+            total_debt = sum(d.balance for d in model.debts)
+            total_min_payments = sum(d.min_payment for d in model.debts)
+            highest_rate = max(d.interest_rate for d in model.debts) if model.debts else 0
+            context_lines.append(f"- Total debt: ${total_debt:,.2f}")
+            context_lines.append(f"- Total minimum payments: ${total_min_payments:,.2f}/month")
+            context_lines.append(f"- Highest interest rate: {highest_rate}%")
+            context_lines.append(f"- Extra available after minimums: ${surplus:,.2f}/month")
+        else:
+            context_lines.append("- No debts detected in their budget")
+    
+    elif goal_type == 'emergency_fund':
+        context_lines.append("The user is asking about building an emergency fund.")
+        essential_expenses = sum(e.monthly_amount for e in model.expenses if e.essential)
+        context_lines.append(f"- Monthly essential expenses: ${essential_expenses:,.2f}")
+        context_lines.append(f"- 3-month target: ${essential_expenses * 3:,.2f}")
+        context_lines.append(f"- 6-month target: ${essential_expenses * 6:,.2f}")
+        if surplus > 0:
+            months_to_3mo = (essential_expenses * 3) / surplus if surplus > 0 else float('inf')
+            context_lines.append(f"- Time to reach 3-month fund at current surplus: {months_to_3mo:.1f} months")
+    
+    elif goal_type == 'savings':
+        context_lines.append("The user is asking about saving money.")
+        context_lines.append(f"- Current monthly surplus: ${surplus:,.2f}")
+        context_lines.append(f"- Total flexible expenses: ${abs(monthly_flexible):,.2f}/month")
+        context_lines.append("- Areas to review: Subscriptions, dining out, entertainment")
+    
+    return "\n".join(context_lines)
+
+
 def _get_framework_description(framework: str) -> str:
     descriptions = {
         "r_personalfinance": (
@@ -267,8 +396,12 @@ def _build_user_prompt(model: UnifiedBudgetModel, summary: Summary, context: dic
 
     # Build user profile section
     user_profile_section = _build_user_profile_section(context)
+    
+    # Detect goal type and build goal-specific context
+    goal_type = _detect_goal_type(user_query)
+    goal_context = _build_goal_context(goal_type, model, summary)
 
-    return USER_PROMPT_TEMPLATE.format(
+    base_prompt = USER_PROMPT_TEMPLATE.format(
         user_query=user_query,
         user_profile_section=user_profile_section,
         total_income=summary.total_income,
@@ -287,6 +420,11 @@ def _build_user_prompt(model: UnifiedBudgetModel, summary: Summary, context: dic
         max_change=model.preferences.max_desired_change_per_category,
         framework_description=_get_framework_description(framework),
     )
+    
+    # Append goal-specific context after the base prompt
+    if goal_context:
+        return base_prompt + goal_context
+    return base_prompt
 
 
 class OpenAISuggestionProvider:
@@ -314,7 +452,7 @@ class OpenAISuggestionProvider:
             self._client = None
             self._model = None
             self._temperature = 0.3
-            self._max_tokens = 1024
+            self._max_tokens = 2048
 
     def generate(self, request: SuggestionProviderRequest) -> SuggestionProviderResponse:
         # Use try/except to handle different import contexts (test vs runtime)
