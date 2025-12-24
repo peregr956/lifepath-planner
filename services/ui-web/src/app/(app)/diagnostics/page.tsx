@@ -300,10 +300,16 @@ export default function DiagnosticsPage() {
             <div>
               <div className="text-red-400 mb-2">✗ {diagnostics.corsTest.message}</div>
               <div className="text-sm text-white/70 mt-2">
-                To fix this, set GATEWAY_CORS_ORIGINS on your Railway backend to include:
-                <div className="font-mono text-emerald-400 mt-1">
-                  {diagnostics.environment}
-                </div>
+                {diagnostics.apiBase.startsWith('/api') ? (
+                  <span>Using same-origin API routes - CORS should not be an issue.</span>
+                ) : (
+                  <span>
+                    For external APIs, ensure CORS is configured on the backend to include:
+                    <div className="font-mono text-emerald-400 mt-1">
+                      {diagnostics.environment}
+                    </div>
+                  </span>
+                )}
               </div>
             </div>
           )}
@@ -331,9 +337,9 @@ export default function DiagnosticsPage() {
                 </div>
                 <ol className="list-decimal list-inside space-y-2 text-white/80 ml-2">
                   <li>
-                    <strong className="text-white">Check Railway Logs:</strong> Look for messages
-                    like &quot;Initialized clarification provider: openai&quot; and &quot;Initialized
-                    suggestion provider: openai&quot;
+                    <strong className="text-white">Check Diagnostics Endpoint:</strong> Visit{' '}
+                    <a href="/api/diagnostics/env" className="text-emerald-400 underline" target="_blank">/api/diagnostics/env</a>
+                    {' '}to see the current configuration.
                   </li>
                   <li>
                     <strong className="text-white">Check API Responses:</strong> When you use the
@@ -354,13 +360,12 @@ export default function DiagnosticsPage() {
                   </li>
                 </ol>
                 <div className="mt-3 p-2 bg-amber-500/10 border border-amber-500/30 rounded">
-                  <div className="text-amber-300 font-semibold mb-1">Required Railway Variables:</div>
+                  <div className="text-amber-300 font-semibold mb-1">Required Vercel Environment Variables:</div>
                   <ul className="text-xs text-white/80 space-y-1 font-mono">
-                    <li>CLARIFICATION_PROVIDER=openai</li>
-                    <li>SUGGESTION_PROVIDER=openai</li>
                     <li>OPENAI_API_KEY=sk-...</li>
-                    <li>OPENAI_MODEL=gpt-4o-mini</li>
-                    <li>OPENAI_API_BASE=https://api.openai.com/v1</li>
+                    <li>OPENAI_MODEL=gpt-4o-mini (optional, defaults to gpt-4o-mini)</li>
+                    <li>OPENAI_API_BASE=https://api.openai.com/v1 (optional)</li>
+                    <li>POSTGRES_URL (optional, for persistent storage)</li>
                   </ul>
                 </div>
               </div>
@@ -372,33 +377,53 @@ export default function DiagnosticsPage() {
         </div>
       </div>
 
+      {/* Architecture Info */}
+      <div className="card border-emerald-500/30 bg-emerald-500/10">
+        <h3 className="text-xl font-semibold text-emerald-300 mb-4">Vercel Serverless Architecture</h3>
+        <div className="space-y-3 text-sm text-white/80">
+          <p>
+            This app uses Vercel Serverless Functions for the backend API. All API endpoints
+            are served from the same origin, eliminating CORS issues.
+          </p>
+          <div className="mt-3">
+            <strong className="text-white">API Endpoints:</strong>
+            <ul className="list-disc list-inside mt-1 space-y-1 font-mono text-xs">
+              <li>/api/health - Health check</li>
+              <li>/api/upload-budget - File upload and parsing</li>
+              <li>/api/user-query - User query submission</li>
+              <li>/api/clarification-questions - Generate questions</li>
+              <li>/api/submit-answers - Submit answers</li>
+              <li>/api/summary-and-suggestions - Get summary and AI suggestions</li>
+              <li>/api/diagnostics/env - Environment diagnostics</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
       {/* Recommendations */}
       <div className="card border-amber-500/30 bg-amber-500/10">
         <h3 className="text-xl font-semibold text-amber-300 mb-4">Troubleshooting Steps</h3>
         <ol className="space-y-3 text-sm text-white/80">
           <li>
-            <strong className="text-white">1. Check Environment Variables:</strong> If
-            NEXT_PUBLIC_LIFEPATH_API_BASE_URL shows as &quot;(not set)&quot;, it means the variable was
-            not available at build time. Set it in Vercel and trigger a new deployment.
+            <strong className="text-white">1. Check API Health:</strong> If the health check
+            fails, there may be an issue with the serverless function. Check the{' '}
+            <a href="/api/health" className="text-emerald-400 underline" target="_blank">/api/health</a>
+            {' '}endpoint directly.
           </li>
           <li>
-            <strong className="text-white">2. Verify API Gateway URL:</strong> The active API
-            base URL should match your Railway deployment URL. Check Railway dashboard →
-            Settings → Networking.
+            <strong className="text-white">2. Verify OpenAI Configuration:</strong> If AI features
+            aren&apos;t working, check that OPENAI_API_KEY is set in Vercel Environment Variables.
+            The app falls back to deterministic suggestions when OpenAI is not configured.
           </li>
           <li>
-            <strong className="text-white">3. Test API Gateway:</strong> If the health check
-            fails, verify the API Gateway is running and accessible. Try accessing{' '}
-            <code className="bg-white/10 px-1 rounded">
-              {diagnostics.apiBase}/health
-            </code>{' '}
-            directly in your browser.
+            <strong className="text-white">3. Check Diagnostics:</strong> Visit{' '}
+            <a href="/api/diagnostics/env" className="text-emerald-400 underline" target="_blank">/api/diagnostics/env</a>
+            {' '}to see the server-side configuration.
           </li>
           <li>
-            <strong className="text-white">4. CORS:</strong> If the health check succeeds,
-            CORS is working correctly. CORS status is inferred from whether cross-origin
-            requests succeed. If both health and CORS fail, ensure GATEWAY_CORS_ORIGINS
-            on Railway includes this origin and restart the service.
+            <strong className="text-white">4. Database:</strong> For persistent storage, set up
+            Vercel Postgres and add POSTGRES_URL to your environment variables. Without it,
+            the app uses in-memory storage (data is lost on function cold starts).
           </li>
         </ol>
       </div>
