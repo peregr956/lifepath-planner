@@ -33,12 +33,26 @@ export function SummaryView({ summary, categoryShares = {} }: Props) {
       </div>
 
       <div className="grid gap-4 sm:grid-cols-3">
-        {cards.map((card) => (
-          <div key={card.label} className="rounded-lg border border-white/10 bg-white/5 p-4">
-            <p className="text-xs uppercase tracking-wide text-white/60">{card.label}</p>
-            <p className="text-2xl font-semibold text-white">{currency.format(card.value)}</p>
-          </div>
-        ))}
+        {cards.map((card) => {
+          const isSurplus = card.label.toLowerCase().includes('surplus');
+          const isExpenses = card.label.toLowerCase().includes('expenses');
+          const valueColor = isSurplus
+            ? card.value >= 0
+              ? 'text-emerald-400'
+              : 'text-rose-400'
+            : isExpenses
+              ? 'text-rose-300'
+              : 'text-white';
+
+          return (
+            <div key={card.label} className="rounded-lg border border-white/10 bg-white/5 p-4">
+              <p className="text-xs uppercase tracking-wide text-white/60">{card.label}</p>
+              <p className={`text-2xl font-semibold ${valueColor}`}>
+                {currency.format(card.value)}
+              </p>
+            </div>
+          );
+        })}
       </div>
 
       {categories.length > 0 && (
