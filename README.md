@@ -1,227 +1,165 @@
 # Lifepath Planner
 
-Multi-stage budgeting assistant composed of a Next.js UI plus three FastAPI microservices
-connected through an API gateway. Each service can be run independently so teams can
-iterate on ingestion, clarification, or optimization logic without blocking one another.
+Multi-stage budgeting assistant powered by AI. Upload your budget, answer clarification questions,
+and receive personalized financial suggestions.
 
-The previously experimental Streamlit UI has been removed; the Next.js interface under
-`services/ui-web` is now the single supported surface.
+## Architecture
 
-## Prerequisites
+LifePath Planner uses a **fully serverless architecture on Vercel**:
 
-- Python 3.11 (or newer) with `pip`
-- Node.js 20+ with `npm`
-- Recommended: create a virtual environment (`python -m venv .venv && source .venv/bin/activate`)
+- **Frontend**: Next.js React application
+- **Backend**: Vercel Serverless Functions (Next.js API Routes)
+- **AI**: OpenAI GPT-4o-mini for intelligent questions and suggestions
+- **Storage**: Vercel Postgres (optional) or in-memory
 
-## Package Installation
-
-The repository is structured as a Python package with proper import paths. Install dependencies (including the local package in editable mode):
-
-```bash
-pip install -r requirements-dev.txt
+```
+┌────────────────────────────────────────────────────────────────┐
+│                      Vercel Platform                            │
+│                                                                  │
+│  Next.js Application                                             │
+│  ┌─────────────────┐    ┌─────────────────────────────────────┐ │
+│  │   Frontend      │───▶│     API Routes (Serverless)          │ │
+│  │   /upload       │    │     /api/upload-budget               │ │
+│  │   /clarify      │    │     /api/clarification-questions     │ │
+│  │   /summarize    │    │     /api/summary-and-suggestions     │ │
+│  └─────────────────┘    └─────────────────────────────────────┘ │
+│                                      │                           │
+│                          ┌───────────▼───────────┐              │
+│                          │      OpenAI API       │              │
+│                          └───────────────────────┘              │
+└────────────────────────────────────────────────────────────────┘
 ```
 
-This installs:
-- All runtime dependencies (FastAPI, SQLAlchemy, OpenAI, etc.)
-- The project in editable mode (`-e .`) for proper imports
-- The `shared` package for cross-service utilities
+**Benefits:**
+- ✅ No CORS issues (same-origin API)
+- ✅ Single deployment
+- ✅ Auto-scaling
+- ✅ Zero server management
 
-Install the web dependencies:
+## Quick Start
+
+### Local Development
 
 ```bash
 cd services/ui-web
 npm install
+npm run dev
 ```
 
-See `docs/development.md` for details on the package structure and adding new services.
+Visit http://localhost:3000
 
-## Environment configuration & secrets
-
-Copy `.env.example` (or recreate it with the snippet below if your tooling hides dotfiles) to `.env` before starting any service so the FastAPI providers and Next.js UI can read the ChatGPT credentials:
-
-1. `cp .env.example .env`
-2. Use the 1Password CLI to inject real values without pasting them into your shell history:
-   - `op read "op://LifePath/LLM/OpenAI Dev/api_key" | pbcopy`
-   - `op inject -i .env -o .env --force` (resolves any `{{OP://...}}` placeholders if you choose to keep them in your local file)
-3. Keep `.env` untracked—`.gitignore` already blocks it—and reference the same variables in any per-service `uvicorn` or `npm` command (`OPENAI_*` is automatically sourced by `scripts/dev.sh`).
-
-| Variable | Notes |
-| --- | --- |
-| `OPENAI_API_KEY` | Required to call ChatGPT from the API gateway and future LLM adapters. |
-| `OPENAI_MODEL` | Default model slug (e.g., `gpt-4o-mini`). Override per-environment to control spending. |
-| `OPENAI_API_BASE` | Base URL for the OpenAI-compatible endpoint. Use the official API, Azure OpenAI, or another proxy. |
-
-For GitHub Actions, store the same variables as repository or environment secrets via `gh secret set OPENAI_API_KEY --body "$(op read ...)"`. Deployment pipelines should export the secrets before invoking tests or builds so that LLM-dependent steps never hard-code keys. Additional rotation, syncing, and guardrail steps are captured in `docs/operations.md`.
-
-```
-# .env.example
-OPENAI_API_KEY=replace-with-op-secret
-OPENAI_MODEL=gpt-4o-mini
-OPENAI_API_BASE=https://api.openai.com/v1
-```
-
-## Running the stack locally
-
-### One-command dev environment
-
-From the repo root:
+### With AI Features
 
 ```bash
-npm install          # installs the small Node wrapper + concurrently
-npm run dev          # installs Python deps (unless SKIP_PIP_INSTALL=1) and starts every service
+export OPENAI_API_KEY=sk-your-api-key
+cd services/ui-web
+npm run dev
 ```
 
-`npm run dev` calls `scripts/dev.sh`, which:
+## Deployment to Vercel
 
-- installs/updates the shared Python dependencies (skip with `SKIP_PIP_INSTALL=1 npm run dev`)
-- clears ports `8000-8003` if another process has them open
-- launches the API gateway plus ingestion, clarification, optimization, and the Next.js UI via `concurrently`
-- stops every process when you hit `Ctrl+C`, so the stack shuts down cleanly
+1. Connect your GitHub repo to Vercel
+2. Set Root Directory to `services/ui-web`
+3. Add environment variables:
+   - `OPENAI_API_KEY` - Your OpenAI API key (for AI features)
+   - `POSTGRES_URL` - Vercel Postgres URL (optional, for persistence)
+4. Deploy!
 
-### Manual commands (advanced)
+For detailed instructions, see [docs/vercel-deployment.md](docs/vercel-deployment.md).
 
-If you prefer to run each service yourself, use the commands below. The ports line up with
-the defaults baked into the gateway (`services/api-gateway/src/main.py`).
+## Environment Variables
 
-| Service | Port | Command |
-| --- | --- | --- |
-| Next.js UI | 3000 | `cd services/ui-web && npm run dev` |
-| API Gateway | 8000 | `cd services/api-gateway && uvicorn src.main:app --reload --port 8000` |
-| Budget Ingestion | 8001 | `cd services/budget-ingestion-service && uvicorn src.main:app --reload --port 8001` |
-| Clarification | 8002 | `cd services/clarification-service && uvicorn src.main:app --reload --port 8002` |
-| Optimization | 8003 | `cd services/optimization-service && uvicorn src.main:app --reload --port 8003` |
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `OPENAI_API_KEY` | Optional | OpenAI API key for AI-powered features |
+| `OPENAI_MODEL` | Optional | Model to use (defaults to `gpt-4o-mini`) |
+| `POSTGRES_URL` | Optional | Vercel Postgres for persistent storage |
 
-Once the services are online, visit http://localhost:3000, upload a budget export, and step
-through clarifications and summarization. The UI reads/writes through the gateway so you
-only need to update the base URL in one place if you change ports.
+Without `OPENAI_API_KEY`, the app uses deterministic (rule-based) suggestions.
+
+## API Endpoints
+
+All API endpoints are served from the same origin at `/api/*`:
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/health` | GET | Health check |
+| `/api/upload-budget` | POST | Upload budget file (CSV/XLSX) |
+| `/api/user-query` | POST | Submit user's question |
+| `/api/clarification-questions` | GET | Get clarification questions |
+| `/api/submit-answers` | POST | Submit answers |
+| `/api/summary-and-suggestions` | GET | Get summary and suggestions |
+| `/api/diagnostics/env` | GET | Environment diagnostics |
+
+## Project Structure
+
+```
+services/ui-web/
+├── src/
+│   ├── app/
+│   │   ├── api/           # Serverless API routes
+│   │   │   ├── upload-budget/
+│   │   │   ├── clarification-questions/
+│   │   │   ├── submit-answers/
+│   │   │   ├── summary-and-suggestions/
+│   │   │   └── ...
+│   │   ├── (app)/         # Frontend pages
+│   │   │   ├── upload/
+│   │   │   ├── clarify/
+│   │   │   └── summarize/
+│   │   └── layout.tsx
+│   ├── lib/               # Backend utilities
+│   │   ├── db.ts          # Database operations
+│   │   ├── parsers.ts     # CSV/XLSX parsing
+│   │   ├── ai.ts          # OpenAI integration
+│   │   └── ...
+│   ├── components/        # React components
+│   └── utils/             # Shared utilities
+├── package.json
+└── vercel.json
+```
 
 ## Documentation
 
-### Active Documentation
-
-- `docs/development.md` — package structure, imports, and adding new services.
-- `docs/roadmap.md` — phased delivery plan plus post-MVP targets.
-- `docs/llm_adapter.md` — contracts for swapping in future ChatGPT-powered providers.
-- `docs/operations.md` — telemetry, rate limiting, and guardrail runbooks.
-- `docs/real_world_validation.md` — guide for validating with real OpenAI API calls.
-- `docs/api_contracts.md`, `docs/budget_schema.md`, `docs/ui_components_spec.md` — canonical API and UI schemas.
-
-### Architecture & Future Planning
-
-- `docs/architecture/README.md` — overview of current and planned architecture.
-- `docs/differentiation_analysis.md` — analysis of capabilities vs direct ChatGPT usage.
-
-### Historical / Archive
-
-- `docs/AI_integration_readiness.md` — historical snapshot of ChatGPT integration work (all complete).
-- `docs/archive/pre_integration_prompts.md` — historical record of the seven pre-integration workstreams.
+- [Deployment Guide](docs/vercel-deployment.md) — Complete Vercel deployment instructions
+- [Development Guide](docs/development.md) — Local development setup
+- [API Contracts](docs/api_contracts.md) — API documentation
+- [Budget Schema](docs/budget_schema.md) — Budget data format
+- [Architecture](docs/architecture/README.md) — System architecture overview
 
 ## Troubleshooting
 
-- **`Address already in use` when starting uvicorn** – another process already owns that
-  port. Identify and stop it via `lsof -i tcp:<PORT>` (e.g. `lsof -i tcp:8000`) before
-  restarting.
-- **`upstream_service_unavailable: Budget ingestion service is unavailable`** – the gateway
-  could not reach the ingestion service on port 8001. Make sure the ingestion server is
-  running and reachable before uploading a file.
-- **Need to reset API base in the UI** – use the API base switcher (top-right in the UI) or
-  set `NEXT_PUBLIC_LIFEPATH_API_BASE_URL` to the gateway URL.
+### Check Configuration
+
+Visit `/diagnostics` in your deployed app or check `/api/diagnostics/env` directly.
+
+### Common Issues
+
+**AI features not working:**
+- Verify `OPENAI_API_KEY` is set in Vercel environment variables
+- Check the diagnostics page for configuration status
+
+**Data not persisting:**
+- Set up Vercel Postgres and add `POSTGRES_URL`
+- Without Postgres, data is stored in memory (lost on cold starts)
+
+**Build errors:**
+- Ensure Root Directory is set to `services/ui-web`
+- Check Node.js version (requires 20+)
 
 ## Tests
 
-Each service has a focused test suite under `services/<name>/tests`.
-
 ```bash
-pytest services/api-gateway/tests
-pytest services/budget-ingestion-service/tests
-pytest services/clarification-service/tests
-pytest services/optimization-service/tests
+cd services/ui-web
+npm run test           # Unit tests
+npm run type-check     # TypeScript check
+npm run lint           # ESLint
+npm run test:e2e       # End-to-end tests
 ```
 
-### Continuous Integration
+## Legacy Services
 
-The repository uses GitHub Actions for CI. Every push to `main` and every pull request triggers:
-
-- **Linting**: ruff (format + lint), pyright (type checking), ESLint, Prettier
-- **Python tests**: pytest across all services (Python 3.11, 3.12, 3.13 matrix)
-- **UI tests**: vitest for the Next.js frontend
-- **Integration tests**: deterministic pipeline validation
-
-See `.github/workflows/ci.yml` for the full workflow and `docs/development.md` for local linting commands.
-
-### Deterministic pipeline tests
-
-To exercise the ingestion → clarification → optimization pipeline with fixture data (no UI required), run:
-
-```bash
-pytest tests/test_deterministic_pipeline.py
-```
-
-The test compares current responses to JSON snapshots stored in `tests/snapshots`. If intentional contract changes require new baselines, regenerate them with:
-
-```bash
-UPDATE_SNAPSHOTS=1 pytest tests/test_deterministic_pipeline.py
-```
-
-Review and commit the updated snapshot files afterward so future runs stay deterministic.
-
-### Real-world validation with OpenAI
-
-To validate the prototype with real ChatGPT/OpenAI API calls:
-
-1. **Ensure OpenAI credentials are configured** in `.env` (see [Environment configuration](#environment-configuration--secrets))
-
-2. **Start services with OpenAI providers enabled**:
-   ```bash
-   CLARIFICATION_PROVIDER=openai SUGGESTION_PROVIDER=openai npm run dev
-   ```
-
-3. **Run validation** using one of these methods:
-   
-   **Option A: Automated script (recommended)**
-   ```bash
-   # Python script (requires httpx)
-   python scripts/validate_real_world.py sample_budget.csv
-   
-   # Or bash script (requires jq and curl)
-   ./scripts/validate_real_world.sh sample_budget.csv
-   ```
-   
-   **Option B: Manual UI testing**
-   - Open http://localhost:3000
-   - Upload a budget file and step through the full flow
-   - Review questions, answers, and suggestions for quality
-   
-   **Option C: API testing**
-   - Use the API Gateway endpoints directly (see `docs/api_contracts.md`)
-   - Test with `curl` or your preferred HTTP client
-
-4. **Review the validation guide** for detailed checklists and troubleshooting:
-   ```bash
-   cat docs/real_world_validation.md
-   ```
-
-The validation scripts test the full pipeline: upload → clarification questions → answer submission → summary and suggestions. They generate JSON reports with timing, errors, and full response payloads for analysis.
-
-## Production Deployment
-
-### Frontend (Vercel)
-
-1. Go to [vercel.com/new](https://vercel.com/new)
-2. Import your GitHub repository
-3. Set **Root Directory** to `services/ui-web`
-4. Add environment variable: `NEXT_PUBLIC_LIFEPATH_API_BASE_URL` = your backend URL
-5. Deploy
-
-### Backend (Railway)
-
-1. Go to [railway.app](https://railway.app) and create a new project
-2. Deploy from your GitHub repo
-3. Add a PostgreSQL database
-4. Set environment variables:
-   - `GATEWAY_DB_URL` = PostgreSQL connection URL
-   - `GATEWAY_CORS_ORIGINS` = your Vercel URL
-   - `OPENAI_API_KEY` = your OpenAI key
-5. The start command uses `scripts/start-production.sh`
-
-For detailed deployment instructions, see `docs/deployment.md`.
+The Python microservices under `services/api-gateway`, `services/budget-ingestion-service`,
+`services/clarification-service`, and `services/optimization-service` are kept for reference
+but are no longer used in production. All functionality has been migrated to the Vercel
+serverless architecture.
