@@ -39,12 +39,15 @@ let auditEventId = 1;
 /**
  * Check if Vercel Postgres is available
  * Supports both POSTGRES_URL (Vercel Postgres) and DATABASE_URL (Prisma/other integrations)
+ * 
+ * Note: @vercel/postgres specifically looks for POSTGRES_URL, so we ensure it's set
  */
 function hasPostgres(): boolean {
-  // If DATABASE_URL is set but POSTGRES_URL is not, use DATABASE_URL
-  // This allows the app to work with Prisma integrations that set DATABASE_URL
+  // @vercel/postgres requires POSTGRES_URL specifically
+  // If only DATABASE_URL is set (from Prisma integration), copy it to POSTGRES_URL
   if (process.env.DATABASE_URL && !process.env.POSTGRES_URL) {
     process.env.POSTGRES_URL = process.env.DATABASE_URL;
+    console.log('[DB] Copied DATABASE_URL to POSTGRES_URL for @vercel/postgres compatibility');
   }
   return !!(process.env.POSTGRES_URL || process.env.DATABASE_URL);
 }
@@ -66,7 +69,23 @@ export async function initDatabase(): Promise<void> {
   console.log('[DB] Initializing database connection...');
   const startTime = Date.now();
 
+  // Log connection info (without exposing sensitive data)
+  const hasPostgresUrl = !!process.env.POSTGRES_URL;
+  const hasDatabaseUrl = !!process.env.DATABASE_URL;
+  const connectionUrl = process.env.POSTGRES_URL || process.env.DATABASE_URL;
+  const urlPreview = connectionUrl ? `${connectionUrl.substring(0, 20)}...` : 'none';
+  console.log('[DB] Connection info:', {
+    hasPostgresUrl,
+    hasDatabaseUrl,
+    urlPreview,
+    urlLength: connectionUrl?.length || 0,
+  });
+
   try {
+    // Test connection with a simple query first
+    await sql`SELECT 1 as test`;
+    console.log('[DB] Database connection test successful');
+
     await sql`
       CREATE TABLE IF NOT EXISTS budget_sessions (
         id VARCHAR(36) PRIMARY KEY,
@@ -98,18 +117,35 @@ export async function initDatabase(): Promise<void> {
     console.log(`[DB] Tables initialized successfully in ${duration}ms`);
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
-    console.error('[DB] Failed to initialize tables:', {
+    const errorCode = (error as any)?.code;
+    const errorDetails = {
       error: errorMessage,
+      errorCode,
       stack: error instanceof Error ? error.stack : undefined,
-      envVar: process.env.POSTGRES_URL ? 'POSTGRES_URL' : 'DATABASE_URL',
-    });
+      hasPostgresUrl,
+      hasDatabaseUrl,
+      urlPreview,
+    };
+    console.error('[DB] Failed to initialize tables:', errorDetails);
+    
+    // Provide more specific error messages based on error type
+    let userMessage = `Database initialization failed: ${errorMessage}`;
+    if (errorCode === 'ENOTFOUND' || errorMessage.includes('getaddrinfo')) {
+      userMessage = 'Database host not found. Check your DATABASE_URL or POSTGRES_URL connection string.';
+    } else if (errorCode === 'ECONNREFUSED' || errorMessage.includes('connection refused')) {
+      userMessage = 'Database connection refused. Check that your database is running and accessible.';
+    } else if (errorMessage.includes('password') || errorMessage.includes('authentication')) {
+      userMessage = 'Database authentication failed. Check your database credentials in DATABASE_URL or POSTGRES_URL.';
+    } else if (errorMessage.includes('does not exist') || errorMessage.includes('database')) {
+      userMessage = 'Database does not exist. Check your DATABASE_URL or POSTGRES_URL connection string.';
+    }
+    
     // Wrap the error with more context
-    const dbError = new Error(
-      `Database initialization failed: ${errorMessage}. Check your database connection string and permissions.`
-    );
+    const dbError = new Error(userMessage);
     if (error instanceof Error && error.stack) {
       dbError.stack = error.stack;
     }
+    (dbError as any).originalError = error;
     throw dbError;
   }
 }
