@@ -150,4 +150,6 @@ vite.config.ts.timestamp-*
 .venv/
 venv/
 ENV/
-env/
+/env/
+# Re-include API routes that use 'env' in the path
+!services/ui-web/src/app/api/diagnostics/env/
