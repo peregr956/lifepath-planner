@@ -5,6 +5,12 @@
  * For local development, it can fall back to in-memory storage.
  */
 
+// @vercel/postgres requires POSTGRES_URL, but Prisma integrations set DATABASE_URL
+// Set POSTGRES_URL from DATABASE_URL at module load time if needed
+if (process.env.DATABASE_URL && !process.env.POSTGRES_URL) {
+  process.env.POSTGRES_URL = process.env.DATABASE_URL;
+}
+
 import { sql } from '@vercel/postgres';
 
 // Types matching the SQLAlchemy models from the Python backend
@@ -40,15 +46,9 @@ let auditEventId = 1;
  * Check if Vercel Postgres is available
  * Supports both POSTGRES_URL (Vercel Postgres) and DATABASE_URL (Prisma/other integrations)
  * 
- * Note: @vercel/postgres specifically looks for POSTGRES_URL, so we ensure it's set
+ * Note: POSTGRES_URL is set from DATABASE_URL at module load time if needed
  */
 function hasPostgres(): boolean {
-  // @vercel/postgres requires POSTGRES_URL specifically
-  // If only DATABASE_URL is set (from Prisma integration), copy it to POSTGRES_URL
-  if (process.env.DATABASE_URL && !process.env.POSTGRES_URL) {
-    process.env.POSTGRES_URL = process.env.DATABASE_URL;
-    console.log('[DB] Copied DATABASE_URL to POSTGRES_URL for @vercel/postgres compatibility');
-  }
   return !!(process.env.POSTGRES_URL || process.env.DATABASE_URL);
 }
 
