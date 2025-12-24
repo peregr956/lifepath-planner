@@ -14,6 +14,8 @@ import type {
   Preferences, 
   Summary 
 } from './budgetModel';
+import { enrichBudgetModel } from './aiEnrichment';
+import { isAIEnabled } from './ai';
 
 // Default preferences
 const DEFAULT_PREFERENCES: Preferences = {
@@ -45,7 +47,10 @@ const DEBT_KEYWORDS = [
 /**
  * Convert a draft budget to a unified budget model
  */
-export function draftToUnifiedModel(draft: DraftBudgetModel): UnifiedBudgetModel {
+export async function draftToUnifiedModel(
+  draft: DraftBudgetModel,
+  enrich: boolean = true
+): Promise<UnifiedBudgetModel> {
   const income: Income[] = [];
   const expenses: Expense[] = [];
   const debts: Debt[] = [];
@@ -78,13 +83,20 @@ export function draftToUnifiedModel(draft: DraftBudgetModel): UnifiedBudgetModel
     surplus: total_income - total_expenses - debt_payments,
   };
 
-  return {
+  const model: UnifiedBudgetModel = {
     income,
     expenses,
     debts,
     preferences: { ...DEFAULT_PREFERENCES },
     summary,
   };
+
+  // Apply AI enrichment if requested and enabled
+  if (enrich && isAIEnabled()) {
+    return await enrichBudgetModel(model);
+  }
+
+  return model;
 }
 
 /**
