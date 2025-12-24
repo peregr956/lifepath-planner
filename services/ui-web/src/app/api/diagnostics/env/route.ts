@@ -51,6 +51,8 @@ export async function GET() {
     ['DATABASE_URL', true], // Check DATABASE_URL as well (used by Prisma integrations)
     ['VERCEL_ENV', false],
     ['VERCEL_URL', false],
+    ['VERCEL_AI_GATEWAY_ENABLED', false], // AI Gateway flag
+    ['NORMALIZATION_PROVIDER', false], // Budget normalization provider
   ];
 
   const requiredStatus = Object.fromEntries(

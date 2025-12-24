@@ -1,16 +1,54 @@
 /**
  * Shared helpers for configuring pluggable AI providers.
  * 
+ * Supports both direct OpenAI API and Vercel AI Gateway.
+ * 
  * Ported from services/shared/provider_settings.py
  */
 
 export const SUPPORTED_PROVIDERS = new Set(['deterministic', 'mock', 'openai']);
-export const REQUIRED_OPENAI_ENV_VARS = ['OPENAI_API_KEY', 'OPENAI_MODEL', 'OPENAI_API_BASE'];
+
+// Required env vars for OpenAI provider (OPENAI_API_BASE is optional with good defaults)
+export const REQUIRED_OPENAI_ENV_VARS = ['OPENAI_API_KEY'];
+
+// Default API base URLs
+export const DEFAULT_OPENAI_API_BASE = 'https://api.openai.com/v1';
+export const VERCEL_AI_GATEWAY_URL = 'https://gateway.ai.vercel.sh/v1';
+
+// Default model
+export const DEFAULT_OPENAI_MODEL = 'gpt-4o-mini';
 
 export interface OpenAIConfig {
   apiKey: string;
   model: string;
   apiBase: string;
+  isAIGateway: boolean;
+}
+
+/**
+ * Check if Vercel AI Gateway is enabled
+ */
+export function isAIGatewayEnabled(): boolean {
+  return process.env.VERCEL_AI_GATEWAY_ENABLED === 'true';
+}
+
+/**
+ * Get the appropriate API base URL
+ * - If OPENAI_API_BASE is explicitly set, use that
+ * - If VERCEL_AI_GATEWAY_ENABLED is true, use the AI Gateway URL
+ * - Otherwise, use the default OpenAI API URL
+ */
+export function getApiBase(): string {
+  const explicitBase = process.env.OPENAI_API_BASE?.trim();
+  if (explicitBase) {
+    return explicitBase;
+  }
+  
+  if (isAIGatewayEnabled()) {
+    return VERCEL_AI_GATEWAY_URL;
+  }
+  
+  return DEFAULT_OPENAI_API_BASE;
 }
 
 export interface ProviderSettings {
@@ -109,10 +147,36 @@ function buildOpenAIConfig(providerEnv: string): OpenAIConfig {
     );
   }
 
+  const apiBase = getApiBase();
+  const isGateway = isAIGatewayEnabled() || apiBase.includes('gateway');
+
   return {
     apiKey: (process.env.OPENAI_API_KEY || '').trim(),
-    model: (process.env.OPENAI_MODEL || '').trim(),
-    apiBase: (process.env.OPENAI_API_BASE || 'https://api.openai.com/v1').trim(),
+    model: (process.env.OPENAI_MODEL || DEFAULT_OPENAI_MODEL).trim(),
+    apiBase,
+    isAIGateway: isGateway,
+  };
+}
+
+/**
+ * Try to build OpenAI config without throwing errors.
+ * Returns undefined if required env vars are missing.
+ * This is useful for optional AI features that should gracefully degrade.
+ */
+export function tryBuildOpenAIConfig(): OpenAIConfig | undefined {
+  const apiKey = process.env.OPENAI_API_KEY?.trim();
+  if (!apiKey) {
+    return undefined;
+  }
+
+  const apiBase = getApiBase();
+  const isGateway = isAIGatewayEnabled() || apiBase.includes('gateway');
+
+  return {
+    apiKey,
+    model: (process.env.OPENAI_MODEL || DEFAULT_OPENAI_MODEL).trim(),
+    apiBase,
+    isAIGateway: isGateway,
   };
 }
 

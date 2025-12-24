@@ -2,7 +2,12 @@
  * Clarification Questions API Route
  * 
  * Generates clarification questions based on the draft budget.
- * Uses AI when available, falls back to deterministic questions.
+ * 
+ * Two-stage processing:
+ * 1. AI normalization: Correctly classifies amounts as income/expenses
+ * 2. Question generation: Creates clarification questions for the user
+ * 
+ * Uses AI when available, falls back to deterministic processing.
  * Ported from Python api-gateway + clarification-service.
  */
 
@@ -10,6 +15,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getSession, updateSessionPartial, getUserContext, initDatabase } from '@/lib/db';
 import { draftToUnifiedModel } from '@/lib/normalization';
 import { generateClarificationQuestions, getProviderMetadata } from '@/lib/ai';
+import { isNormalizationAIEnabled } from '@/lib/aiNormalization';
 import type { DraftBudgetModel } from '@/lib/parsers';
 
 // Initialize database on first request
@@ -58,9 +64,26 @@ export async function GET(request: NextRequest) {
     const userContext = getUserContext(session);
     const effectiveUserQuery = userQueryParam || userContext.user_query || '';
 
-    // Convert draft to unified model
+    // Convert draft to unified model (includes AI normalization)
     const draftBudget = session.draft as unknown as DraftBudgetModel;
+    const normalizationEnabled = isNormalizationAIEnabled();
+    
+    console.log(`[clarification-questions] Processing budget ${budgetId}`, {
+      lineCount: draftBudget.lines?.length || 0,
+      detectedFormat: draftBudget.detected_format,
+      normalizationEnabled,
+    });
+
     const unifiedModel = await draftToUnifiedModel(draftBudget);
+
+    console.log(`[clarification-questions] Budget normalized:`, {
+      incomeCount: unifiedModel.income.length,
+      expenseCount: unifiedModel.expenses.length,
+      debtCount: unifiedModel.debts.length,
+      totalIncome: unifiedModel.summary.total_income,
+      totalExpenses: unifiedModel.summary.total_expenses,
+      surplus: unifiedModel.summary.surplus,
+    });
 
     // Generate clarification questions
     const questions = await generateClarificationQuestions(
@@ -75,17 +98,25 @@ export async function GET(request: NextRequest) {
       budgetId,
       unifiedModel as unknown as Record<string, unknown>,
       sourceIp,
-      { question_count: questions.length }
+      { 
+        question_count: questions.length,
+        normalization_enabled: normalizationEnabled,
+      }
     );
 
     console.log(`[clarification-questions] Generated ${questions.length} questions for session ${budgetId}`);
 
+    const providerMetadata = getProviderMetadata();
+    
     return NextResponse.json({
       budget_id: budgetId,
       needs_clarification: questions.length > 0,
       questions,
       partial_model: unifiedModel,
-      provider_metadata: getProviderMetadata(),
+      provider_metadata: {
+        ...providerMetadata,
+        normalization_enabled: normalizationEnabled,
+      },
     });
   } catch (error) {
     console.error('[clarification-questions] Unexpected error:', error);
