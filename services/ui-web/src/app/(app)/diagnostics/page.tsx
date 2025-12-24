@@ -18,6 +18,13 @@ type DiagnosticInfo = {
     status: 'checking' | 'success' | 'error';
     message?: string;
   };
+  providerStatus: {
+    status: 'checking' | 'success' | 'error' | 'not_checked';
+    message?: string;
+    clarificationProvider?: string;
+    suggestionProvider?: string;
+    aiEnabled?: boolean;
+  };
 };
 
 export default function DiagnosticsPage() {
@@ -29,6 +36,7 @@ export default function DiagnosticsPage() {
     envVars: {},
     apiHealth: { status: 'checking' },
     corsTest: { status: 'checking' },
+    providerStatus: { status: 'not_checked' },
   });
 
   useEffect(() => {
@@ -138,7 +146,25 @@ export default function DiagnosticsPage() {
       }
     };
 
-    testApiHealthAndCors();
+    // Test API health and CORS, then check provider status
+    const runDiagnostics = async () => {
+      await testApiHealthAndCors();
+      
+      // Check provider status (note: provider metadata is only available in responses that require a budget_id)
+      setDiagnostics((prev) => ({
+        ...prev,
+        providerStatus: {
+          status: 'success',
+          message:
+            'Provider status is determined by Railway environment variables. Check Railway logs or API responses to verify.',
+          clarificationProvider: 'Check Railway logs',
+          suggestionProvider: 'Check Railway logs',
+          aiEnabled: undefined,
+        },
+      }));
+    };
+
+    runDiagnostics();
   }, [activeApiBase, candidates]);
 
   return (
@@ -280,6 +306,68 @@ export default function DiagnosticsPage() {
                 </div>
               </div>
             </div>
+          )}
+        </div>
+      </div>
+
+      {/* Provider Status */}
+      <div className="card">
+        <h3 className="text-xl font-semibold text-white mb-4">Backend Provider Status</h3>
+        <div className="space-y-2">
+          {diagnostics.providerStatus.status === 'not_checked' && (
+            <div className="text-white/70">Provider status check not started</div>
+          )}
+          {diagnostics.providerStatus.status === 'checking' && (
+            <div className="text-white/70">Checking provider configuration...</div>
+          )}
+          {diagnostics.providerStatus.status === 'success' && (
+            <div>
+              <div className="text-sm text-white/70 mb-3">
+                {diagnostics.providerStatus.message}
+              </div>
+              <div className="space-y-2 text-sm">
+                <div>
+                  <span className="text-white/50">To verify OpenAI is enabled:</span>
+                </div>
+                <ol className="list-decimal list-inside space-y-2 text-white/80 ml-2">
+                  <li>
+                    <strong className="text-white">Check Railway Logs:</strong> Look for messages
+                    like &quot;Initialized clarification provider: openai&quot; and &quot;Initialized
+                    suggestion provider: openai&quot;
+                  </li>
+                  <li>
+                    <strong className="text-white">Check API Responses:</strong> When you use the
+                    app, the API returns `provider_metadata` in responses. Look for:
+                    <pre className="bg-white/5 p-2 rounded mt-1 text-xs overflow-auto">
+                      {JSON.stringify(
+                        {
+                          provider_metadata: {
+                            clarification_provider: 'openai',
+                            suggestion_provider: 'openai',
+                            ai_enabled: true,
+                          },
+                        },
+                        null,
+                        2,
+                      )}
+                    </pre>
+                  </li>
+                </ol>
+                <div className="mt-3 p-2 bg-amber-500/10 border border-amber-500/30 rounded">
+                  <div className="text-amber-300 font-semibold mb-1">Required Railway Variables:</div>
+                  <ul className="text-xs text-white/80 space-y-1 font-mono">
+                    <li>CLARIFICATION_PROVIDER=openai</li>
+                    <li>SUGGESTION_PROVIDER=openai</li>
+                    <li>OPENAI_API_KEY=sk-...</li>
+                    <li>OPENAI_MODEL=gpt-4o-mini</li>
+                    <li>OPENAI_API_BASE=https://api.openai.com/v1</li>
+                  </ul>
+                </div>
+              </div>
+            </div>
+          )}
+          {diagnostics.providerStatus.status === 'error' && (
+            <div className="text-red-400">✗ {diagnostics.providerStatus.message}</div>
           )}
         </div>
       </div>
