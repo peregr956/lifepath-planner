@@ -1,6 +1,6 @@
 #!/bin/bash
-# Production startup script for Railway/Render deployment
-# Starts all Python services with proper configuration
+# Local production startup script
+# Starts all Python services with proper configuration for local testing
 
 set -e
 
@@ -11,7 +11,7 @@ PROJECT_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 # Include all service src directories and shared code
 export PYTHONPATH="${PROJECT_ROOT}/services/api-gateway/src:${PROJECT_ROOT}/services/budget-ingestion-service/src:${PROJECT_ROOT}/services/clarification-service/src:${PROJECT_ROOT}/services/optimization-service/src:${PROJECT_ROOT}/services/shared:${PROJECT_ROOT}/services:${PYTHONPATH}"
 
-# Default ports (Railway provides PORT env var for the main service)
+# Default ports (PORT env var for the main service)
 GATEWAY_PORT="${PORT:-8000}"
 INGESTION_PORT="${INGESTION_PORT:-8001}"
 CLARIFICATION_PORT="${CLARIFICATION_PORT:-8002}"

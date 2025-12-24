@@ -114,8 +114,8 @@ export default function UploadPage() {
                 mutation.error.message.includes('localhost') ||
                 mutation.error.message.includes('127.0.0.1')) && (
                 <p className="mt-2 text-xs text-red-200/70">
-                  Tip: Make sure the API server is running and configured correctly. In production,
-                  ensure NEXT_PUBLIC_LIFEPATH_API_BASE_URL is set.
+                  Tip: Make sure the API is working correctly. Check Vercel logs for any server-side
+                  errors. In local development, ensure the server is running.
                 </p>
               )}
           </div>

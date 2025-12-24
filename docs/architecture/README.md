@@ -10,9 +10,10 @@ This directory contains architecture designs for LifePath Planner, including bot
 
 ### What's Implemented
 
-The MVP includes:
-- Multi-service architecture (Gateway, Ingestion, Clarification, Optimization)
-- Budget session persistence with audit trails (BudgetSession, AuditEvent)
+The current version uses a **fully serverless architecture on Vercel**:
+- **Single Next.js application** hosting both frontend and backend API
+- **Vercel Serverless Functions** (API Routes) for all logic
+- **Vercel Postgres** for persistent session storage
 - AI-powered clarification and suggestions via OpenAI
 - Deterministic calculations for reliable math
 - Next.js UI with dynamic form generation
@@ -51,35 +52,28 @@ The documents below describe features designed to differentiate from ChatGPT:
 
 ## System Architecture
 
-### Currently Implemented
+### Currently Implemented (Vercel Serverless)
 
 ```
 ┌────────────────────────────────────────────────────────────────────────────┐
-│                              Client Layer                                   │
-│  ┌──────────────────────────────────────────────────────────────────────┐ │
-│  │                        Next.js UI (Port 3000)                         │ │
-│  │  • Budget Upload    • Clarification UI   • Summary View              │ │
-│  └──────────────────────────────────────────────────────────────────────┘ │
+│                              Vercel Platform                                │
+│                                                                            │
+│  Next.js Application                                                       │
+│  ┌────────────────────────┐    ┌────────────────────────────────────────┐  │
+│  │       Frontend         │───▶│      API Routes (Serverless)          │  │
+│  │  • Budget Upload       │    │  • /api/upload-budget                 │  │
+│  │  • Clarification UI    │    │  • /api/clarification-questions       │  │
+│  │  • Summary View        │    │  • /api/submit-answers                │  │
+│  └────────────────────────┘    │  • /api/summary-and-suggestions       │  │
+│                                └────────────────────────────────────────┘  │
+│                                              │                             │
+│                                              ▼                             │
+│                                ┌────────────────────────────────────────┐  │
+│                                │            External Services           │  │
+│                                │  • OpenAI API (Clarify & Suggestions)  │  │
+│                                │  • Vercel Postgres (Persistence)       │  │
+│                                └────────────────────────────────────────┘  │
 └────────────────────────────────────────────────────────────────────────────┘
-                                      │
-                                      ▼
-┌────────────────────────────────────────────────────────────────────────────┐
-│                            API Gateway (Port 8000)                          │
-│  ┌────────────────┐  ┌────────────────────────────────────────────────┐   │
-│  │ Budget Routes  │  │ Persistence: BudgetSessions + AuditEvents      │   │
-│  └────────────────┘  └────────────────────────────────────────────────┘   │
-└────────────────────────────────────────────────────────────────────────────┘
-          │                    │                    │
-          ▼                    ▼                    ▼
-┌─────────────────┐ ┌─────────────────┐ ┌─────────────────┐
-│    Ingestion    │ │  Clarification  │ │  Optimization   │
-│   (Port 8001)   │ │   (Port 8002)   │ │   (Port 8003)   │
-│                 │ │                 │ │                 │
-│ • CSV Parser    │ │ • AI Normalize  │ │ • Suggestions   │
-│ • XLSX Parser   │ │ • Question Gen  │ │ • Heuristics    │
-│ • Format Detect │ │ • Normalization │ │ • OpenAI Prov.  │
-│                 │ │ • OpenAI Prov.  │ │                 │
-└─────────────────┘ └─────────────────┘ └─────────────────┘
 ```
 
 ### Future Architecture (Proposed)
@@ -278,14 +272,13 @@ SavedScenario
 
 ## Technical Decisions
 
-### Why Separate Services?
+### Why Serverless Architecture?
 
-Each differentiation feature is designed as a logical module that could become a separate service:
-- **Projection Service** - Compute-intensive, benefits from isolation
-- **Goal Service** - Complex state management, own data access patterns
-- **Scenario Engine** - Combines projection + comparison logic
-
-For MVP, these can be implemented within the API Gateway and extracted later if needed.
+The app was migrated from a multi-service Python architecture to Vercel Serverless Functions to:
+- **Eliminate CORS issues** by using a same-origin API
+- **Simplify deployment** to a single platform
+- **Reduce costs** by using pay-per-execution instead of idle servers
+- **Improve scaling** automatically with Vercel's infrastructure
 
 ### Why AI Budget Normalization?
 

@@ -1,6 +1,8 @@
 # Development Guide
 
-This document describes the package structure, import conventions, and development workflow for LifePath Planner.
+> **Note:** The Python services described here are now legacy and the production app has migrated to a **Vercel serverless architecture**. For current production development, focus on the `services/ui-web` directory.
+
+This document describes the package structure, import conventions, and development workflow for the legacy Python microservices.
 
 ## Package Structure
 
