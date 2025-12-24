@@ -82,47 +82,94 @@ NORMALIZATION_SCHEMA = {
 
 SYSTEM_PROMPT = """You are a financial data analyst that normalizes budget data into a standard format.
 
-Your task is to analyze raw budget data and normalize the amounts so that:
-- INCOME (money coming in) = POSITIVE numbers
-- EXPENSES (money going out) = NEGATIVE numbers
-- DEBT PAYMENTS = NEGATIVE numbers (they are outflows)
-- SAVINGS CONTRIBUTIONS = NEGATIVE numbers (they are outflows from spending budget)
-- TRANSFERS = Can be positive or negative depending on direction
+## Your Task
 
-CRITICAL RULES:
-1. Preserve the original source_row_index for each line - this is essential for traceability
-2. Analyze the category labels and descriptions to determine if each item is income or expense
-3. Common INCOME indicators: salary, wages, paycheck, income, deposit, revenue, bonus, refund
-4. Common EXPENSE indicators: rent, mortgage, groceries, utilities, bills, payment, subscription, insurance
-5. Common DEBT indicators: loan payment, credit card, student loan, car payment, debt
-6. Common SAVINGS indicators: 401k, retirement, savings, investment, IRA, HSA
-7. If amounts are already correctly signed (income positive, expenses negative), keep them as-is
-8. If all amounts are positive but the budget has expenses, negate the expense amounts
-9. Use the category_label and description to make classification decisions
+Analyze raw budget data and normalize amounts to a consistent format:
+- **INCOME** (money coming in) = **POSITIVE** numbers
+- **EXPENSES** (money going out) = **NEGATIVE** numbers
+- **DEBT PAYMENTS** = **NEGATIVE** numbers (outflows)
+- **SAVINGS/INVESTMENTS** = **NEGATIVE** numbers (outflows from spending budget)
+- **TRANSFERS** = Depends on direction (positive = money in, negative = money out)
 
-IMPORTANT: Look at the semantic meaning of each line. A "Salary" of 5000 should be +5000.
-A "Rent" of 1800 should be -1800 even if the input shows it as positive.
+## Examples
+
+**Example 1: All positive input (common format)**
+Input:
+- Salary: 5000
+- Rent: 1800
+- Groceries: 450
+
+Normalized:
+- Salary: +5000 (income)
+- Rent: -1800 (expense)
+- Groceries: -450 (expense)
+
+**Example 2: Already signed correctly**
+Input:
+- Salary: 5000
+- Rent: -1800
+- Groceries: -450
+
+Normalized: Keep as-is, amounts are already correct.
+
+**Example 3: Mixed with debt and savings**
+Input:
+- Paycheck: 4200
+- 401k: 400
+- Student Loan Payment: 250
+- Credit Card: 150
+- Emergency Fund: 300
+
+Normalized:
+- Paycheck: +4200 (income)
+- 401k: -400 (savings)
+- Student Loan Payment: -250 (debt_payment)
+- Credit Card: -150 (debt_payment)
+- Emergency Fund: -300 (savings)
+
+## Classification Guidelines
+
+**INCOME indicators:** salary, wages, paycheck, income, deposit, revenue, bonus, refund, side income, freelance, interest earned
+
+**EXPENSE indicators:** rent, mortgage, groceries, utilities, bills, insurance, gas, food, dining, phone, internet, entertainment, subscriptions, personal, clothing, health, gym
+
+**DEBT indicators:** loan payment, credit card, student loan, car payment, debt, personal loan, auto payment
+
+**SAVINGS indicators:** 401k, retirement, savings, investment, IRA, HSA, emergency fund, brokerage, Roth
+
+## Important
+
+1. **Always preserve source_row_index** - this is essential for traceability
+2. **Look at semantic meaning** - "Salary of 5000" is income even if the file uses all positives
+3. **When in doubt**, use the category label to guide classification
+4. **Provide normalization notes** explaining your decisions
 
 Return the normalized data in the exact schema specified."""
 
-USER_PROMPT_TEMPLATE = """Analyze and normalize this budget data:
+USER_PROMPT_TEMPLATE = """Please normalize this budget data so income is positive and expenses are negative.
 
-## Detected Format
-{detected_format}
+## Format Information
+- Detected format: {detected_format}
+- Notes: {format_notes}
 
-## Format Notes
-{format_notes}
+## Data Analysis
+- Total lines: {line_count}
+- Positive amounts: {positive_count}
+- Negative amounts: {negative_count}
+- Zero amounts: {zero_count}
 
-## Budget Lines ({line_count} items)
+{format_guidance}
+
+## Budget Lines
 {lines_section}
 
-## Raw Data Summary
-- Lines with positive amounts: {positive_count}
-- Lines with negative amounts: {negative_count}
-- Lines with zero amounts: {zero_count}
+---
 
-Normalize all amounts so income is positive and expenses/debt are negative.
-Preserve the exact source_row_index for each line."""
+Normalize each line:
+1. Classify as income, expense, debt_payment, savings, or transfer
+2. Set the amount sign correctly (income positive, others negative)
+3. Preserve the exact source_row_index
+4. Provide brief notes explaining your classification decisions"""
 
 
 def _format_lines_section(lines: list[RawBudgetLine]) -> str:
@@ -153,6 +200,14 @@ def _build_user_prompt(draft: DraftBudgetModel) -> str:
     positive_count = sum(1 for line in draft.lines if line.amount > 0)
     negative_count = sum(1 for line in draft.lines if line.amount < 0)
     zero_count = sum(1 for line in draft.lines if line.amount == 0)
+    
+    # Provide format-specific guidance
+    if negative_count == 0 and positive_count > 0:
+        format_guidance = """**Important:** All amounts are positive. This likely means expenses need to be negated based on category labels. Look at each category and determine if it's income or expense."""
+    elif negative_count > 0 and positive_count > 0:
+        format_guidance = """**Note:** Budget has mixed positive and negative amounts. Check if the signs are already correct (income positive, expenses negative) or if adjustments are needed."""
+    else:
+        format_guidance = """**Note:** Review each line carefully and classify based on category labels."""
 
     return USER_PROMPT_TEMPLATE.format(
         detected_format=draft.detected_format,
@@ -162,6 +217,7 @@ def _build_user_prompt(draft: DraftBudgetModel) -> str:
         positive_count=positive_count,
         negative_count=negative_count,
         zero_count=zero_count,
+        format_guidance=format_guidance,
     )
 
 
@@ -216,8 +272,8 @@ class OpenAIBudgetNormalizationProvider:
         else:
             self._client = None
             self._model = None
-            self._temperature = 0.1  # Low temperature for consistent normalization
-            self._max_tokens = 2048  # Larger to handle full budget data
+            self._temperature = 0.3  # Slightly higher for better classification decisions
+            self._max_tokens = 4096  # Increased for larger budgets
 
     def normalize(self, request: NormalizationProviderRequest) -> NormalizationProviderResponse:
         """
