@@ -451,25 +451,182 @@ class OpenAIBudgetNormalizationProvider:
 
 class DeterministicBudgetNormalizationProvider:
     """
-    Deterministic fallback provider that preserves original amounts.
+    Deterministic fallback provider with keyword-based heuristic normalization.
 
-    This provider does not modify the budget data - it passes through the
-    original amounts unchanged. Use this when AI normalization is not available
-    or not desired.
+    This provider uses keyword matching to classify budget lines as income or expenses
+    when AI normalization is not available. For all-positive budgets, this correctly
+    identifies expenses by their category labels (e.g., "Rent", "Groceries").
+
+    CRITICAL: For all-positive budgets, unknown categories default to EXPENSES
+    (not income) since most budget lines are expenses.
     """
 
     name = "deterministic"
 
+    # Keywords that indicate income
+    # NOTE: Avoid short patterns like "pay" that match unintended words (e.g., "car payment", "copay")
+    INCOME_KEYWORDS = frozenset([
+        "salary", "wages", "income", "paycheck", "earnings",
+        "freelance", "bonus", "commission", "dividend", "interest earned",
+        "rental income", "pension", "social security", "disability",
+        "refund", "revenue", "side gig", "side hustle",
+    ])
+
+    # Keywords that indicate expenses
+    EXPENSE_KEYWORDS = frozenset([
+        "rent", "mortgage", "housing", "utilities", "electric", "gas",
+        "water", "insurance", "health", "medical", "groceries", "food",
+        "transportation", "car payment", "childcare", "education",
+        "subscription", "entertainment", "dining", "shopping", "travel",
+        "phone", "internet", "cable", "gym", "personal", "clothing",
+        "pet", "household", "maintenance", "repair",
+    ])
+
+    # Keywords that indicate debt payments
+    DEBT_KEYWORDS = frozenset([
+        "credit card", "loan", "student loan", "car loan", "personal loan",
+        "line of credit", "finance", "debt", "auto payment",
+    ])
+
+    # Keywords that indicate savings (treated as expense outflow)
+    SAVINGS_KEYWORDS = frozenset([
+        "401k", "retirement", "savings", "investment", "ira", "hsa",
+        "emergency fund", "brokerage", "roth",
+    ])
+
+    def _classify_category(self, category: str) -> str:
+        """
+        Classify a category label as income, expense, debt_payment, or savings.
+
+        Returns one of: 'income', 'expense', 'debt_payment', 'savings', 'unknown'
+        """
+        lower = category.lower().strip()
+
+        # Check income first (most specific)
+        for keyword in self.INCOME_KEYWORDS:
+            if keyword in lower:
+                return "income"
+
+        # Check debt (before general expense check)
+        for keyword in self.DEBT_KEYWORDS:
+            if keyword in lower:
+                return "debt_payment"
+
+        # Check savings
+        for keyword in self.SAVINGS_KEYWORDS:
+            if keyword in lower:
+                return "savings"
+
+        # Check expenses
+        for keyword in self.EXPENSE_KEYWORDS:
+            if keyword in lower:
+                return "expense"
+
+        return "unknown"
+
     def normalize(self, request: NormalizationProviderRequest) -> NormalizationProviderResponse:
-        """Pass through the draft budget unchanged."""
+        """
+        Normalize budget using keyword-based heuristics.
+
+        For all-positive budgets, this uses keyword matching to classify lines.
+        Unknown positive amounts default to EXPENSES (not income) since most
+        budget lines are expenses.
+        """
         draft = request.draft
 
-        income_count = sum(1 for line in draft.lines if line.amount > 0)
-        expense_count = sum(1 for line in draft.lines if line.amount < 0)
+        # Check if this is an all-positive budget that needs heuristic normalization
+        positive_count = sum(1 for line in draft.lines if line.amount > 0)
+        negative_count = sum(1 for line in draft.lines if line.amount < 0)
+        all_positive = negative_count == 0 and positive_count > 0
+
+        if all_positive:
+            # Apply keyword-based normalization for all-positive budgets
+            return self._normalize_all_positive(draft)
+        else:
+            # Budget already has signs - pass through
+            return self._passthrough(draft, positive_count, negative_count)
+
+    def _normalize_all_positive(self, draft: DraftBudgetModel) -> NormalizationProviderResponse:
+        """
+        Normalize an all-positive budget using keyword-based heuristics.
+
+        CRITICAL: Unknown categories default to EXPENSES (not income).
+        """
+        normalized_lines: list[RawBudgetLine] = []
+        income_count = 0
+        expense_count = 0
+        debt_count = 0
+
+        for line in draft.lines:
+            category = line.category_label or ""
+            line_type = self._classify_category(category)
+
+            # Determine the correct sign for the amount
+            if line_type == "income":
+                # Income stays positive
+                normalized_amount = abs(line.amount)
+                income_count += 1
+            else:
+                # Everything else (expense, debt, savings, unknown) becomes negative
+                normalized_amount = -abs(line.amount)
+                if line_type == "debt_payment":
+                    debt_count += 1
+                else:
+                    expense_count += 1
+
+            # Create normalized line with metadata
+            normalized_line = RawBudgetLine(
+                source_row_index=line.source_row_index,
+                date=line.date,
+                category_label=line.category_label,
+                description=line.description,
+                amount=normalized_amount,
+                metadata={
+                    **line.metadata,
+                    "ai_line_type": line_type if line_type != "unknown" else "expense",
+                    "original_amount": line.amount,
+                    "heuristic_classification": True,
+                },
+            )
+            normalized_lines.append(normalized_line)
+
+        # Create normalized draft
+        normalized_draft = DraftBudgetModel(
+            lines=normalized_lines,
+            detected_format=draft.detected_format,
+            notes=draft.notes,
+            format_hints={
+                **(draft.format_hints or {}),
+                "heuristic_normalized": True,
+                "original_all_positive": True,
+            },
+        )
 
         logger.info(
             {
-                "event": "deterministic_normalization",
+                "event": "heuristic_normalization",
+                "provider": self.name,
+                "line_count": len(draft.lines),
+                "income_count": income_count,
+                "expense_count": expense_count,
+                "debt_count": debt_count,
+                "note": "All-positive budget normalized using keyword heuristics",
+            }
+        )
+
+        return NormalizationProviderResponse(
+            normalized_draft=normalized_draft,
+            income_count=income_count,
+            expense_count=expense_count,
+            debt_count=debt_count,
+            notes="Heuristic normalization for all-positive budget - unknown categories treated as expenses",
+        )
+
+    def _passthrough(self, draft: DraftBudgetModel, income_count: int, expense_count: int) -> NormalizationProviderResponse:
+        """Pass through budget with existing signs."""
+        logger.info(
+            {
+                "event": "deterministic_passthrough",
                 "provider": self.name,
                 "line_count": len(draft.lines),
                 "income_count": income_count,
@@ -482,5 +639,5 @@ class DeterministicBudgetNormalizationProvider:
             income_count=income_count,
             expense_count=expense_count,
             debt_count=0,
-            notes="Deterministic passthrough - amounts unchanged",
+            notes="Deterministic passthrough - budget already has correct signs",
         )

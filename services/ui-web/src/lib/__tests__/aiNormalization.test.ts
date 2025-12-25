@@ -94,7 +94,7 @@ describe('aiNormalization', () => {
       expect(result.expenseCount).toBe(2); // negative amounts
     });
 
-    it('preserves all lines in passthrough mode', async () => {
+    it('applies heuristic normalization for all-positive budgets', async () => {
       const draft: DraftBudgetModel = {
         lines: [
           createBudgetLine(1, 'Salary', 5000),
@@ -112,14 +112,23 @@ describe('aiNormalization', () => {
       // All lines should be preserved
       expect(result.normalizedDraft.lines).toHaveLength(4);
       
-      // In passthrough mode, amounts are unchanged
-      expect(result.normalizedDraft.lines[0].amount).toBe(5000);
-      expect(result.normalizedDraft.lines[1].amount).toBe(1800);
+      // With heuristic normalization for all-positive budgets:
+      // - Salary stays positive (income keyword)
+      // - Rent, Groceries, Utilities become negative (expense keywords)
+      expect(result.normalizedDraft.lines[0].amount).toBe(5000); // Income stays positive
+      expect(result.normalizedDraft.lines[1].amount).toBe(-1800); // Rent becomes negative
+      expect(result.normalizedDraft.lines[2].amount).toBe(-500); // Groceries becomes negative
+      expect(result.normalizedDraft.lines[3].amount).toBe(-200); // Utilities becomes negative
+      
+      // Should correctly classify
+      expect(result.incomeCount).toBe(1);
+      expect(result.expenseCount).toBe(3);
+      expect(result.providerUsed).toBe('deterministic_heuristic');
     });
   });
 
   describe('integration with normalization', () => {
-    it('should classify positive amounts with expense-like categories as expenses', async () => {
+    it('should classify positive amounts with expense-like categories as expenses using heuristics', async () => {
       // This tests the scenario described in the bug:
       // Budget has all positive amounts but some are clearly expenses
       const draft: DraftBudgetModel = {
@@ -127,7 +136,7 @@ describe('aiNormalization', () => {
           createBudgetLine(1, 'Monthly Salary', 5000),
           createBudgetLine(2, 'Rent Payment', 1800), // Should be expense
           createBudgetLine(3, 'Groceries', 500), // Should be expense
-          createBudgetLine(4, 'Netflix Subscription', 15), // Should be expense
+          createBudgetLine(4, 'Subscription', 15), // Should be expense (unknown defaults to expense)
           createBudgetLine(5, 'Freelance Income', 1000),
         ],
         detected_format: 'categorical',
@@ -135,19 +144,22 @@ describe('aiNormalization', () => {
         format_hints: null,
       };
 
-      // In passthrough mode (no AI), we can't fix this
-      // But the normalization.ts draftToUnifiedModel should use keywords
+      // With heuristic normalization, should correctly classify using keywords
       const result = await normalizeDraftBudget(draft);
       
-      // Without AI, passthrough counts by sign
-      // All are positive, so all would be "income" by sign
-      expect(result.incomeCount).toBe(5);
-      expect(result.expenseCount).toBe(0);
+      // Heuristic normalization correctly classifies:
+      // - Salary, Freelance Income -> income (positive) - matches "salary" and "income" keywords
+      // - Rent, Groceries -> expenses (negative) - matches "rent" and "groceries" keywords
+      // - Subscription -> expense (negative) - matches "subscription" keyword
+      expect(result.incomeCount).toBe(2);
+      expect(result.expenseCount).toBe(3);
       
-      // This is the problem the AI normalization solves!
-      // When AI is enabled, it should correctly classify:
-      // - Salary, Freelance Income -> income (positive)
-      // - Rent, Groceries, Netflix -> expenses (negative)
+      // Verify amounts are correctly signed
+      const lines = result.normalizedDraft.lines;
+      expect(lines.find(l => l.category_label === 'Monthly Salary')?.amount).toBe(5000);
+      expect(lines.find(l => l.category_label === 'Rent Payment')?.amount).toBe(-1800);
+      expect(lines.find(l => l.category_label === 'Groceries')?.amount).toBe(-500);
+      expect(lines.find(l => l.category_label === 'Freelance Income')?.amount).toBe(1000);
     });
   });
 });
