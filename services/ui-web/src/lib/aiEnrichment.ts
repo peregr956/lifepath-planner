@@ -159,12 +159,13 @@ export async function enrichBudgetModel(model: UnifiedBudgetModel): Promise<Unif
             // Check if this debt already exists (avoid duplicates)
             const exists = enriched.debts.some(d => d.name === (debtDet.debt_name || exp.category));
             if (!exists) {
+              // Note: Expenses are stored as POSITIVE values (matching Python convention)
               enriched.debts.push({
                 id: `debt-detected-${exp.id}`,
                 name: debtDet.debt_name || exp.category,
                 balance: 0,
                 interest_rate: 0,
-                min_payment: Math.abs(exp.monthly_amount),
+                min_payment: exp.monthly_amount,
                 priority: 'medium',
                 approximate: true,
                 rate_changes: null,

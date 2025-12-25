@@ -45,11 +45,12 @@ vi.mock('../providerSettings', () => ({
 }));
 
 describe('enrichBudgetModel', () => {
+  // Note: Expenses are now stored as POSITIVE values (matching Python convention)
   const mockModel: UnifiedBudgetModel = {
     income: [{ id: 'inc-1', name: 'Salary', monthly_amount: 5000, type: 'earned', stability: 'stable' }],
     expenses: [
-      { id: 'exp-1', category: 'Rent', monthly_amount: -2000, essential: null, notes: null },
-      { id: 'exp-2', category: 'Visa Card', monthly_amount: -500, essential: null, notes: null }
+      { id: 'exp-1', category: 'Rent', monthly_amount: 2000, essential: null, notes: null },
+      { id: 'exp-2', category: 'Visa Card', monthly_amount: 500, essential: null, notes: null }
     ],
     debts: [],
     preferences: { optimization_focus: 'balanced', protect_essentials: true, max_desired_change_per_category: 0.25 },

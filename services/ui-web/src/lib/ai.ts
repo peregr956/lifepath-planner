@@ -251,7 +251,7 @@ function buildClarificationPrompt(model: UnifiedBudgetModel, userQuery: string):
   const expenseSection = model.expenses.length > 0
     ? model.expenses.map(exp => {
         const essentialStr = exp.essential === true ? 'essential' : exp.essential === false ? 'flexible' : 'unknown';
-        return `- ${exp.category} [ID: ${exp.id}]: $${Math.abs(exp.monthly_amount).toLocaleString()}/mo (essential=${essentialStr})`;
+        return `- ${exp.category} [ID: ${exp.id}]: $${exp.monthly_amount.toLocaleString()}/mo (essential=${essentialStr})`;
       }).join('\n')
     : 'No expenses detected.';
 
@@ -339,8 +339,9 @@ function buildGoalContext(goalType: GoalType, model: UnifiedBudgetModel): string
   if (!goalType) return '';
   
   const surplus = model.summary.surplus;
-  const essentialExpenses = model.expenses.filter(e => e.essential).reduce((sum, e) => sum + Math.abs(e.monthly_amount), 0);
-  const flexibleExpenses = model.expenses.filter(e => !e.essential).reduce((sum, e) => sum + Math.abs(e.monthly_amount), 0);
+  // Note: Expenses are stored as POSITIVE values (matching Python convention)
+  const essentialExpenses = model.expenses.filter(e => e.essential).reduce((sum, e) => sum + e.monthly_amount, 0);
+  const flexibleExpenses = model.expenses.filter(e => !e.essential).reduce((sum, e) => sum + e.monthly_amount, 0);
   
   const lines: string[] = ['\n## GOAL-SPECIFIC CONTEXT (Use this to provide targeted advice)'];
   
@@ -421,9 +422,9 @@ function buildSuggestionPrompt(
   const flexibleExpenses = model.expenses.filter(e => !e.essential);
 
   let expenseSection = 'Essential:\n';
-  expenseSection += essentialExpenses.map(exp => `  - ${exp.category}: $${Math.abs(exp.monthly_amount).toLocaleString()}/mo`).join('\n');
+  expenseSection += essentialExpenses.map(exp => `  - ${exp.category}: $${exp.monthly_amount.toLocaleString()}/mo`).join('\n');
   expenseSection += '\nFlexible:\n';
-  expenseSection += flexibleExpenses.map(exp => `  - ${exp.category}: $${Math.abs(exp.monthly_amount).toLocaleString()}/mo`).join('\n');
+  expenseSection += flexibleExpenses.map(exp => `  - ${exp.category}: $${exp.monthly_amount.toLocaleString()}/mo`).join('\n');
 
   const debtSection = model.debts.length > 0
     ? model.debts.map(debt => {
@@ -818,8 +819,9 @@ function generateDeterministicSuggestions(model: UnifiedBudgetModel): Suggestion
   }
 
   // Suggestion for flexible expense reduction
+  // Note: Expenses are stored as POSITIVE values (matching Python convention)
   const flexibleExpenses = model.expenses.filter(e => !e.essential);
-  const totalFlexible = flexibleExpenses.reduce((sum, e) => sum + Math.abs(e.monthly_amount), 0);
+  const totalFlexible = flexibleExpenses.reduce((sum, e) => sum + e.monthly_amount, 0);
   if (totalFlexible > 0) {
     suggestions.push({
       id: 'reduce-flexible',
