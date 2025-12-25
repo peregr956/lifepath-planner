@@ -105,10 +105,12 @@ export function createDefaultPreferences(): Preferences {
 
 /**
  * Compute summary from model
+ * 
+ * Note: Expenses are stored as POSITIVE values (matching Python convention)
  */
 export function computeSummary(model: UnifiedBudgetModel): Summary {
   const total_income = model.income.reduce((sum, inc) => sum + inc.monthly_amount, 0);
-  const total_expenses = model.expenses.reduce((sum, exp) => sum + Math.abs(exp.monthly_amount), 0);
+  const total_expenses = model.expenses.reduce((sum, exp) => sum + exp.monthly_amount, 0);
   const debt_payments = model.debts.reduce((sum, debt) => sum + debt.min_payment, 0);
   const surplus = total_income - total_expenses - debt_payments;
 
@@ -121,15 +123,17 @@ export function computeSummary(model: UnifiedBudgetModel): Summary {
 
 /**
  * Compute category shares from model
+ * 
+ * Note: Expenses are stored as POSITIVE values (matching Python convention)
  */
 export function computeCategoryShares(model: UnifiedBudgetModel): Record<string, number> {
-  const total_expenses = model.expenses.reduce((sum, exp) => sum + Math.abs(exp.monthly_amount), 0);
+  const total_expenses = model.expenses.reduce((sum, exp) => sum + exp.monthly_amount, 0);
   
   if (total_expenses === 0) return {};
 
   const shares: Record<string, number> = {};
   for (const expense of model.expenses) {
-    shares[expense.category] = Math.abs(expense.monthly_amount) / total_expenses;
+    shares[expense.category] = expense.monthly_amount / total_expenses;
   }
 
   return shares;

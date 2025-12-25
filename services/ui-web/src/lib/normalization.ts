@@ -7,6 +7,9 @@
  * Two-stage normalization:
  * 1. AI normalization: Analyzes category labels to correctly sign amounts (income positive, expenses negative)
  * 2. Deterministic conversion: Converts normalized draft into structured UnifiedBudgetModel
+ * 
+ * IMPORTANT: Expense amounts are stored as POSITIVE values (matching Python convention).
+ * This ensures consistency across the entire system.
  */
 
 import type { RawBudgetLine, DraftBudgetModel } from './parsers';
@@ -30,10 +33,12 @@ const DEFAULT_PREFERENCES: Preferences = {
 };
 
 // Common income keywords
+// NOTE: Avoid short patterns like "pay" that match unintended words (e.g., "car payment", "copay")
 const INCOME_KEYWORDS = [
-  'salary', 'wage', 'income', 'paycheck', 'pay', 'earnings',
+  'salary', 'wages', 'income', 'paycheck', 'earnings',
   'freelance', 'bonus', 'commission', 'dividend', 'interest earned',
   'rental income', 'pension', 'social security', 'disability',
+  'side gig', 'side hustle', 'revenue',
 ];
 
 // Common essential expense categories
@@ -102,29 +107,45 @@ export async function draftToUnifiedModel(
     const aiLineType = line.metadata?.ai_line_type as string | undefined;
     
     // Classify the line based on:
-    // 1. AI classification (if available)
-    // 2. Amount sign (positive = income, negative = expense)
-    // 3. Category keywords (fallback)
+    // 1. AI classification (if available and trusted)
+    // 2. Category keywords (primary fallback)
+    // 3. Amount sign ONLY when we have already-signed data (negative = expense)
+    //
+    // CRITICAL: For all-positive budgets without AI normalization, we MUST use
+    // category keywords to classify. Unknown positive amounts should default to
+    // EXPENSES (not income) since most budget lines are expenses.
+    
     if (aiLineType === 'income' || aiLineType === 'transfer') {
       income.push(createIncome(line, income.length));
     } else if (aiLineType === 'debt_payment') {
       debts.push(createDebt(line, debts.length));
     } else if (aiLineType === 'expense' || aiLineType === 'savings') {
       expenses.push(createExpense(line, expenses.length));
-    } else if (isIncomeCategory(category) || (line.amount > 0 && !isDebtCategory(category) && !isExpenseCategory(category))) {
-      // Fallback to keyword and sign-based classification
+    } else if (isIncomeCategory(category)) {
+      // Explicit income keyword match - treat as income
       income.push(createIncome(line, income.length));
     } else if (isDebtCategory(category)) {
+      // Explicit debt keyword match - treat as debt
       debts.push(createDebt(line, debts.length));
+    } else if (line.amount < 0) {
+      // Negative amount = already signed as expense
+      expenses.push(createExpense(line, expenses.length));
+    } else if (isExpenseCategory(category)) {
+      // Explicit expense keyword match - treat as expense
+      expenses.push(createExpense(line, expenses.length));
     } else {
-      // Default to expense for negative amounts or unclassified items
+      // DEFAULT: Unknown positive amounts should be treated as EXPENSES
+      // This is critical for all-positive budgets where AI normalization failed.
+      // Most budget lines are expenses, so this is the safer default.
+      console.log(`[normalization] Unknown category "${category}" with positive amount ${line.amount} - defaulting to expense`);
       expenses.push(createExpense(line, expenses.length));
     }
   }
 
   // Compute summary
+  // Note: Expenses are now stored as POSITIVE values (matching Python convention)
   const total_income = income.reduce((sum, inc) => sum + inc.monthly_amount, 0);
-  const total_expenses = expenses.reduce((sum, exp) => sum + Math.abs(exp.monthly_amount), 0);
+  const total_expenses = expenses.reduce((sum, exp) => sum + exp.monthly_amount, 0);
   const debt_payments = debts.reduce((sum, debt) => sum + debt.min_payment, 0);
 
   const summary: Summary = {
@@ -141,12 +162,61 @@ export async function draftToUnifiedModel(
     summary,
   };
 
+  // Validate normalization results
+  const warnings = validateNormalizationResult(model, normalizedDraft);
+  if (warnings.length > 0) {
+    console.warn('[normalization] Validation warnings:', warnings);
+  }
+
   // Apply AI enrichment if requested and enabled
   if (enrich && isAIEnabled()) {
     return await enrichBudgetModel(model);
   }
 
   return model;
+}
+
+/**
+ * Validate normalization results for suspicious patterns
+ * 
+ * Checks for:
+ * - Very high surplus ratio (may indicate expenses classified as income)
+ * - All positive amounts in source (may indicate missing expense normalization)
+ * - Expense-like categories in income list
+ */
+function validateNormalizationResult(model: UnifiedBudgetModel, draft: DraftBudgetModel): string[] {
+  const warnings: string[] = [];
+
+  // Check for very high surplus ratio
+  if (model.summary.total_income > 0) {
+    const surplusRatio = model.summary.surplus / model.summary.total_income;
+    if (surplusRatio > 0.7) {
+      warnings.push(`Very high surplus ratio (${(surplusRatio * 100).toFixed(0)}%) - some expenses may be incorrectly classified as income`);
+    } else if (surplusRatio < -0.5) {
+      warnings.push(`Large deficit (${(surplusRatio * 100).toFixed(0)}% of income) - some income may be incorrectly classified as expenses`);
+    }
+  }
+
+  // Check for expense-like categories in income list
+  const expenseKeywords = ['rent', 'mortgage', 'groceries', 'utilities', 'insurance', 'food', 'transportation', 'phone', 'internet'];
+  const suspiciousIncome = model.income.filter(inc => {
+    const nameLower = inc.name.toLowerCase();
+    return expenseKeywords.some(keyword => nameLower.includes(keyword));
+  });
+
+  if (suspiciousIncome.length > 0) {
+    const names = suspiciousIncome.slice(0, 3).map(i => i.name).join(', ');
+    warnings.push(`Expense-like categories classified as income: ${names}${suspiciousIncome.length > 3 ? ` (and ${suspiciousIncome.length - 3} more)` : ''}`);
+  }
+
+  // Check if source had all positive amounts but we have few expenses
+  const positiveSourceLines = draft.lines.filter(l => l.amount > 0).length;
+  const negativeSourceLines = draft.lines.filter(l => l.amount < 0).length;
+  if (positiveSourceLines > 2 && negativeSourceLines === 0 && model.expenses.length === 0) {
+    warnings.push(`All ${positiveSourceLines} source amounts were positive but no expenses detected - classification may have failed`);
+  }
+
+  return warnings;
 }
 
 /**
@@ -213,6 +283,9 @@ function createIncome(line: RawBudgetLine, index: number): Income {
 
 /**
  * Create an expense entry from a budget line
+ * 
+ * IMPORTANT: Expenses are stored as POSITIVE values to match Python convention.
+ * This ensures consistency across the entire system.
  */
 function createExpense(line: RawBudgetLine, index: number): Expense {
   const category = line.category_label || `Expense ${index + 1}`;
@@ -221,7 +294,7 @@ function createExpense(line: RawBudgetLine, index: number): Expense {
   return {
     id: `expense-draft-${line.source_row_index}-${index}`,
     category,
-    monthly_amount: -Math.abs(line.amount), // Expenses are negative
+    monthly_amount: Math.abs(line.amount), // Expenses stored as POSITIVE (Python convention)
     essential,
     notes: line.description,
   };
@@ -345,8 +418,9 @@ export function applyAnswersToModel(
   }
 
   // Recompute summary
+  // Note: Expenses are stored as POSITIVE values (matching Python convention)
   const total_income = updated.income.reduce((sum, inc) => sum + inc.monthly_amount, 0);
-  const total_expenses = updated.expenses.reduce((sum, exp) => sum + Math.abs(exp.monthly_amount), 0);
+  const total_expenses = updated.expenses.reduce((sum, exp) => sum + exp.monthly_amount, 0);
   const debt_payments = updated.debts.reduce((sum, debt) => sum + debt.min_payment, 0);
 
   updated.summary = {

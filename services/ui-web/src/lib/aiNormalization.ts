@@ -206,12 +206,21 @@ export async function normalizeDraftBudget(draft: DraftBudgetModel): Promise<Nor
     return passthroughNormalization(draft);
   }
 
-  try {
-    console.log('[aiNormalization] Normalizing budget with AI', {
-      lineCount: draft.lines.length,
-      model: normalizationSettings.openai?.model,
-    });
+  // Analyze budget structure before normalization
+  const positiveCount = draft.lines.filter(line => line.amount > 0).length;
+  const negativeCount = draft.lines.filter(line => line.amount < 0).length;
+  const allPositive = negativeCount === 0 && positiveCount > 0;
 
+  console.log('[aiNormalization] Starting AI normalization', {
+    lineCount: draft.lines.length,
+    positiveCount,
+    negativeCount,
+    allPositive,
+    model: normalizationSettings.openai?.model,
+    detectedFormat: draft.detected_format,
+  });
+
+  try {
     const response = await client.chat.completions.create({
       model: normalizationSettings.openai!.model,
       messages: [
@@ -235,14 +244,68 @@ export async function normalizeDraftBudget(draft: DraftBudgetModel): Promise<Nor
 
     const toolCalls = response.choices[0]?.message?.tool_calls;
     if (!toolCalls || toolCalls.length === 0) {
-      console.warn('[aiNormalization] No tool calls in response, falling back to passthrough');
+      console.warn('[aiNormalization] No tool calls in response, falling back to heuristic normalization', {
+        finishReason: response.choices[0]?.finish_reason,
+        message: response.choices[0]?.message?.content?.substring(0, 200),
+      });
       return passthroughNormalization(draft);
     }
 
-    const parsed = JSON.parse(toolCalls[0].function.arguments);
-    return parseNormalizationResponse(parsed, draft);
+    let parsed: Record<string, unknown>;
+    try {
+      parsed = JSON.parse(toolCalls[0].function.arguments);
+    } catch (parseError) {
+      console.error('[aiNormalization] Failed to parse AI response JSON', {
+        error: parseError instanceof Error ? parseError.message : String(parseError),
+        rawArguments: toolCalls[0].function.arguments.substring(0, 500),
+      });
+      return passthroughNormalization(draft);
+    }
+
+    const result = parseNormalizationResponse(parsed, draft);
+
+    // Validate the result makes sense
+    const totalIncome = result.normalizedDraft.lines
+      .filter(l => l.amount > 0)
+      .reduce((sum, l) => sum + l.amount, 0);
+    const totalExpenses = result.normalizedDraft.lines
+      .filter(l => l.amount < 0)
+      .reduce((sum, l) => sum + Math.abs(l.amount), 0);
+
+    console.log('[aiNormalization] AI normalization complete', {
+      incomeCount: result.incomeCount,
+      expenseCount: result.expenseCount,
+      debtCount: result.debtCount,
+      totalIncome,
+      totalExpenses,
+      surplus: totalIncome - totalExpenses,
+    });
+
+    // Sanity check: if all-positive budget but AI returned no expenses, something is wrong
+    if (allPositive && result.expenseCount === 0 && draft.lines.length > 1) {
+      console.warn('[aiNormalization] AI returned no expenses for all-positive budget - falling back to heuristic', {
+        originalLineCount: draft.lines.length,
+        aiIncomeCount: result.incomeCount,
+      });
+      return passthroughNormalization(draft);
+    }
+
+    return result;
   } catch (error) {
-    console.error('[aiNormalization] Error during normalization:', error);
+    // Detailed error logging
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    const errorType = error instanceof Error ? error.constructor.name : 'Unknown';
+
+    console.error('[aiNormalization] Error during AI normalization', {
+      errorType,
+      errorMessage,
+      stack: error instanceof Error ? error.stack?.split('\n').slice(0, 3) : undefined,
+      lineCount: draft.lines.length,
+      allPositive,
+    });
+
+    // Fall back to heuristic normalization
+    console.log('[aiNormalization] Falling back to heuristic normalization due to error');
     return passthroughNormalization(draft);
   }
 }
@@ -329,19 +392,142 @@ function parseNormalizationResponse(
   };
 }
 
+// Keywords for heuristic classification
+// NOTE: Order matters - more specific patterns should be checked first
+// NOTE: Avoid short patterns like "pay" that match unintended words (e.g., "car payment")
+const INCOME_KEYWORDS = [
+  'salary', 'wages', 'income', 'paycheck', 'earnings',
+  'freelance', 'bonus', 'commission', 'dividend', 'interest earned',
+  'rental income', 'pension', 'social security', 'disability',
+  'refund', 'revenue', 'side gig', 'side hustle',
+  // Note: "pay" removed - too short, matches "payment", "copay", etc.
+  // Note: "deposit" removed - too generic, could be security deposit (expense)
+];
+
+const EXPENSE_KEYWORDS = [
+  'rent', 'mortgage', 'housing', 'utilities', 'electric', 'gas',
+  'water', 'insurance', 'health', 'medical', 'groceries', 'food',
+  'transportation', 'car payment', 'childcare', 'education',
+  'subscription', 'entertainment', 'dining', 'shopping', 'travel',
+  'phone', 'internet', 'cable', 'gym', 'personal', 'clothing',
+  'pet', 'household', 'maintenance', 'repair',
+];
+
+const DEBT_KEYWORDS = [
+  'credit card', 'loan', 'student loan', 'car loan', 'personal loan',
+  'line of credit', 'finance', 'debt', 'auto payment',
+];
+
+const SAVINGS_KEYWORDS = [
+  '401k', 'retirement', 'savings', 'investment', 'ira', 'hsa',
+  'emergency fund', 'brokerage', 'roth',
+];
+
 /**
- * Passthrough normalization - returns draft unchanged
+ * Classify a category using keyword matching
+ */
+function classifyCategory(category: string): 'income' | 'expense' | 'debt_payment' | 'savings' | 'unknown' {
+  const lower = category.toLowerCase();
+
+  if (INCOME_KEYWORDS.some(k => lower.includes(k))) return 'income';
+  if (DEBT_KEYWORDS.some(k => lower.includes(k))) return 'debt_payment';
+  if (SAVINGS_KEYWORDS.some(k => lower.includes(k))) return 'savings';
+  if (EXPENSE_KEYWORDS.some(k => lower.includes(k))) return 'expense';
+
+  return 'unknown';
+}
+
+/**
+ * Heuristic normalization using keyword matching
+ * 
+ * For all-positive budgets, this uses keyword matching to classify lines.
+ * CRITICAL: Unknown positive amounts default to EXPENSES (not income).
+ */
+function heuristicNormalization(draft: DraftBudgetModel): NormalizationResult {
+  console.log('[aiNormalization] Using heuristic normalization for all-positive budget');
+
+  let incomeCount = 0;
+  let expenseCount = 0;
+  let debtCount = 0;
+
+  const normalizedLines: RawBudgetLine[] = draft.lines.map(line => {
+    const category = line.category_label || '';
+    const lineType = classifyCategory(category);
+
+    let normalizedAmount: number;
+    if (lineType === 'income') {
+      normalizedAmount = Math.abs(line.amount);
+      incomeCount++;
+    } else {
+      // Everything else (expense, debt, savings, unknown) becomes negative
+      normalizedAmount = -Math.abs(line.amount);
+      if (lineType === 'debt_payment') {
+        debtCount++;
+      } else {
+        expenseCount++;
+      }
+    }
+
+    return {
+      ...line,
+      amount: normalizedAmount,
+      metadata: {
+        ...line.metadata,
+        ai_line_type: lineType === 'unknown' ? 'expense' : lineType,
+        original_amount: line.amount,
+        heuristic_classification: true,
+      },
+    };
+  });
+
+  console.log('[aiNormalization] Heuristic normalization complete', {
+    incomeCount,
+    expenseCount,
+    debtCount,
+  });
+
+  return {
+    normalizedDraft: {
+      ...draft,
+      lines: normalizedLines,
+      format_hints: {
+        ...(draft.format_hints || {}),
+        heuristic_normalized: true,
+        original_all_positive: true,
+      },
+    },
+    incomeCount,
+    expenseCount,
+    debtCount,
+    notes: 'Heuristic normalization for all-positive budget - unknown categories treated as expenses',
+    providerUsed: 'deterministic_heuristic',
+  };
+}
+
+/**
+ * Passthrough/heuristic normalization fallback
+ * 
+ * For all-positive budgets, uses keyword-based heuristics.
+ * For already-signed budgets, passes through unchanged.
  */
 function passthroughNormalization(draft: DraftBudgetModel): NormalizationResult {
-  const incomeCount = draft.lines.filter(line => line.amount > 0).length;
-  const expenseCount = draft.lines.filter(line => line.amount < 0).length;
+  const positiveCount = draft.lines.filter(line => line.amount > 0).length;
+  const negativeCount = draft.lines.filter(line => line.amount < 0).length;
+
+  // If budget is all-positive, use heuristic normalization
+  if (negativeCount === 0 && positiveCount > 0) {
+    return heuristicNormalization(draft);
+  }
+
+  // Budget already has signs - pass through
+  console.log('[aiNormalization] Using passthrough (budget already has correct signs)');
 
   return {
     normalizedDraft: draft,
-    incomeCount,
-    expenseCount,
+    incomeCount: positiveCount,
+    expenseCount: negativeCount,
     debtCount: 0,
-    notes: 'Passthrough - original data unchanged',
+    notes: 'Passthrough - budget already has correct signs',
     providerUsed: 'deterministic',
   };
 }
