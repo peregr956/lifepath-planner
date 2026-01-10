@@ -16,6 +16,7 @@ import type {
   ClarificationNumberInputDescriptor,
   ClarificationQuestion,
   ClarificationSliderDescriptor,
+  ClarificationTextInputDescriptor,
   ClarificationToggleDescriptor,
   DebtEntry,
   ExpenseEntry,
@@ -850,7 +851,7 @@ const ConstraintSchema = z
 
 const BaseComponentSchema = z.object({
   field_id: z.string().min(1),
-  component: z.enum(['number_input', 'dropdown', 'toggle', 'slider']),
+  component: z.enum(['number_input', 'dropdown', 'toggle', 'slider', 'text_input']),
   label: z.string().min(1),
   constraints: ConstraintSchema.optional(),
   options: z.array(z.string().min(1)).optional(),
@@ -875,11 +876,16 @@ const SliderComponentSchema = BaseComponentSchema.extend({
   component: z.literal('slider'),
 });
 
+const TextInputComponentSchema = BaseComponentSchema.extend({
+  component: z.literal('text_input'),
+});
+
 const ClarificationComponentSchema = z.discriminatedUnion('component', [
   NumberInputComponentSchema,
   DropdownComponentSchema,
   ToggleComponentSchema,
   SliderComponentSchema,
+  TextInputComponentSchema,
 ]);
 
 const ClarificationQuestionSchema = z.object({
@@ -893,11 +899,13 @@ type RawNumberComponent = z.infer<typeof NumberInputComponentSchema>;
 type RawDropdownComponent = z.infer<typeof DropdownComponentSchema>;
 type RawToggleComponent = z.infer<typeof ToggleComponentSchema>;
 type RawSliderComponent = z.infer<typeof SliderComponentSchema>;
+type RawTextInputComponent = z.infer<typeof TextInputComponentSchema>;
 type RawClarificationComponent =
   | RawNumberComponent
   | RawDropdownComponent
   | RawToggleComponent
-  | RawSliderComponent;
+  | RawSliderComponent
+  | RawTextInputComponent;
 type RawClarificationQuestion = z.infer<typeof ClarificationQuestionSchema>;
 
 function normalizeUploadBudgetResponse(raw: RawUploadBudgetResponse): UploadBudgetResponse {
@@ -1130,6 +1138,8 @@ function normalizeClarificationComponent(
       return normalizeToggleComponent(raw);
     case 'slider':
       return normalizeSliderComponent(raw);
+    case 'text_input':
+      return normalizeTextInputComponent(raw);
     default:
       return assertNever(raw);
   }
@@ -1174,6 +1184,29 @@ function normalizeSliderComponent(raw: RawSliderComponent): ClarificationSliderD
     binding: raw.binding ?? undefined,
     constraints: extractNumberConstraints(raw.constraints),
   };
+}
+
+function normalizeTextInputComponent(raw: RawTextInputComponent): ClarificationTextInputDescriptor {
+  return {
+    component: 'text_input',
+    fieldId: raw.field_id,
+    label: raw.label,
+    binding: raw.binding ?? undefined,
+    constraints: extractTextInputConstraints(raw.constraints),
+  };
+}
+
+function extractTextInputConstraints(
+  constraints?: Record<string, unknown>,
+): ClarificationTextInputDescriptor['constraints'] {
+  if (!constraints) return undefined;
+  const normalized = {
+    minLength: typeof constraints.minLength === 'number' ? constraints.minLength : undefined,
+    maxLength: typeof constraints.maxLength === 'number' ? constraints.maxLength : undefined,
+    placeholder: typeof constraints.placeholder === 'string' ? constraints.placeholder : undefined,
+    default: typeof constraints.default === 'string' ? constraints.default : undefined,
+  };
+  return hasDefinedValue(normalized) ? normalized : undefined;
 }
 
 function extractNumberConstraints(

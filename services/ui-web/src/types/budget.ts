@@ -63,7 +63,7 @@ export type UploadBudgetResponse = {
   summaryPreview?: UploadSummaryPreview | null;
 };
 
-export type ClarificationComponentType = 'number_input' | 'dropdown' | 'toggle' | 'slider';
+export type ClarificationComponentType = 'number_input' | 'dropdown' | 'toggle' | 'slider' | 'text_input';
 
 type BaseComponentDescriptor = {
   fieldId: string;
@@ -90,6 +90,13 @@ export type ToggleComponentConstraints = {
 
 export type SliderComponentConstraints = NumberComponentConstraints;
 
+export type TextInputComponentConstraints = {
+  minLength?: number;
+  maxLength?: number;
+  placeholder?: string;
+  default?: string;
+};
+
 export type ClarificationNumberInputDescriptor = BaseComponentDescriptor & {
   component: 'number_input';
   constraints?: NumberComponentConstraints;
@@ -111,11 +118,17 @@ export type ClarificationSliderDescriptor = BaseComponentDescriptor & {
   constraints?: SliderComponentConstraints;
 };
 
+export type ClarificationTextInputDescriptor = BaseComponentDescriptor & {
+  component: 'text_input';
+  constraints?: TextInputComponentConstraints;
+};
+
 export type ClarificationComponentDescriptor =
   | ClarificationNumberInputDescriptor
   | ClarificationDropdownDescriptor
   | ClarificationToggleDescriptor
-  | ClarificationSliderDescriptor;
+  | ClarificationSliderDescriptor
+  | ClarificationTextInputDescriptor;
 
 export type ClarificationQuestion = {
   id: string;

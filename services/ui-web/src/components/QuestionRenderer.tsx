@@ -24,6 +24,7 @@ import type {
   ClarificationNumberInputDescriptor,
   ClarificationQuestion,
   ClarificationSliderDescriptor,
+  ClarificationTextInputDescriptor,
   ClarificationToggleDescriptor,
 } from '@/types';
 
@@ -210,6 +211,17 @@ function FieldPrimitive({
           ariaDescribedBy={ariaDescribedBy}
         />
       );
+    case 'text_input':
+      return (
+        <TextInputField
+          descriptor={component}
+          value={value}
+          onChange={onChange}
+          disabled={disabled}
+          ariaLabelledBy={ariaLabelledBy}
+          ariaDescribedBy={ariaDescribedBy}
+        />
+      );
     default:
       return null;
   }
@@ -370,6 +382,41 @@ function SliderField({
         </span>
       </div>
     </div>
+  );
+}
+
+function TextInputField({
+  descriptor,
+  value,
+  disabled,
+  ariaLabelledBy,
+  ariaDescribedBy,
+  onChange,
+}: BasePrimitiveProps<ClarificationTextInputDescriptor>) {
+  const constraints = descriptor.constraints ?? {};
+  const resolvedValue = typeof value === 'string' ? value : (constraints.default ?? '');
+
+  return (
+    <Input
+      id={descriptor.fieldId}
+      type="text"
+      minLength={constraints.minLength}
+      maxLength={constraints.maxLength}
+      aria-labelledby={ariaLabelledBy}
+      aria-describedby={ariaDescribedBy}
+      aria-required="true"
+      placeholder={constraints.placeholder ?? 'Enter text'}
+      value={resolvedValue}
+      onChange={(event) => {
+        const next = event.target.value;
+        if (!next.length) {
+          onChange(undefined);
+          return;
+        }
+        onChange(next);
+      }}
+      disabled={disabled}
+    />
   );
 }
 
