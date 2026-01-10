@@ -197,8 +197,58 @@ export type FinancialPhilosophy =
   | 'fire'               // Financial Independence, Retire Early
   | 'neutral'            // No specific framework
   | 'custom';            // User's own approach
+
 export type RiskTolerance = 'conservative' | 'moderate' | 'aggressive';
 export type GoalTimeline = 'immediate' | 'short_term' | 'medium_term' | 'long_term';
+
+// Phase 8.5.3: Life stage for contextualizing advice
+export type LifeStage = 
+  | 'early_career'       // Just starting out (20s, early 30s)
+  | 'mid_career'         // Established career, building wealth
+  | 'family_building'    // Starting/raising family, major expenses
+  | 'peak_earning'       // Highest earning years, catch-up savings
+  | 'pre_retirement'     // 5-10 years before retirement
+  | 'retired';           // Already retired
+
+// Phase 8.5.3: Emergency fund status
+export type EmergencyFundStatus = 
+  | 'none'               // No emergency fund
+  | 'partial'            // Some savings, but less than target
+  | 'adequate'           // 3-6 months expenses saved
+  | 'robust';            // More than 6 months expenses
+
+/**
+ * Phase 8.5.3: Foundational Context
+ * 
+ * High-value context questions asked early in the flow to inform
+ * all subsequent AI interactions. These establish the user's
+ * financial worldview before budget-specific questions.
+ */
+export type FoundationalContext = {
+  financialPhilosophy?: FinancialPhilosophy | null;
+  riskTolerance?: RiskTolerance | null;
+  primaryGoal?: string | null;
+  goalTimeline?: GoalTimeline | null;
+  lifeStage?: LifeStage | null;
+  hasEmergencyFund?: EmergencyFundStatus | null;
+};
+
+/**
+ * Calculate completion percentage for foundational context
+ */
+export function getFoundationalCompletionPercent(context: FoundationalContext | null | undefined): number {
+  if (!context) return 0;
+  const fields: (keyof FoundationalContext)[] = [
+    'financialPhilosophy',
+    'riskTolerance',
+    'primaryGoal',
+    'goalTimeline',
+    'lifeStage',
+    'hasEmergencyFund',
+  ];
+  const answered = fields.filter(f => context[f] !== null && context[f] !== undefined).length;
+  return Math.round((answered / fields.length) * 100);
+}
 
 export type UserProfile = {
   userQuery?: string | null;
@@ -210,6 +260,9 @@ export type UserProfile = {
   goalTimeline?: GoalTimeline | null;
   financialConcerns?: string[] | null;
   lifeStageContext?: string | null;
+  // Phase 8.5.3: Additional foundational fields
+  lifeStage?: LifeStage | null;
+  hasEmergencyFund?: EmergencyFundStatus | null;
 };
 
 export type UserQueryRequest = {

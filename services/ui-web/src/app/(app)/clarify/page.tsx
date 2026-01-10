@@ -3,8 +3,8 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import type { ClarificationAnswers } from '@/types';
-import { ClarificationForm, QueryInput } from '@/components';
+import type { ClarificationAnswers, FoundationalContext } from '@/types';
+import { ClarificationForm, QueryInput, FoundationalQuestions } from '@/components';
 import { useBudgetSession } from '@/hooks/useBudgetSession';
 import {
   fetchClarificationQuestions,
@@ -14,7 +14,8 @@ import {
 import { Card, CardContent, Button, Skeleton } from '@/components/ui';
 import { AlertCircle, Loader2, Pencil } from 'lucide-react';
 
-type ClarifyStep = 'query' | 'questions';
+// Phase 8.5.3: Added 'foundational' step between query and questions
+type ClarifyStep = 'query' | 'foundational' | 'questions';
 
 /**
  * Safe navigation wrapper with retry logic
@@ -41,22 +42,41 @@ async function safeNavigate(
 export default function ClarifyPage() {
   const router = useRouter();
   const queryClient = useQueryClient();
-  const { session, hydrated, setUserQuery, markClarified, markReadyForSummary } =
-    useBudgetSession();
+  const { 
+    session, 
+    hydrated, 
+    setUserQuery, 
+    markClarified, 
+    markReadyForSummary,
+    setFoundationalContext,
+    markFoundationalCompleted,
+  } = useBudgetSession();
   const budgetId = session?.budgetId;
   const existingUserQuery = session?.userQuery;
+  const foundationalCompleted = session?.foundationalCompleted;
 
-  const [step, setStep] = useState<ClarifyStep>(() => (existingUserQuery ? 'questions' : 'query'));
+  // Phase 8.5.3: Determine initial step based on session state
+  const [step, setStep] = useState<ClarifyStep>(() => {
+    if (existingUserQuery && foundationalCompleted) return 'questions';
+    if (existingUserQuery) return 'foundational';
+    return 'query';
+  });
   const [localUserQuery, setLocalUserQuery] = useState(existingUserQuery || '');
   const [navigationError, setNavigationError] = useState<string | null>(null);
   const isNavigatingRef = useRef(false);
 
+  // Sync step with session state changes
   useEffect(() => {
     if (existingUserQuery && step === 'query') {
-      setStep('questions');
+      // User has query but on query step - advance appropriately
+      if (foundationalCompleted) {
+        setStep('questions');
+      } else {
+        setStep('foundational');
+      }
       setLocalUserQuery(existingUserQuery);
     }
-  }, [existingUserQuery, step]);
+  }, [existingUserQuery, foundationalCompleted, step]);
 
   useEffect(() => {
     if (hydrated && !budgetId) {
@@ -74,9 +94,26 @@ export default function ClarifyPage() {
     onSuccess: (response) => {
       setUserQuery(response.query);
       setLocalUserQuery(response.query);
-      setStep('questions');
+      // Phase 8.5.3: Go to foundational questions after query
+      setStep('foundational');
     },
   });
+
+  // Phase 8.5.3: Handle foundational questions completion
+  const handleFoundationalComplete = useCallback(
+    (context: FoundationalContext) => {
+      setFoundationalContext(context);
+      markFoundationalCompleted();
+      setStep('questions');
+    },
+    [setFoundationalContext, markFoundationalCompleted]
+  );
+
+  // Phase 8.5.3: Handle skip foundational questions
+  const handleFoundationalSkip = useCallback(() => {
+    markFoundationalCompleted();
+    setStep('questions');
+  }, [markFoundationalCompleted]);
 
   const handleQuerySubmit = useCallback(
     async (query: string) => {
@@ -156,6 +193,39 @@ export default function ClarifyPage() {
           disabled={!budgetId}
           isLoading={queryMutation.isPending}
           initialQuery={existingUserQuery || ''}
+        />
+      </div>
+    );
+  }
+
+  // Phase 8.5.3: Render foundational questions step
+  if (step === 'foundational') {
+    return (
+      <div className="flex flex-col gap-4 animate-fade-in">
+        {/* Show user's query as context */}
+        {localUserQuery && (
+          <Card className="border-primary/20 bg-gradient-to-r from-primary/10 to-accent/10">
+            <CardContent className="pt-6">
+              <p className="text-xs font-medium uppercase tracking-wide text-primary">Your Question</p>
+              <p className="mt-1 text-sm text-foreground">&ldquo;{localUserQuery}&rdquo;</p>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setStep('query')}
+                className="mt-2 h-auto p-0 text-xs text-primary hover:text-primary/80"
+              >
+                <Pencil className="mr-1 h-3 w-3" />
+                Edit question
+              </Button>
+            </CardContent>
+          </Card>
+        )}
+
+        <FoundationalQuestions
+          initialContext={session?.foundationalContext}
+          onComplete={handleFoundationalComplete}
+          onSkip={handleFoundationalSkip}
+          disabled={!budgetId}
         />
       </div>
     );

@@ -17,6 +17,8 @@ export interface BudgetSession {
   final: Record<string, unknown> | null;
   user_query: string | null;
   user_profile: Record<string, unknown> | null;
+  // Phase 8.5.3: Foundational context from pre-clarification questions
+  foundational_context: Record<string, unknown> | null;
   created_at: Date;
   updated_at: Date;
 }
@@ -126,9 +128,23 @@ export async function initDatabase(): Promise<void> {
         final JSONB,
         user_query VARCHAR(1000),
         user_profile JSONB,
+        foundational_context JSONB,
         created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
         updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
       )
+    `);
+    
+    // Phase 8.5.3: Add foundational_context column if it doesn't exist (for existing databases)
+    await dbPool.query(`
+      DO $$ 
+      BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns 
+          WHERE table_name = 'budget_sessions' AND column_name = 'foundational_context'
+        ) THEN
+          ALTER TABLE budget_sessions ADD COLUMN foundational_context JSONB;
+        END IF;
+      END $$;
     `);
 
     await dbPool.query(`
@@ -199,6 +215,7 @@ export async function createSession(
     final: null,
     user_query: null,
     user_profile: null,
+    foundational_context: null,
     created_at: now,
     updated_at: now,
   };
@@ -298,6 +315,7 @@ export async function getSession(sessionId: string): Promise<BudgetSession | nul
         final: row.final,
         user_query: row.user_query,
         user_profile: row.user_profile,
+        foundational_context: row.foundational_context,
         created_at: new Date(row.created_at),
         updated_at: new Date(row.updated_at),
       };
@@ -550,6 +568,63 @@ export function getUserContext(session: BudgetSession): { user_query: string | n
     user_query: session.user_query,
     user_profile: session.user_profile ?? {},
   };
+}
+
+/**
+ * Phase 8.5.3: Store/update foundational context from pre-clarification questions
+ */
+export async function storeFoundationalContext(
+  sessionId: string,
+  foundationalContext: Record<string, unknown>,
+  sourceIp?: string | null,
+  details?: Record<string, unknown>
+): Promise<BudgetSession | null> {
+  const session = await getSession(sessionId);
+  if (!session) return null;
+
+  const existingContext = session.foundational_context ?? {};
+  const mergedContext = { ...existingContext, ...foundationalContext };
+  const now = new Date();
+
+  if (hasPostgres()) {
+    const dbPool = getPool();
+    if (!dbPool) {
+      throw new Error('Database connection pool not available');
+    }
+
+    await dbPool.query(
+      `UPDATE budget_sessions 
+       SET foundational_context = $1::jsonb, updated_at = $2
+       WHERE id = $3`,
+      [JSON.stringify(mergedContext), now.toISOString(), sessionId]
+    );
+
+    await recordAuditEvent({
+      session_id: sessionId,
+      action: 'foundational_context_updated',
+      source_ip: sourceIp ?? null,
+      from_stage: session.stage,
+      to_stage: session.stage,
+      details: { context_fields: Object.keys(foundationalContext), ...details },
+    });
+  } else {
+    session.foundational_context = mergedContext;
+    session.updated_at = now;
+    memoryStore.set(sessionId, session);
+
+    auditEvents.push({
+      id: auditEventId++,
+      session_id: sessionId,
+      action: 'foundational_context_updated',
+      source_ip: sourceIp ?? null,
+      from_stage: session.stage,
+      to_stage: session.stage,
+      details: { context_fields: Object.keys(foundationalContext), ...details },
+      created_at: now,
+    });
+  }
+
+  return getSession(sessionId);
 }
 
 /**

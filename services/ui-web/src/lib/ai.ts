@@ -20,6 +20,7 @@
 
 import OpenAI from 'openai';
 import type { UnifiedBudgetModel, QuestionSpec, Suggestion, QuestionGroup, ClarificationAnalysis, ClarificationResult } from './budgetModel';
+import type { FoundationalContext } from '@/types/budget';
 import { ESSENTIAL_PREFIX, SUPPORTED_SIMPLE_FIELD_IDS, parseDebtFieldId } from './normalization';
 import { loadProviderSettings, isAIGatewayEnabled } from './providerSettings';
 import { analyzeQuery, getIntentDescription, type QueryAnalysis } from './queryAnalyzer';
@@ -360,10 +361,10 @@ function buildQueryAnalysisSection(userQuery: string): string {
 }
 
 /**
- * User profile type for foundational context (Phase 8.5.3 preparation)
- * Initially optional, will be populated by foundational questions flow
+ * Internal foundational context format for AI prompts (snake_case for prompt readability)
+ * Maps from the camelCase FoundationalContext type imported from @/types/budget
  */
-export interface FoundationalContext {
+interface InternalFoundationalContext {
   financial_philosophy?: string;
   risk_tolerance?: string;
   primary_goal?: string;
@@ -388,7 +389,7 @@ export interface FoundationalContext {
 function buildClarificationPrompt(
   model: UnifiedBudgetModel,
   userQuery: string,
-  foundationalContext?: FoundationalContext
+  foundationalContext?: InternalFoundationalContext
 ): string {
   const incomeSection = model.income.length > 0
     ? model.income.map(inc => `- ${inc.name}: $${inc.monthly_amount.toLocaleString()}/mo (${inc.type}, ${inc.stability})`).join('\n')
@@ -851,11 +852,15 @@ export async function generateClarificationQuestions(
 }
 
 /**
- * Generate clarification questions using AI with full analysis and grouping
+ * Phase 8.5.3: Generate clarification questions with foundational context
+ * 
+ * This is the primary entry point for clarification question generation.
+ * It accepts foundational context from the pre-clarification step.
  */
-export async function generateClarificationQuestionsWithAnalysis(
+export async function generateClarificationQuestionsWithContext(
   model: UnifiedBudgetModel,
   userQuery?: string,
+  foundationalContext?: FoundationalContext | null,
   maxQuestions: number = 5
 ): Promise<ClarificationResult> {
   const client = getOpenAIClient();
@@ -867,12 +872,23 @@ export async function generateClarificationQuestionsWithAnalysis(
     };
   }
 
+  // Convert FoundationalContext (camelCase) to internal format (snake_case for prompts)
+  const internalContext: InternalFoundationalContext | undefined = foundationalContext ? {
+    financial_philosophy: foundationalContext.financialPhilosophy ?? undefined,
+    risk_tolerance: foundationalContext.riskTolerance ?? undefined,
+    primary_goal: foundationalContext.primaryGoal ?? undefined,
+    goal_timeline: foundationalContext.goalTimeline ?? undefined,
+    life_stage: foundationalContext.lifeStage ?? undefined,
+    has_emergency_fund: foundationalContext.hasEmergencyFund === 'adequate' || foundationalContext.hasEmergencyFund === 'robust' ? true : 
+                        foundationalContext.hasEmergencyFund === 'none' ? false : undefined,
+  } : undefined;
+
   try {
     const response = await client.chat.completions.create({
       model: getModel(),
       messages: [
         { role: 'system', content: CLARIFICATION_SYSTEM_PROMPT },
-        { role: 'user', content: buildClarificationPrompt(model, userQuery || '') },
+        { role: 'user', content: buildClarificationPrompt(model, userQuery || '', internalContext) },
       ],
       tools: [
         {
@@ -885,8 +901,8 @@ export async function generateClarificationQuestionsWithAnalysis(
         },
       ],
       tool_choice: { type: 'function', function: { name: 'generate_clarification_questions' } },
-      temperature: 0.6,  // Higher for more natural, conversational responses
-      max_tokens: 3072,  // Increased for analysis + grouped questions
+      temperature: 0.6,
+      max_tokens: 3072,
     });
 
     const toolCalls = response.choices[0]?.message?.tool_calls;
@@ -915,12 +931,27 @@ export async function generateClarificationQuestionsWithAnalysis(
 }
 
 /**
- * Generate suggestions using AI
- * Phase 8.5: Added retry logic to ensure AI is always used when possible
+ * Generate clarification questions using AI with full analysis and grouping
+ * @deprecated Use generateClarificationQuestionsWithContext instead
  */
-export async function generateSuggestions(
+export async function generateClarificationQuestionsWithAnalysis(
   model: UnifiedBudgetModel,
   userQuery?: string,
+  maxQuestions: number = 5
+): Promise<ClarificationResult> {
+  return generateClarificationQuestionsWithContext(model, userQuery, null, maxQuestions);
+}
+
+/**
+ * Phase 8.5.3: Generate suggestions with foundational context
+ * 
+ * This is the primary entry point for suggestion generation.
+ * It accepts foundational context from the pre-clarification step.
+ */
+export async function generateSuggestionsWithContext(
+  model: UnifiedBudgetModel,
+  userQuery?: string,
+  foundationalContext?: FoundationalContext | null,
   userProfile?: Record<string, unknown>
 ): Promise<{ suggestions: Suggestion[]; usedDeterministic: boolean }> {
   const client = getOpenAIClient();
@@ -934,13 +965,27 @@ export async function generateSuggestions(
     };
   }
 
+  // Merge foundational context into user profile for prompt building
+  const enrichedProfile: Record<string, unknown> = {
+    ...userProfile,
+  };
+  
+  if (foundationalContext) {
+    enrichedProfile.financial_philosophy = foundationalContext.financialPhilosophy;
+    enrichedProfile.risk_tolerance = foundationalContext.riskTolerance;
+    enrichedProfile.primary_goal = foundationalContext.primaryGoal;
+    enrichedProfile.goal_timeline = foundationalContext.goalTimeline;
+    enrichedProfile.life_stage = foundationalContext.lifeStage;
+    enrichedProfile.has_emergency_fund = foundationalContext.hasEmergencyFund;
+  }
+
   // Use retry wrapper to ensure AI is used when possible
   const retryResult = await withRetry(async () => {
     const response = await client.chat.completions.create({
       model: getModel(),
       messages: [
         { role: 'system', content: SUGGESTION_SYSTEM_PROMPT },
-        { role: 'user', content: buildSuggestionPrompt(model, userQuery || '', userProfile) },
+        { role: 'user', content: buildSuggestionPrompt(model, userQuery || '', enrichedProfile) },
       ],
       tools: [
         {
@@ -979,6 +1024,18 @@ export async function generateSuggestions(
     suggestions: generateDeterministicSuggestions(model),
     usedDeterministic: true,
   };
+}
+
+/**
+ * Generate suggestions using AI
+ * @deprecated Use generateSuggestionsWithContext instead
+ */
+export async function generateSuggestions(
+  model: UnifiedBudgetModel,
+  userQuery?: string,
+  userProfile?: Record<string, unknown>
+): Promise<{ suggestions: Suggestion[]; usedDeterministic: boolean }> {
+  return generateSuggestionsWithContext(model, userQuery, null, userProfile);
 }
 
 /**

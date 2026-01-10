@@ -7,6 +7,8 @@
  * 1. AI normalization: Correctly classifies amounts as income/expenses
  * 2. Question generation: Creates clarification questions for the user
  * 
+ * Phase 8.5.3: Accepts foundational context to inform question generation.
+ * 
  * Uses AI when available, falls back to deterministic processing.
  * Ported from Python api-gateway + clarification-service.
  */
@@ -14,9 +16,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession, updateSessionPartial, getUserContext, initDatabase } from '@/lib/db';
 import { draftToUnifiedModel } from '@/lib/normalization';
-import { generateClarificationQuestions, getProviderMetadata } from '@/lib/ai';
+import { generateClarificationQuestionsWithContext, getProviderMetadata } from '@/lib/ai';
 import { isNormalizationAIEnabled } from '@/lib/aiNormalization';
 import type { DraftBudgetModel } from '@/lib/parsers';
+import type { FoundationalContext } from '@/types/budget';
 
 // Initialize database on first request
 let dbInitialized = false;
@@ -64,6 +67,9 @@ export async function GET(request: NextRequest) {
     const userContext = getUserContext(session);
     const effectiveUserQuery = userQueryParam || userContext.user_query || '';
 
+    // Phase 8.5.3: Get foundational context from session
+    const foundationalContext = (session.foundational_context || null) as FoundationalContext | null;
+
     // Convert draft to unified model (includes AI normalization)
     const draftBudget = session.draft as unknown as DraftBudgetModel;
     const normalizationEnabled = isNormalizationAIEnabled();
@@ -85,12 +91,14 @@ export async function GET(request: NextRequest) {
       surplus: unifiedModel.summary.surplus,
     });
 
-    // Generate clarification questions
-    const questions = await generateClarificationQuestions(
+    // Generate clarification questions (Phase 8.5.3: pass foundational context)
+    const clarificationResult = await generateClarificationQuestionsWithContext(
       unifiedModel,
       effectiveUserQuery,
+      foundationalContext,
       5 // max questions
     );
+    const questions = clarificationResult.questions;
 
     // Update session with partial model
     const sourceIp = request.headers.get('x-forwarded-for') || request.headers.get('x-real-ip') || null;
@@ -113,9 +121,14 @@ export async function GET(request: NextRequest) {
       needs_clarification: questions.length > 0,
       questions,
       partial_model: unifiedModel,
+      // Phase 8.5.3: Include analysis and grouping from AI
+      analysis: clarificationResult.analysis || null,
+      question_groups: clarificationResult.question_groups || null,
+      next_steps: clarificationResult.next_steps || null,
       provider_metadata: {
         ...providerMetadata,
         normalization_enabled: normalizationEnabled,
+        foundational_context_provided: !!foundationalContext,
       },
     });
   } catch (error) {

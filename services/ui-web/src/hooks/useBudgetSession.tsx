@@ -3,7 +3,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
-import type { UploadSummaryPreview, UnifiedBudgetModel, BudgetPreferences } from '@/types';
+import type { UploadSummaryPreview, UnifiedBudgetModel, BudgetPreferences, FoundationalContext } from '@/types';
 
 const STORAGE_KEY = 'lifepath-budget-session';
 
@@ -14,6 +14,9 @@ export type BudgetSession = {
   userQuery?: string | null;
   clarified?: boolean;
   readyForSummary?: boolean;
+  // Phase 8.5.3: Foundational context from pre-clarification questions
+  foundationalContext?: FoundationalContext | null;
+  foundationalCompleted?: boolean;
 };
 
 // Types for budget updates
@@ -66,6 +69,9 @@ type BudgetSessionContextValue = {
   updateBudget: (updates: BudgetPatchRequest) => Promise<void>;
   markDirty: () => void;
   clearDirty: () => void;
+  // Phase 8.5.3: Foundational context management
+  setFoundationalContext: (context: FoundationalContext) => void;
+  markFoundationalCompleted: () => void;
 };
 
 const BudgetSessionContext = createContext<BudgetSessionContextValue | undefined>(undefined);
@@ -270,6 +276,35 @@ export function BudgetSessionProvider({ children }: { children: ReactNode }) {
     setIsDirty(false);
   }, []);
 
+  // Phase 8.5.3: Set foundational context
+  const setFoundationalContext = useCallback(
+    (context: FoundationalContext) => {
+      setSession((prev) => {
+        if (!prev) return prev;
+        const nextSession = { 
+          ...prev, 
+          foundationalContext: {
+            ...prev.foundationalContext,
+            ...context,
+          },
+        };
+        persist(nextSession);
+        return nextSession;
+      });
+    },
+    [persist]
+  );
+
+  // Phase 8.5.3: Mark foundational questions as completed
+  const markFoundationalCompleted = useCallback(() => {
+    setSession((prev) => {
+      if (!prev) return prev;
+      const nextSession = { ...prev, foundationalCompleted: true };
+      persist(nextSession);
+      return nextSession;
+    });
+  }, [persist]);
+
   const value = useMemo<BudgetSessionContextValue>(
     () => ({
       session,
@@ -284,6 +319,8 @@ export function BudgetSessionProvider({ children }: { children: ReactNode }) {
       updateBudget,
       markDirty,
       clearDirty,
+      setFoundationalContext,
+      markFoundationalCompleted,
     }),
     [
       session,
@@ -298,6 +335,8 @@ export function BudgetSessionProvider({ children }: { children: ReactNode }) {
       updateBudget,
       markDirty,
       clearDirty,
+      setFoundationalContext,
+      markFoundationalCompleted,
     ],
   );
 

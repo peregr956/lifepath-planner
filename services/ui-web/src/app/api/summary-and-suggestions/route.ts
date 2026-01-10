@@ -2,6 +2,9 @@
  * Summary and Suggestions API Route
  * 
  * Generates budget summary and optimization suggestions.
+ * 
+ * Phase 8.5.3: Accepts foundational context to improve suggestion personalization.
+ * 
  * Uses AI when available, falls back to deterministic suggestions.
  * Ported from Python api-gateway + optimization-service.
  */
@@ -9,7 +12,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession, getUserContext, initDatabase } from '@/lib/db';
 import { computeSummary, computeCategoryShares, type UnifiedBudgetModel } from '@/lib/budgetModel';
-import { generateSuggestions, getProviderMetadata } from '@/lib/ai';
+import { generateSuggestionsWithContext, getProviderMetadata } from '@/lib/ai';
+import type { FoundationalContext } from '@/types/budget';
 
 // Initialize database on first request
 let dbInitialized = false;
@@ -57,14 +61,18 @@ export async function GET(request: NextRequest) {
     // Get user context
     const userContext = getUserContext(session);
 
+    // Phase 8.5.3: Get foundational context from session
+    const foundationalContext = (session.foundational_context || null) as FoundationalContext | null;
+
     // Compute summary and category shares
     const summary = computeSummary(finalModel);
     const categoryShares = computeCategoryShares(finalModel);
 
-    // Generate suggestions (with retry logic for AI)
-    const { suggestions, usedDeterministic } = await generateSuggestions(
+    // Generate suggestions (Phase 8.5.3: pass foundational context)
+    const { suggestions, usedDeterministic } = await generateSuggestionsWithContext(
       finalModel,
       userContext.user_query ?? undefined,
+      foundationalContext,
       userContext.user_profile ?? undefined
     );
 
@@ -81,7 +89,10 @@ export async function GET(request: NextRequest) {
       },
       category_shares: categoryShares,
       suggestions,
-      provider_metadata: getProviderMetadata(usedDeterministic),
+      provider_metadata: {
+        ...getProviderMetadata(usedDeterministic),
+        foundational_context_provided: !!foundationalContext,
+      },
       user_query: userContext.user_query,
     });
   } catch (error) {
