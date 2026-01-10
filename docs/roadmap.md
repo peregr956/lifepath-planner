@@ -319,7 +319,7 @@ This section tracks in-progress items from MVP phases that are not yet complete.
 
 # Part III: Platform Expansion (Phases 8.5–20)
 
-This section outlines the phases that will transform LifePath Planner from an MVP into a comprehensive financial planning platform.
+This section outlines the phases that will transform LifePath Planner from an MVP into a comprehensive financial planning platform. Phases 8.5.1, 8.5.2, and 8.5.3 focus on AI quality and user context improvements before adding new features.
 
 > **Note:** Phase order was restructured in January 2026 based on competitive analysis. User retention features (accounts, history) now take priority over utility features (calculators). See the [Competitive Audit](competitive_audit.md) for rationale.
 
@@ -393,7 +393,285 @@ This section outlines the phases that will transform LifePath Planner from an MV
 
 ---
 
-## Phase 9 — User Accounts & Authentication (Weeks 12–15)
+## Phase 8.5.1 — AI Generalizability (Weeks 11–12)
+
+**Goal**: Redesign the application to leverage AI intelligence rather than hardcoded program logic for user-specific financial decisions.
+
+**Rationale**: The AI is more intelligent than our program's hardcoded rules. Instead of the program presuming what's best for the user (e.g., assuming they want an emergency fund, defaulting to specific savings strategies, or prescribing financial philosophies), we should pass generalizable prompts and let AI interpret user needs dynamically.
+
+### Key Principle Changes
+
+| Current Approach | New Approach |
+|-----------------|--------------|
+| Program detects goal type from keywords (`detectGoalType()`) | AI determines user goals from full context |
+| Deterministic suggestions hardcode "Build Emergency Fund" | AI suggests based on actual user priorities |
+| Program assumes 3-6 month emergency fund target | AI tailors recommendations to user's stated needs |
+| Fixed goal-specific guidance sections in prompts | Generalizable context that AI interprets |
+| Hardcoded `optimization_focus` options (debt/savings/balanced) | Open-ended optimization based on user's goals |
+
+### Specific Assumptions to Remove
+
+1. **Emergency Fund Assumption**: The deterministic fallback currently suggests an emergency fund based on `optimization_focus` regardless of whether the user asked about it. Should only suggest if the user asks or AI determines it's relevant to their stated goals.
+
+2. **Goal Detection via Keywords**: The `detectGoalType()` function uses keyword matching to pre-classify user intent (e.g., "house" → `down_payment`). This should be removed; let AI understand intent naturally from full context.
+
+3. **Financial Philosophy Defaults**: Don't assume the user follows any particular framework. Allow the AI to ask or determine relevance based on context.
+
+4. **Hardcoded Percentages**: Remove fixed targets like "3-6 months expenses" for emergency funds or "10-25% reduction" for flexible spending unless AI determines these are appropriate for the specific user's situation.
+
+5. **Prescriptive Goal Context**: The `buildGoalContext()` function provides rigid guidance for each goal type. Replace with generalizable context that allows AI to tailor recommendations.
+
+### Files to Modify
+
+| File | Changes |
+|------|---------|
+| `services/ui-web/src/lib/ai.ts` | Remove `detectGoalType()`, `buildGoalContext()`; refactor `generateDeterministicSuggestions()` to be minimal fallback-only |
+| `services/ui-web/src/lib/queryAnalyzer.ts` | Refactor to provide raw signals rather than pre-classified intents; remove prescriptive `needsFinancialPhilosophy`/`needsRiskTolerance` decisions |
+| `services/ui-web/src/lib/budgetModel.ts` | Review default preferences that presume user intent |
+
+### Deliverables
+
+- [ ] Remove keyword-based goal detection from prompt construction
+- [ ] Remove prescriptive goal-specific guidance from prompts
+- [ ] Refactor deterministic suggestions to be truly minimal (only when AI fails)
+- [ ] Make prompts ask AI to determine user priorities rather than pre-classifying
+- [ ] Remove hardcoded financial advice percentages from deterministic fallback
+
+**Success Criteria**:
+- Deterministic fallback makes no assumptions about user goals
+- AI prompts do not pre-classify user intent
+- Financial recommendations only appear when contextually relevant to user's stated needs
+
+---
+
+## Phase 8.5.2 — Prompt Engineering Best Practices (Weeks 12–13)
+
+**Goal**: Restructure all AI prompts to follow the CORE Prompt Framework for consistent, high-quality AI responses.
+
+**Rationale**: Following established prompt engineering best practices improves AI output consistency, reduces hallucinations, and ensures clearer communication of requirements. The CORE framework provides a structured approach that works across ChatGPT, Claude, and similar LLMs.
+
+### CORE Framework Components
+
+Each prompt will be restructured to include these elements in order:
+
+1. **Objective** — Single sentence stating the desired outcome
+2. **Role and Stance** — Who the AI is and what perspective to use (analyst, advisor, etc.)
+3. **Context** — Only information that changes the answer (constraints, audience, domain facts)
+4. **Inputs (delimited)** — User data separated with clear delimiters (XML tags or triple quotes)
+5. **Output Contract** — Format (bullets/table/JSON), length, required sections, tone
+6. **Quality Bar and Boundaries** — Uncertainty handling, no fabrication rules, assumption labeling
+7. **Examples** (optional) — Few-shot examples for complex output formats
+8. **Iteration Hook** — Self-verification step ("Before finalizing, check against requirements")
+
+### Prompts to Refactor
+
+| Prompt | File | Current Issues | Changes Needed |
+|--------|------|----------------|----------------|
+| `CLARIFICATION_SYSTEM_PROMPT` | `ai.ts` | Instructions mixed with context; no output contract | Add objective, output contract, quality boundaries |
+| `SUGGESTION_SYSTEM_PROMPT` | `ai.ts` | Long narrative format; buried instructions | Reorganize with clear priority order |
+| `ENRICHMENT_SYSTEM_PROMPT` | `aiEnrichment.ts` | Minimal structure | Add role, output contract, examples |
+| `SYSTEM_PROMPT` | `aiNormalization.ts` | Mixed instructions and rules | Separate instructions from context |
+| `buildClarificationPrompt()` | `ai.ts` | Context before instructions | Put instructions first, then delimited inputs |
+| `buildSuggestionPrompt()` | `ai.ts` | No clear boundaries or examples | Add quality bar and iteration hook |
+
+### Prompt Template to Apply
+
+```
+Objective:
+[What you want, in one sentence.]
+
+Role:
+You are a [role]. Prioritize [values: accuracy, concision, etc.].
+
+Context:
+- Audience: [who this is for]
+- Constraints: [time, policy, style, tools, forbidden items]
+- Success criteria: [what "good" means]
+
+<user_data>
+[Budget/financial data here - clearly delimited]
+</user_data>
+
+Output Contract:
+- Format: [bullets/table/JSON]
+- Length: [limit]
+- Must include: [A, B, C]
+- Tone: [tone]
+
+Rules:
+- If missing info, [ask questions OR state assumptions and label them].
+- Do not fabricate [numbers, quotes, sources].
+- Before finalizing, verify against requirements.
+```
+
+### Model-Specific Considerations
+
+**OpenAI/ChatGPT:**
+- Put instructions at top, context/input separated with delimiters below
+- If outputs are inconsistent, add short example or stricter output contract
+
+**Claude (Anthropic):**
+- Responds well to contract-style prompts with clear separation
+- Be explicit about required headings, ordering, and disallowed content
+
+### Common Failure Modes to Eliminate
+
+| Failure Mode | Current Example | Fix |
+|--------------|-----------------|-----|
+| **Goal drift** | Multiple tasks in one prompt without priority | Explicit priority numbering |
+| **Hidden constraints** | Format expectations not stated | Output contract section |
+| **Buried instructions** | Key rules after long context blocks | Instructions first |
+| **Unbounded creativity** | "Best" without evaluation criteria | Success criteria in context |
+
+### Prompt Quality Scoring Rubric
+
+Before deploying prompts, score 0–2 on each dimension:
+
+1. Unambiguous objective (2 = crystal clear deliverable)
+2. Constraints are explicit (format/length/tone)
+3. Context is sufficient but minimal
+4. Inputs are separated from instructions
+5. Priority is clear (what to do if conflicts occur)
+6. Quality controls included (assumptions, uncertainty handling)
+
+**Target: 10+/12 for all production prompts.**
+
+### Files to Modify
+
+| File | Changes |
+|------|---------|
+| `services/ui-web/src/lib/ai.ts` | Restructure `CLARIFICATION_SYSTEM_PROMPT`, `SUGGESTION_SYSTEM_PROMPT`, `buildClarificationPrompt()`, `buildSuggestionPrompt()` |
+| `services/ui-web/src/lib/aiEnrichment.ts` | Restructure `ENRICHMENT_SYSTEM_PROMPT` |
+| `services/ui-web/src/lib/aiNormalization.ts` | Restructure `SYSTEM_PROMPT` |
+
+### Deliverables
+
+- [ ] All system prompts restructured to CORE framework
+- [ ] All user prompts use clear input delimiters
+- [ ] Output contracts defined for all AI calls
+- [ ] Quality boundaries and uncertainty handling added
+- [ ] Model-specific optimizations applied
+- [ ] All prompts score 10+/12 on quality rubric
+
+**Success Criteria**:
+- Consistent AI output format across all calls
+- Reduced hallucinations and fabricated data
+- Clear, actionable suggestions that reference user's actual question
+- AI acknowledges uncertainty when information is missing
+
+---
+
+## Phase 8.5.3 — Strategic Question Design (Weeks 13–14)
+
+**Goal**: Ensure the application asks the right questions in the right order to provide AI with maximum context for generating high-quality, personalized recommendations.
+
+**Rationale**: The quality of AI recommendations depends heavily on the context provided. By surfacing foundational questions early (like financial philosophy, risk tolerance, and goals) and making them easily accessible, we give the AI the information it needs to provide truly personalized advice rather than generic recommendations.
+
+### Key Principles
+
+1. **Foundational Questions First**: Surface high-value context questions before budget-specific questions
+2. **Optional but Encouraged**: All questions remain optional, but UI communicates that answers improve results
+3. **Informed Question Generation**: Use early answers to inform which follow-up questions are most relevant
+4. **Progressive Disclosure**: Don't overwhelm users; show most important questions first with option to expand
+
+### Question Categories
+
+| Category | Purpose | When to Ask | Examples |
+|----------|---------|-------------|----------|
+| **Foundational** | Establish user's financial worldview | Early in flow, before AI generates questions | Financial philosophy, risk tolerance, primary goal |
+| **Contextual** | Understand user's specific situation | After budget upload, before detailed questions | Income stability, existing savings, life stage |
+| **Budget-Specific** | Clarify ambiguous budget items | After AI analyzes budget | Essential vs flexible expenses, debt details |
+| **Query-Specific** | Address gaps for user's stated question | Based on user's query analysis | Timeline for goals, specific constraints |
+
+### Two-Stage Question Flow
+
+```
+Stage 1: Foundational Context (Optional Quick Questions)
+┌─────────────────────────────────────────────────────────┐
+│ "Help us understand your financial situation better"    │
+│                                                         │
+│ • Financial Philosophy: [dropdown]                      │
+│ • Risk Tolerance: [dropdown]                            │
+│ • Primary Goal: [dropdown or text]                      │
+│ • Timeline: [dropdown]                                  │
+│                                                         │
+│ [Skip] [Continue]                                       │
+│ "Answering these helps us give you better advice"       │
+└─────────────────────────────────────────────────────────┘
+                          ↓
+Stage 2: AI-Generated Clarification Questions
+┌─────────────────────────────────────────────────────────┐
+│ Questions informed by Stage 1 answers + budget data     │
+│ More relevant and personalized based on context         │
+└─────────────────────────────────────────────────────────┘
+```
+
+### Foundational Questions to Surface Early
+
+| Question | Field ID | Why It Matters |
+|----------|----------|----------------|
+| **Financial Philosophy** | `financial_philosophy` | Determines advice framework (Dave Ramsey vs r/personalfinance vs FIRE, etc.) |
+| **Risk Tolerance** | `risk_tolerance` | Affects investment vs debt payoff recommendations |
+| **Primary Financial Goal** | `primary_goal` | Focuses all suggestions on what matters to user |
+| **Goal Timeline** | `goal_timeline` | Affects urgency and strategy of recommendations |
+| **Life Stage** | `life_stage` | Contextualizes advice (early career, family, pre-retirement) |
+| **Existing Emergency Fund** | `has_emergency_fund` | Determines if emergency fund advice is relevant |
+
+### Implementation Approach
+
+**Option A: Pre-Clarification Step**
+- Add new step before AI question generation
+- Collect foundational context quickly
+- Pass to AI as additional context for question generation
+
+**Option B: Persistent Profile Panel**
+- Sidebar or header section with key profile fields
+- Always visible/editable during session
+- Updates feed into AI context automatically
+
+**Option C: Smart Defaults with Edit**
+- AI infers likely values from budget patterns
+- Displays inferences with "Edit" option
+- User can confirm or correct
+
+### Files to Create/Modify
+
+| File | Changes |
+|------|---------|
+| `services/ui-web/src/app/(app)/clarify/page.tsx` | Add foundational questions step before AI questions |
+| `services/ui-web/src/components/FoundationalQuestions.tsx` | New component for early context gathering |
+| `services/ui-web/src/components/ClarificationForm.tsx` | Update to show question importance/impact |
+| `services/ui-web/src/lib/ai.ts` | Update `buildClarificationPrompt()` to prioritize foundational context |
+| `services/ui-web/src/types/budget.ts` | Add new profile fields (life_stage, has_emergency_fund, etc.) |
+| `services/ui-web/src/hooks/useBudgetSession.tsx` | Store foundational answers in session |
+
+### UI/UX Considerations
+
+1. **"Why are we asking this?"**: Tooltip or help text explaining how each question improves recommendations
+2. **Progress indication**: Show how much context has been provided (e.g., "Profile 60% complete")
+3. **Skip option**: Always allow skipping, but gently encourage completion
+4. **Inline education**: Brief explanations of concepts (e.g., "What is the r/personalfinance approach?")
+
+### Deliverables
+
+- [ ] Define foundational question set with field IDs and options
+- [ ] Create foundational questions UI component
+- [ ] Integrate foundational questions into clarify flow (before AI questions)
+- [ ] Update AI prompts to utilize foundational context effectively
+- [ ] Add "why we ask" explanations for each foundational question
+- [ ] Implement optional completion indicator
+- [ ] Test that early context improves AI recommendation quality
+
+**Success Criteria**:
+- Financial philosophy question appears before budget-specific questions
+- User profile context is passed to AI for all subsequent interactions
+- Users who answer foundational questions receive more personalized recommendations
+- All questions remain skippable with clear "skip" affordance
+- UI communicates value of providing context without being pushy
+
+---
+
+## Phase 9 — User Accounts & Authentication (Weeks 16–19)
 
 **Goal**: Enable user accounts, authentication, and profile management to support persistent data and multi-session planning.
 
@@ -795,18 +1073,21 @@ These phases consolidate advanced features that build on the core platform.
 | Phase | Name | Weeks | Duration | Key Deliverable |
 |-------|------|-------|----------|-----------------|
 | 8.5 | MVP Quality Fixes | 10–11 | 2 weeks | Fix critical bugs before launch |
-| 9 | User Accounts | 12–15 | 4 weeks | User retention capability |
-| 10 | Budget History | 16–19 | 4 weeks | Persistent value |
-| 11 | UI/UX Polish | 20–23 | 4 weeks | Professional experience |
-| 12 | Calculators | 24–28 | 5 weeks | Utility features |
-| 13 | Goal Tracking | 29–34 | 6 weeks | Engagement driver |
-| 14 | Projections | 35–42 | 8 weeks | Long-term planning |
-| 15 | Scenarios | 43–46 | 4 weeks | "What if" analysis |
-| 16 | Workflow Integration | 47–50 | 4 weeks | Connected experience |
-| 17 | Account Integration | 51–56 | 6 weeks | Real-time data |
-| 18 | Advanced Planning | 57–60 | 4 weeks | Premium features |
-| 19 | Production Hardening | 61–64 | 4 weeks | Scale & security |
-| 20 | Marketing | 65–68 | 4 weeks | Growth preparation |
+| 8.5.1 | AI Generalizability | 11–12 | 2 weeks | Remove hardcoded assumptions; let AI determine user needs |
+| 8.5.2 | Prompt Engineering | 12–13 | 1–2 weeks | CORE framework compliance for all prompts |
+| 8.5.3 | Strategic Question Design | 13–14 | 2 weeks | Foundational questions first; optimal AI context |
+| 9 | User Accounts | 16–19 | 4 weeks | User retention capability |
+| 10 | Budget History | 20–23 | 4 weeks | Persistent value |
+| 11 | UI/UX Polish | 24–27 | 4 weeks | Professional experience |
+| 12 | Calculators | 28–32 | 5 weeks | Utility features |
+| 13 | Goal Tracking | 33–38 | 6 weeks | Engagement driver |
+| 14 | Projections | 39–46 | 8 weeks | Long-term planning |
+| 15 | Scenarios | 47–50 | 4 weeks | "What if" analysis |
+| 16 | Workflow Integration | 51–54 | 4 weeks | Connected experience |
+| 17 | Account Integration | 55–60 | 6 weeks | Real-time data |
+| 18 | Advanced Planning | 61–64 | 4 weeks | Premium features |
+| 19 | Production Hardening | 65–68 | 4 weeks | Scale & security |
+| 20 | Marketing | 69–72 | 4 weeks | Growth preparation |
 
 ---
 
@@ -815,6 +1096,9 @@ These phases consolidate advanced features that build on the core platform.
 | Phase | Key Metrics |
 |-------|-------------|
 | Phase 8.5 (Quality) | Zero duplicate questions, all impacts non-zero, mode indicator visible |
+| Phase 8.5.1 (Generalizability) | No hardcoded financial assumptions; AI determines relevance dynamically |
+| Phase 8.5.2 (Prompts) | All prompts score 10+/12 on CORE rubric; consistent AI output quality |
+| Phase 8.5.3 (Questions) | Foundational questions surfaced early; improved recommendation personalization |
 | Phase 9 (Accounts) | User registration rate, return user rate |
 | Phase 10 (History) | Users saving budgets, history view engagement |
 | Phase 11 (UI/UX) | Accessibility score, mobile usage, error rate reduction |
@@ -834,6 +1118,12 @@ These phases consolidate advanced features that build on the core platform.
 
 ```
 Phase 8.5 → Required before any public marketing
+    ↓
+Phase 8.5.1 (Generalizability) → Improves AI quality for all features
+    ↓
+Phase 8.5.2 (Prompts) → Improves AI consistency; can run in parallel with 8.5.1
+    ↓
+Phase 8.5.3 (Questions) → Optimal question flow; depends on 8.5.1 + 8.5.2
     ↓
 Phase 9 (Accounts) → Required for all persistence features
     ↓
@@ -869,7 +1159,7 @@ The system uses a **unified Vercel serverless architecture**:
 - **AI**: OpenAI API (via Vercel AI SDK)
 - **CDN**: Vercel Edge Network
 
-No additional services or containers are needed for Phases 8.5–15. The architecture is sufficient for the core platform.
+No additional services or containers are needed for Phases 8.5–8.5.3 (code refactoring and UI changes only) or Phases 9–15. The architecture is sufficient for the core platform.
 
 ### Data Model Expansion
 
@@ -894,6 +1184,9 @@ New entities to add progressively:
 | Risk | Mitigation Strategy |
 |------|---------------------|
 | Phase 8.5 scope creep | Timebox to 2 weeks; defer non-critical fixes |
+| Phase 8.5.1 over-removal | Keep minimal deterministic fallback; test AI-only paths thoroughly |
+| Phase 8.5.2 prompt complexity | Use scoring rubric to validate each prompt before deployment |
+| Phase 8.5.3 user friction | Keep all questions optional; A/B test skip rates |
 | Auth complexity | Use managed auth (Clerk/Auth0) vs building custom |
 | Account Integration Complexity | Start with Plaid only; add others later |
 | Regulatory Compliance | Consult with legal/compliance experts in Phase 17 |
@@ -916,8 +1209,10 @@ New entities to add progressively:
 
 ## Next Steps
 
-1. **Begin Phase 8.5** — Fix P0 issues (question deduplication, financial frameworks)
-2. **Select auth provider** — Evaluate Clerk, Auth0, NextAuth.js for Phase 9
-3. **Create detailed tickets** — Break Phase 8.5 and 9 into specific tasks
-4. **Set up project tracking** — Use project management tool for phase tracking
-5. **Regular roadmap reviews** — Update quarterly based on user feedback and market changes
+1. **Begin Phase 8.5.1** — Remove hardcoded assumptions from `ai.ts` (`detectGoalType()`, `buildGoalContext()`, deterministic suggestions)
+2. **Begin Phase 8.5.2** — Restructure prompts to follow CORE framework (can run in parallel with 8.5.1)
+3. **Plan Phase 8.5.3** — Design foundational questions UI and two-stage question flow
+4. **Select auth provider** — Evaluate Clerk, Auth0, NextAuth.js for Phase 9
+5. **Create detailed tickets** — Break Phase 8.5.1, 8.5.2, 8.5.3, and 9 into specific tasks
+6. **Set up project tracking** — Use project management tool for phase tracking
+7. **Regular roadmap reviews** — Update quarterly based on user feedback and market changes
