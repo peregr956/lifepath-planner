@@ -82,6 +82,29 @@ export interface QuestionSpec {
   components: QuestionComponent[];
 }
 
+// Question group for organized questions with section headers
+export interface QuestionGroup {
+  group_id: string;
+  group_title: string;
+  questions: QuestionSpec[];
+}
+
+// Analysis from AI clarification (initial budget analysis before asking questions)
+export interface ClarificationAnalysis {
+  normalized_budget_summary: string;
+  net_position: string;
+  critical_observations: string[];
+  reasoning: string;
+}
+
+// Extended result from clarification question generation
+export interface ClarificationResult {
+  questions: QuestionSpec[];
+  question_groups?: QuestionGroup[];
+  analysis?: ClarificationAnalysis;
+  next_steps?: string;
+}
+
 // Suggestion from optimization
 export interface Suggestion {
   id: string;

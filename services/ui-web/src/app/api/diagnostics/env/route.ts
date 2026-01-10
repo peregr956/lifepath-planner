@@ -69,7 +69,7 @@ export async function GET() {
     issues.push('OPENAI_API_KEY is not set - AI features will be disabled');
   }
   if (!requiredStatus['OPENAI_MODEL'].is_set) {
-    issues.push('OPENAI_MODEL is not set - will default to gpt-4o-mini');
+    issues.push('OPENAI_MODEL is not set - will default to gpt-4o');
   }
   
   // Check for database connection - support both POSTGRES_URL and DATABASE_URL

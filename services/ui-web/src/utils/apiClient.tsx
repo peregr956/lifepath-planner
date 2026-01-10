@@ -9,6 +9,7 @@ import type {
   BudgetPreferences,
   BudgetSummary,
   BudgetSuggestion,
+  ClarificationAnalysis,
   ClarificationAnswers,
   ClarificationComponentDescriptor,
   ClarificationDropdownDescriptor,
@@ -20,6 +21,7 @@ import type {
   ExpenseEntry,
   IncomeEntry,
   ProviderMetadata,
+  QuestionGroup,
   RateChange,
   SubmitAnswersResponse,
   SummaryAndSuggestionsResponse,
@@ -721,11 +723,30 @@ type RawUploadBudgetResponse = {
   } | null;
 };
 
+// Raw analysis from AI clarification
+type RawClarificationAnalysis = {
+  normalized_budget_summary: string;
+  net_position: string;
+  critical_observations: string[];
+  reasoning: string;
+};
+
+// Raw question group with nested questions
+type RawQuestionGroup = {
+  group_id: string;
+  group_title: string;
+  questions: unknown;
+};
+
 type RawClarificationQuestionsResponse = {
   budget_id: string;
   needs_clarification: boolean;
   questions?: unknown;
   partial_model?: RawUnifiedBudgetModel | null;
+  // New fields for enhanced clarification response
+  analysis?: RawClarificationAnalysis | null;
+  question_groups?: RawQuestionGroup[] | null;
+  next_steps?: string | null;
 };
 
 type RawSubmitAnswersResponse = {
@@ -893,15 +914,54 @@ function normalizeUploadBudgetResponse(raw: RawUploadBudgetResponse): UploadBudg
   };
 }
 
+function normalizeClarificationAnalysis(
+  raw: RawClarificationAnalysis | null | undefined,
+): ClarificationAnalysis | null {
+  if (!raw) return null;
+  return {
+    normalizedBudgetSummary: raw.normalized_budget_summary ?? '',
+    netPosition: raw.net_position ?? '',
+    criticalObservations: Array.isArray(raw.critical_observations)
+      ? raw.critical_observations
+      : [],
+    reasoning: raw.reasoning ?? '',
+  };
+}
+
+function normalizeQuestionGroups(
+  rawGroups: RawQuestionGroup[] | null | undefined,
+): QuestionGroup[] | null {
+  if (!rawGroups || !Array.isArray(rawGroups) || rawGroups.length === 0) {
+    return null;
+  }
+
+  return rawGroups.map((group) => ({
+    groupId: group.group_id ?? '',
+    groupTitle: group.group_title ?? '',
+    questions: parseClarificationQuestions(group.questions),
+  }));
+}
+
 function normalizeClarificationQuestionsResponse(
   raw: RawClarificationQuestionsResponse,
 ): ClarificationQuestionsResponse {
-  const questions = parseClarificationQuestions(raw.questions);
+  // Parse questions from flat array or extract from groups
+  let questions = parseClarificationQuestions(raw.questions);
+  const questionGroups = normalizeQuestionGroups(raw.question_groups);
+
+  // If no flat questions but we have groups, flatten them
+  if (questions.length === 0 && questionGroups && questionGroups.length > 0) {
+    questions = questionGroups.flatMap((group) => group.questions);
+  }
+
   return {
     budgetId: raw.budget_id,
     needsClarification: Boolean(raw.needs_clarification),
     questions,
     partialModel: raw.partial_model ? normalizeUnifiedBudgetModel(raw.partial_model) : null,
+    analysis: normalizeClarificationAnalysis(raw.analysis),
+    questionGroups,
+    nextSteps: raw.next_steps ?? null,
   };
 }
 

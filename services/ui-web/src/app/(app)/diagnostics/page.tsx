@@ -449,7 +449,7 @@ export default function DiagnosticsPage() {
                   <div className="text-amber-300 font-semibold mb-1">Required Vercel Environment Variables:</div>
                   <ul className="text-xs text-white/80 space-y-1 font-mono">
                     <li>OPENAI_API_KEY=sk-...</li>
-                    <li>OPENAI_MODEL=gpt-4o-mini (optional, defaults to gpt-4o-mini)</li>
+                    <li>OPENAI_MODEL=gpt-4o (optional, defaults to gpt-4o)</li>
                     <li>OPENAI_API_BASE=https://api.openai.com/v1 (optional)</li>
                     <li>POSTGRES_URL (optional, for persistent storage)</li>
                   </ul>

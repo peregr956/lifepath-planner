@@ -124,6 +124,21 @@ export type ClarificationQuestion = {
   components: ClarificationComponentDescriptor[];
 };
 
+// Analysis from AI clarification (initial budget analysis before asking questions)
+export type ClarificationAnalysis = {
+  normalizedBudgetSummary: string;
+  netPosition: string;
+  criticalObservations: string[];
+  reasoning: string;
+};
+
+// Question group for organized questions with section headers
+export type QuestionGroup = {
+  groupId: string;
+  groupTitle: string;
+  questions: ClarificationQuestion[];
+};
+
 export type ClarificationAnswerValue = string | number | boolean;
 export type ClarificationAnswers = Record<string, ClarificationAnswerValue>;
 
@@ -132,6 +147,10 @@ export type ClarificationQuestionsResponse = {
   needsClarification: boolean;
   questions: ClarificationQuestion[];
   partialModel: UnifiedBudgetModel | null;
+  // New fields for enhanced clarification response
+  analysis?: ClarificationAnalysis | null;
+  questionGroups?: QuestionGroup[] | null;
+  nextSteps?: string | null;
 };
 
 export type SubmitAnswersResponse = {

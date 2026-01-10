@@ -6,9 +6,10 @@
  */
 
 import OpenAI from 'openai';
-import type { UnifiedBudgetModel, QuestionSpec, Suggestion } from './budgetModel';
+import type { UnifiedBudgetModel, QuestionSpec, Suggestion, QuestionGroup, ClarificationAnalysis, ClarificationResult } from './budgetModel';
 import { ESSENTIAL_PREFIX, SUPPORTED_SIMPLE_FIELD_IDS, parseDebtFieldId } from './normalization';
 import { loadProviderSettings, isAIGatewayEnabled } from './providerSettings';
+import { analyzeQuery, getIntentDescription, type QueryAnalysis } from './queryAnalyzer';
 
 // Load default provider settings
 const providerSettings = loadProviderSettings({
@@ -18,40 +19,102 @@ const providerSettings = loadProviderSettings({
   maxTokensEnv: 'AI_MAX_TOKENS',
 });
 
+// Question component schema (shared between flat questions and grouped questions)
+const QUESTION_COMPONENT_SCHEMA = {
+  type: 'object' as const,
+  properties: {
+    component: { type: 'string' as const, enum: ['toggle', 'dropdown', 'number_input', 'slider', 'text_input'] },
+    field_id: { type: 'string' as const },
+    label: { type: 'string' as const },
+    binding: { type: 'string' as const },
+    options: { type: 'array' as const, items: { type: 'string' as const } },
+    min: { type: 'number' as const },
+    max: { type: 'number' as const },
+    unit: { type: 'string' as const },
+  },
+  required: ['component', 'field_id', 'label'],
+};
+
+// Individual question schema
+const QUESTION_ITEM_SCHEMA = {
+  type: 'object' as const,
+  properties: {
+    question_id: { type: 'string' as const },
+    prompt: { type: 'string' as const },
+    components: {
+      type: 'array' as const,
+      items: QUESTION_COMPONENT_SCHEMA,
+    },
+  },
+  required: ['question_id', 'prompt', 'components'],
+};
+
 // Question schema for OpenAI function calling
+// Updated to support analysis phase and grouped questions (matching Python version)
 const QUESTION_SPEC_SCHEMA = {
   type: 'object' as const,
   properties: {
-    questions: {
+    // Analysis phase - initial budget analysis before asking questions
+    analysis: {
+      type: 'object' as const,
+      properties: {
+        normalized_budget_summary: {
+          type: 'string' as const,
+          description: 'A clear, readable summary of the normalized budget with grouped categories and totals.',
+        },
+        net_position: {
+          type: 'string' as const,
+          description: 'The calculated net monthly position (surplus or deficit) with the dollar amount.',
+        },
+        critical_observations: {
+          type: 'array' as const,
+          items: { type: 'string' as const },
+          description: 'Key observations about the budget, especially any inconsistencies.',
+        },
+        reasoning: {
+          type: 'string' as const,
+          description: 'Explanation of what the numbers suggest and what needs clarification before giving advice.',
+        },
+      },
+      required: ['normalized_budget_summary', 'net_position', 'critical_observations', 'reasoning'],
+    },
+    // Grouped questions with section headers
+    question_groups: {
       type: 'array' as const,
       items: {
         type: 'object' as const,
         properties: {
-          question_id: { type: 'string' as const },
-          prompt: { type: 'string' as const },
-          components: {
+          group_id: {
+            type: 'string' as const,
+            description: 'Section identifier (e.g., "A", "B", "C").',
+          },
+          group_title: {
+            type: 'string' as const,
+            description: 'Title explaining the purpose of this group.',
+          },
+          questions: {
             type: 'array' as const,
-            items: {
-              type: 'object' as const,
-              properties: {
-                component: { type: 'string' as const, enum: ['toggle', 'dropdown', 'number_input', 'slider'] },
-                field_id: { type: 'string' as const },
-                label: { type: 'string' as const },
-                binding: { type: 'string' as const },
-                options: { type: 'array' as const, items: { type: 'string' as const } },
-                min: { type: 'number' as const },
-                max: { type: 'number' as const },
-                unit: { type: 'string' as const },
-              },
-              required: ['component', 'field_id', 'label', 'binding'],
-            },
+            items: QUESTION_ITEM_SCHEMA,
+            description: 'Questions in this group.',
           },
         },
-        required: ['question_id', 'prompt', 'components'],
+        required: ['group_id', 'group_title', 'questions'],
       },
+      description: 'Logically grouped questions with section headers.',
+    },
+    // Next steps explanation
+    next_steps: {
+      type: 'string' as const,
+      description: 'Brief explanation of what happens after these questions are answered.',
+    },
+    // Legacy flat questions array for backward compatibility
+    questions: {
+      type: 'array' as const,
+      items: QUESTION_ITEM_SCHEMA,
+      description: 'Flat list of questions (legacy format, prefer question_groups).',
     },
   },
-  required: ['questions'],
+  required: ['analysis', 'question_groups', 'next_steps'],
 };
 
 // Suggestion schema for OpenAI function calling
@@ -95,7 +158,7 @@ function getOpenAIClient(): OpenAI | null {
  * Get OpenAI model name
  */
 function getModel(): string {
-  return providerSettings.openai?.model || 'gpt-4o-mini';
+  return providerSettings.openai?.model || 'gpt-4o';
 }
 
 /**
@@ -241,6 +304,55 @@ function buildValidFieldIds(model: UnifiedBudgetModel): string {
 }
 
 /**
+ * Build a section describing the analyzed user query for the AI prompt.
+ * Ported from Python _build_query_analysis_section() in openai_clarification.py
+ */
+function buildQueryAnalysisSection(userQuery: string): string {
+  if (!userQuery || !userQuery.trim()) {
+    return '';
+  }
+
+  const analysis = analyzeQuery(userQuery);
+
+  const lines: string[] = ['## Query Analysis (Use this to prioritize questions)'];
+  lines.push(`- Primary intent: ${analysis.primaryIntent} (${getIntentDescription(analysis.primaryIntent)})`);
+
+  if (analysis.secondaryIntents.length > 0) {
+    lines.push(`- Secondary intents: ${analysis.secondaryIntents.join(', ')}`);
+  }
+
+  if (analysis.mentionedGoals.length > 0) {
+    lines.push(`- Mentioned goals: ${analysis.mentionedGoals.join(', ')}`);
+  }
+
+  if (analysis.mentionedConcerns.length > 0) {
+    lines.push(`- Concerns: ${analysis.mentionedConcerns.join(', ')}`);
+  }
+
+  if (analysis.timeframe !== 'unspecified') {
+    lines.push(`- Timeframe: ${analysis.timeframe}`);
+  }
+
+  // Guidance on what profile questions to ask
+  const profileGuidance: string[] = [];
+  if (analysis.needsFinancialPhilosophy) {
+    profileGuidance.push('financial_philosophy');
+  }
+  if (analysis.needsRiskTolerance) {
+    profileGuidance.push('risk_tolerance');
+  }
+  if (analysis.needsTimelineClarification) {
+    profileGuidance.push('goal_timeline');
+  }
+
+  if (profileGuidance.length > 0) {
+    lines.push(`- Suggested profile questions: ${profileGuidance.join(', ')}`);
+  }
+
+  return lines.join('\n');
+}
+
+/**
  * Build user prompt for clarification questions
  */
 function buildClarificationPrompt(model: UnifiedBudgetModel, userQuery: string): string {
@@ -262,12 +374,18 @@ function buildClarificationPrompt(model: UnifiedBudgetModel, userQuery: string):
     : 'No debts detected.';
 
   const validFieldIds = buildValidFieldIds(model);
+  
+  // Build query analysis section for better context
+  const queryAnalysisSection = buildQueryAnalysisSection(userQuery);
+  const queryAnalysisBlock = queryAnalysisSection
+    ? `\n${queryAnalysisSection}\n`
+    : '';
 
   return `## USER'S QUESTION (This is what they need help with)
 "${userQuery || 'Help me understand and optimize my budget'}"
 
 Generate ONLY the clarification questions needed to answer their specific question above.
-
+${queryAnalysisBlock}
 ## Budget Summary
 - Total Monthly Income: $${model.summary.total_income.toLocaleString()}
 - Total Monthly Expenses: $${model.summary.total_expenses.toLocaleString()}
@@ -615,6 +733,86 @@ function validateQuestionFieldIds(
 }
 
 /**
+ * Parse questions from the AI response, supporting both grouped and flat formats.
+ * Similar to Python _parse_questions() method.
+ */
+function parseQuestionsFromResponse(
+  parsed: Record<string, unknown>,
+  maxQuestions: number,
+  model: UnifiedBudgetModel
+): { questions: QuestionSpec[]; questionGroups?: QuestionGroup[]; analysis?: ClarificationAnalysis; nextSteps?: string } {
+  const result: {
+    questions: QuestionSpec[];
+    questionGroups?: QuestionGroup[];
+    analysis?: ClarificationAnalysis;
+    nextSteps?: string;
+  } = { questions: [] };
+
+  // Extract analysis if present
+  const rawAnalysis = parsed.analysis as Record<string, unknown> | undefined;
+  if (rawAnalysis) {
+    result.analysis = {
+      normalized_budget_summary: String(rawAnalysis.normalized_budget_summary || ''),
+      net_position: String(rawAnalysis.net_position || ''),
+      critical_observations: Array.isArray(rawAnalysis.critical_observations)
+        ? rawAnalysis.critical_observations.map(String)
+        : [],
+      reasoning: String(rawAnalysis.reasoning || ''),
+    };
+
+    console.log('[AI] Budget analysis:', {
+      net_position: result.analysis.net_position,
+      critical_observations_count: result.analysis.critical_observations.length,
+    });
+  }
+
+  // Extract next_steps if present
+  if (typeof parsed.next_steps === 'string') {
+    result.nextSteps = parsed.next_steps;
+  }
+
+  // Extract questions from groups (new format) or flat array (legacy format)
+  let questionGroups = parsed.question_groups as Array<Record<string, unknown>> | undefined;
+
+  // Fall back to legacy flat format if no groups
+  if (!questionGroups || !Array.isArray(questionGroups) || questionGroups.length === 0) {
+    const flatQuestions = parsed.questions as QuestionSpec[] | undefined;
+    if (flatQuestions && Array.isArray(flatQuestions)) {
+      // Wrap in a single group for consistency
+      questionGroups = [{
+        group_id: 'A',
+        group_title: 'Clarification Questions',
+        questions: flatQuestions,
+      }];
+    }
+  }
+
+  if (questionGroups && Array.isArray(questionGroups)) {
+    const parsedGroups: QuestionGroup[] = [];
+    const allQuestions: QuestionSpec[] = [];
+
+    for (const group of questionGroups) {
+      const groupQuestions = (group.questions as QuestionSpec[]) || [];
+      const validatedQuestions = validateQuestionFieldIds(groupQuestions, model);
+
+      if (validatedQuestions.length > 0) {
+        parsedGroups.push({
+          group_id: String(group.group_id || ''),
+          group_title: String(group.group_title || ''),
+          questions: validatedQuestions,
+        });
+        allQuestions.push(...validatedQuestions);
+      }
+    }
+
+    result.questionGroups = parsedGroups;
+    result.questions = allQuestions.slice(0, maxQuestions);
+  }
+
+  return result;
+}
+
+/**
  * Generate clarification questions using AI
  */
 export async function generateClarificationQuestions(
@@ -622,11 +820,25 @@ export async function generateClarificationQuestions(
   userQuery?: string,
   maxQuestions: number = 5
 ): Promise<QuestionSpec[]> {
+  const result = await generateClarificationQuestionsWithAnalysis(model, userQuery, maxQuestions);
+  return result.questions;
+}
+
+/**
+ * Generate clarification questions using AI with full analysis and grouping
+ */
+export async function generateClarificationQuestionsWithAnalysis(
+  model: UnifiedBudgetModel,
+  userQuery?: string,
+  maxQuestions: number = 5
+): Promise<ClarificationResult> {
   const client = getOpenAIClient();
   
   if (!client) {
     // Fall back to deterministic questions
-    return generateDeterministicQuestions(model, maxQuestions);
+    return {
+      questions: generateDeterministicQuestions(model, maxQuestions),
+    };
   }
 
   try {
@@ -641,30 +853,38 @@ export async function generateClarificationQuestions(
           type: 'function',
           function: {
             name: 'generate_clarification_questions',
-            description: 'Generate structured clarification questions for the budget model.',
+            description: 'Generate structured clarification questions for the budget model with analysis.',
             parameters: QUESTION_SPEC_SCHEMA,
           },
         },
       ],
       tool_choice: { type: 'function', function: { name: 'generate_clarification_questions' } },
       temperature: 0.6,  // Higher for more natural, conversational responses
-      max_tokens: 2048,  // Increased for analysis + grouped questions
+      max_tokens: 3072,  // Increased for analysis + grouped questions
     });
 
     const toolCalls = response.choices[0]?.message?.tool_calls;
     if (!toolCalls || toolCalls.length === 0) {
       console.warn('[AI] No tool calls in response, falling back to deterministic');
-      return generateDeterministicQuestions(model, maxQuestions);
+      return {
+        questions: generateDeterministicQuestions(model, maxQuestions),
+      };
     }
 
     const parsed = JSON.parse(toolCalls[0].function.arguments);
-    const questions = (parsed.questions || []).slice(0, maxQuestions) as QuestionSpec[];
+    const result = parseQuestionsFromResponse(parsed, maxQuestions, model);
     
-    // Validate field IDs
-    return validateQuestionFieldIds(questions, model);
+    return {
+      questions: result.questions,
+      question_groups: result.questionGroups,
+      analysis: result.analysis,
+      next_steps: result.nextSteps,
+    };
   } catch (error) {
     console.error('[AI] Error generating clarification questions:', error);
-    return generateDeterministicQuestions(model, maxQuestions);
+    return {
+      questions: generateDeterministicQuestions(model, maxQuestions),
+    };
   }
 }
 
@@ -835,4 +1055,5 @@ function generateDeterministicSuggestions(model: UnifiedBudgetModel): Suggestion
 
   return suggestions;
 }
+
 

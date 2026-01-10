@@ -16,7 +16,7 @@ export const DEFAULT_OPENAI_API_BASE = 'https://api.openai.com/v1';
 export const VERCEL_AI_GATEWAY_URL = 'https://gateway.ai.vercel.sh/v1';
 
 // Default model
-export const DEFAULT_OPENAI_MODEL = 'gpt-4o-mini';
+export const DEFAULT_OPENAI_MODEL = 'gpt-4o';
 
 export interface OpenAIConfig {
   apiKey: string;
