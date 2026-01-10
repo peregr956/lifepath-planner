@@ -319,13 +319,13 @@ This section tracks in-progress items from MVP phases that are not yet complete.
 
 # Part III: Platform Expansion (Phases 8.5–20)
 
-This section outlines the phases that will transform LifePath Planner from an MVP into a comprehensive financial planning platform. Phases 8.5.1, 8.5.2, and 8.5.3 focus on AI quality and user context improvements before adding new features.
+This section outlines the phases that will transform LifePath Planner from an MVP into a comprehensive financial planning platform. Phases 8.5.1, 8.5.2, 8.5.3, and 8.5.4 focus on AI quality, prompt engineering, and budget interpretation improvements before adding new features.
 
 > **Note:** Phase order was restructured in January 2026 based on competitive analysis. User retention features (accounts, history) now take priority over utility features (calculators). See the [Competitive Audit](competitive_audit.md) for rationale.
 
 ---
 
-## Phase 8.5 — MVP Quality Fixes (Weeks 10–11) ⬅️ START HERE
+## Phase 8.5 — MVP Quality Fixes (Weeks 10–11) ✅ Complete
 
 **Goal**: Fix critical bugs and missing functionality identified in the [Current State Reality Assessment](current_state_reality_assessment.md). Must complete before any marketing or public launch.
 
@@ -393,7 +393,7 @@ This section outlines the phases that will transform LifePath Planner from an MV
 
 ---
 
-## Phase 8.5.1 — AI Generalizability (Weeks 11–12)
+## Phase 8.5.1 — AI Generalizability (Weeks 11–12) ✅ Complete
 
 **Goal**: Redesign the application to leverage AI intelligence rather than hardcoded program logic for user-specific financial decisions.
 
@@ -444,7 +444,7 @@ This section outlines the phases that will transform LifePath Planner from an MV
 
 ---
 
-## Phase 8.5.2 — Prompt Engineering Best Practices (Weeks 12–13)
+## Phase 8.5.2 — Prompt Engineering Best Practices (Weeks 12–13) ✅ Complete
 
 **Goal**: Restructure all AI prompts to follow the CORE Prompt Framework for consistent, high-quality AI responses.
 
@@ -563,7 +563,7 @@ Before deploying prompts, score 0–2 on each dimension:
 
 ---
 
-## Phase 8.5.3 — Strategic Question Design (Weeks 13–14)
+## Phase 8.5.3 — Strategic Question Design (Weeks 13–14) ✅ Complete
 
 **Goal**: Ensure the application asks the right questions in the right order to provide AI with maximum context for generating high-quality, personalized recommendations.
 
@@ -676,6 +676,68 @@ Stage 2: AI-Generated Clarification Questions
 - Users who answer foundational questions receive more personalized recommendations
 - All questions remain skippable with clear "skip" affordance
 - UI communicates value of providing context without being pushy
+
+---
+
+## Phase 8.5.4 — AI-First Budget Interpretation (Weeks 14–15) ⬅️ CURRENT
+
+**Goal**: Replace the over-constrained two-stage parsing flow with a single AI-first interpretation step that reads the entire raw budget and returns a complete, machine-readable structured model with meaningful, distinguishable labels.
+
+**Rationale**: The current flow uses deterministic parsing that extracts `category_label` from a specific column, ignoring the description column that often contains the actual meaningful line item names. This results in duplicate/ambiguous labels in clarification questions (e.g., multiple "Personal" toggles when the descriptions clearly state "Gym Membership", "Netflix", etc.).
+
+**Problem Example**:
+```
+Budget file has:
+  Category: Personal, Description: Gym Membership, Amount: 50
+  Category: Personal, Description: Netflix, Amount: 15
+  Category: Personal, Description: Haircut, Amount: 30
+
+Current behavior produces questions with:
+  Personal [toggle]
+  Personal [toggle]
+  Personal [toggle]
+
+Expected behavior should produce:
+  Gym Membership [toggle]
+  Netflix [toggle]
+  Haircut [toggle]
+```
+
+### Key Principle
+
+**Get out of our own way.** AI is smarter than keyword lists and hardcoded rules. Pass it the full budget data (including all columns: category, description, amount, dates, metadata), specify the output format, and let it interpret holistically.
+
+### Approach
+
+1. **Pass entire raw budget to AI** — All columns, not just category labels
+2. **AI interprets holistically** — Uses description, amount patterns, and context to understand each line
+3. **Machine-readable output** — Returns complete UnifiedBudgetModel with meaningful labels
+4. **Graceful fallback** — Deterministic parsing if AI unavailable, with ambiguity warning
+
+### Files to Create/Modify
+
+| File | Changes |
+|------|---------|
+| `services/ui-web/src/lib/aiBudgetInterpretation.ts` | **NEW** — AI interpretation module with CORE-compliant prompts |
+| `services/ui-web/src/app/api/upload-budget/route.ts` | Integrate AI interpretation after basic parsing |
+| `services/ui-web/src/lib/normalization.ts` | Simplify for AI-interpreted budgets; use enriched labels |
+| `services/ui-web/src/lib/aiNormalization.ts` | May deprecate or merge into new module |
+| `services/ui-web/src/lib/ai.ts` | Use enriched labels in question generation |
+
+### Deliverables
+
+- [ ] Create AI budget interpretation function with CORE-compliant prompts
+- [ ] Integrate into upload flow with graceful fallback to deterministic
+- [ ] Remove/simplify redundant normalization constraints
+- [ ] Test with example budget verifying description column is used
+- [ ] Expenses labeled with most descriptive identifier available
+
+**Success Criteria**:
+- AI reads all columns including description
+- Expenses labeled with most descriptive identifier (description over category when available)
+- Machine-readable UnifiedBudgetModel output
+- Graceful degradation when AI unavailable with clear indicator
+- No duplicate/indistinguishable labels in clarification questions
 
 ---
 
@@ -1084,6 +1146,7 @@ These phases consolidate advanced features that build on the core platform.
 | 8.5.1 | AI Generalizability | 11–12 | 2 weeks | Remove hardcoded assumptions; let AI determine user needs |
 | 8.5.2 | Prompt Engineering | 12–13 | 1–2 weeks | CORE framework compliance for all prompts |
 | 8.5.3 | Strategic Question Design | 13–14 | 2 weeks | Foundational questions first; optimal AI context |
+| 8.5.4 | AI-First Budget Interpretation | 14–15 | 1–2 weeks | AI reads full budget; meaningful labels |
 | 9 | User Accounts | 16–19 | 4 weeks | User retention capability |
 | 10 | Budget History | 20–23 | 4 weeks | Persistent value |
 | 11 | UI/UX Polish | 24–27 | 4 weeks | Professional experience |
@@ -1107,6 +1170,7 @@ These phases consolidate advanced features that build on the core platform.
 | Phase 8.5.1 (Generalizability) | No hardcoded financial assumptions; AI determines relevance dynamically |
 | Phase 8.5.2 (Prompts) | All prompts score 10+/12 on CORE rubric; consistent AI output quality |
 | Phase 8.5.3 (Questions) | Foundational questions surfaced early; improved recommendation personalization |
+| Phase 8.5.4 (Interpretation) | AI reads all budget columns; no duplicate labels; description column used |
 | Phase 9 (Accounts) | User registration rate, return user rate |
 | Phase 10 (History) | Users saving budgets, history view engagement |
 | Phase 11 (UI/UX) | Accessibility score, mobile usage, error rate reduction |
@@ -1132,6 +1196,8 @@ Phase 8.5.1 (Generalizability) → Improves AI quality for all features
 Phase 8.5.2 (Prompts) → Improves AI consistency; establishes delimiter conventions for future context
     ↓
 Phase 8.5.3 (Questions) → Uses 8.5.2 delimiters (<user_profile>) for foundational context
+    ↓
+Phase 8.5.4 (Interpretation) → AI-first budget parsing; meaningful labels for all subsequent phases
     ↓
 Phase 9 (Accounts) → Required for all persistence features
     ↓
@@ -1167,7 +1233,7 @@ The system uses a **unified Vercel serverless architecture**:
 - **AI**: OpenAI API (via Vercel AI SDK)
 - **CDN**: Vercel Edge Network
 
-No additional services or containers are needed for Phases 8.5–8.5.3 (code refactoring and UI changes only) or Phases 9–15. The architecture is sufficient for the core platform.
+No additional services or containers are needed for Phases 8.5–8.5.4 (code refactoring, AI prompts, and UI changes only) or Phases 9–15. The architecture is sufficient for the core platform.
 
 ### Data Model Expansion
 
@@ -1195,6 +1261,8 @@ New entities to add progressively:
 | Phase 8.5.1 over-removal | Keep minimal deterministic fallback; test AI-only paths thoroughly |
 | Phase 8.5.2 prompt complexity | Use scoring rubric to validate each prompt before deployment |
 | Phase 8.5.3 user friction | Keep all questions optional; A/B test skip rates |
+| Phase 8.5.4 AI latency | Cache interpretation results; only rerun on budget change |
+| Phase 8.5.4 AI cost | Skip AI interpretation for budgets with already-unique labels |
 | Auth complexity | Use managed auth (Clerk/Auth0) vs building custom |
 | Account Integration Complexity | Start with Plaid only; add others later |
 | Regulatory Compliance | Consult with legal/compliance experts in Phase 17 |
@@ -1217,10 +1285,15 @@ New entities to add progressively:
 
 ## Next Steps
 
-1. **Begin Phase 8.5.1** — Remove hardcoded assumptions from `ai.ts` (`detectGoalType()`, `buildGoalContext()`, deterministic suggestions)
-2. **Begin Phase 8.5.2** — Restructure prompts to follow CORE framework (can run in parallel with 8.5.1)
-3. **Plan Phase 8.5.3** — Design foundational questions UI and two-stage question flow
-4. **Select auth provider** — Evaluate Clerk, Auth0, NextAuth.js for Phase 9
-5. **Create detailed tickets** — Break Phase 8.5.1, 8.5.2, 8.5.3, and 9 into specific tasks
-6. **Set up project tracking** — Use project management tool for phase tracking
-7. **Regular roadmap reviews** — Update quarterly based on user feedback and market changes
+1. **Begin Phase 8.5.4** — Implement AI-first budget interpretation to replace over-constrained deterministic parsing
+2. **Select auth provider** — Evaluate Clerk, Auth0, NextAuth.js for Phase 9
+3. **Create detailed tickets** — Break remaining phases into specific tasks
+4. **Set up project tracking** — Use project management tool for phase tracking
+5. **Regular roadmap reviews** — Update quarterly based on user feedback and market changes
+
+### Completed
+
+- ✅ **Phase 8.5** — MVP Quality Fixes (January 2026)
+- ✅ **Phase 8.5.1** — AI Generalizability (January 2026)
+- ✅ **Phase 8.5.2** — Prompt Engineering Best Practices (January 2026)
+- ✅ **Phase 8.5.3** — Strategic Question Design (January 2026)
