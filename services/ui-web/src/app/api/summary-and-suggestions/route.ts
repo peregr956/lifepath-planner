@@ -61,14 +61,16 @@ export async function GET(request: NextRequest) {
     const summary = computeSummary(finalModel);
     const categoryShares = computeCategoryShares(finalModel);
 
-    // Generate suggestions
-    const suggestions = await generateSuggestions(
+    // Generate suggestions (with retry logic for AI)
+    const { suggestions, usedDeterministic } = await generateSuggestions(
       finalModel,
       userContext.user_query ?? undefined,
       userContext.user_profile ?? undefined
     );
 
-    console.log(`[summary-and-suggestions] Generated ${suggestions.length} suggestions for session ${budgetId}`);
+    console.log(`[summary-and-suggestions] Generated ${suggestions.length} suggestions for session ${budgetId}`, {
+      usedDeterministic,
+    });
 
     return NextResponse.json({
       budget_id: budgetId,
@@ -79,7 +81,7 @@ export async function GET(request: NextRequest) {
       },
       category_shares: categoryShares,
       suggestions,
-      provider_metadata: getProviderMetadata(),
+      provider_metadata: getProviderMetadata(usedDeterministic),
       user_query: userContext.user_query,
     });
   } catch (error) {

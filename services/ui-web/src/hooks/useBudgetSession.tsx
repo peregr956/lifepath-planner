@@ -3,7 +3,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
-import type { UploadSummaryPreview } from '@/types';
+import type { UploadSummaryPreview, UnifiedBudgetModel, BudgetPreferences } from '@/types';
 
 const STORAGE_KEY = 'lifepath-budget-session';
 
@@ -16,14 +16,56 @@ export type BudgetSession = {
   readyForSummary?: boolean;
 };
 
+// Types for budget updates
+export type PatchIncomeEntry = {
+  id: string;
+  name?: string;
+  monthly_amount?: number;
+  type?: 'earned' | 'passive' | 'transfer';
+  stability?: 'stable' | 'variable' | 'seasonal';
+};
+
+export type PatchExpenseEntry = {
+  id: string;
+  category?: string;
+  monthly_amount?: number;
+  essential?: boolean | null;
+  notes?: string | null;
+};
+
+export type PatchDebtEntry = {
+  id: string;
+  name?: string;
+  balance?: number;
+  interest_rate?: number;
+  min_payment?: number;
+  priority?: 'high' | 'medium' | 'low';
+  approximate?: boolean;
+};
+
+export type BudgetPatchRequest = {
+  income?: PatchIncomeEntry[];
+  expenses?: PatchExpenseEntry[];
+  debts?: PatchDebtEntry[];
+  preferences?: Partial<BudgetPreferences>;
+  userQuery?: string;
+  userProfile?: Record<string, unknown>;
+};
+
 type BudgetSessionContextValue = {
   session: BudgetSession | null;
   hydrated: boolean;
+  isDirty: boolean;
+  isUpdating: boolean;
   saveSession: (next: BudgetSession) => void;
   setUserQuery: (query: string) => void;
   markClarified: () => Promise<void>;
   markReadyForSummary: () => Promise<void>;
   clearSession: () => void;
+  // Phase 4.6: Inline editing mutations
+  updateBudget: (updates: BudgetPatchRequest) => Promise<void>;
+  markDirty: () => void;
+  clearDirty: () => void;
 };
 
 const BudgetSessionContext = createContext<BudgetSessionContextValue | undefined>(undefined);
@@ -37,6 +79,9 @@ export function BudgetSessionProvider({ children }: { children: ReactNode }) {
   const searchParamsString = searchParams?.toString() ?? '';
   const [session, setSession] = useState<BudgetSession | null>(null);
   const [hydrated, setHydrated] = useState(false);
+  // Phase 4.6: Track dirty state and update status
+  const [isDirty, setIsDirty] = useState(false);
+  const [isUpdating, setIsUpdating] = useState(false);
 
   const persist = useCallback((value: BudgetSession | null) => {
     if (typeof window === 'undefined') return;
@@ -174,26 +219,85 @@ export function BudgetSessionProvider({ children }: { children: ReactNode }) {
   const clearSession = useCallback(() => {
     setSession(null);
     persist(null);
+    setIsDirty(false);
   }, [persist]);
+
+  // Phase 4.6: Update budget via PATCH API
+  const updateBudget = useCallback(
+    async (updates: BudgetPatchRequest): Promise<void> => {
+      if (!session?.budgetId) {
+        throw new Error('No active budget session');
+      }
+
+      setIsUpdating(true);
+      try {
+        const response = await fetch(`/api/budget/${session.budgetId}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(updates),
+        });
+
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({}));
+          throw new Error(errorData.details || 'Failed to update budget');
+        }
+
+        // Update local session if query changed
+        if (updates.userQuery !== undefined) {
+          setSession((prev) => {
+            if (!prev) return prev;
+            const nextSession = { ...prev, userQuery: updates.userQuery };
+            persist(nextSession);
+            return nextSession;
+          });
+        }
+
+        // Mark as dirty so user knows to refresh suggestions
+        setIsDirty(true);
+      } finally {
+        setIsUpdating(false);
+      }
+    },
+    [session?.budgetId, persist]
+  );
+
+  // Phase 4.6: Manual dirty state control
+  const markDirty = useCallback(() => {
+    setIsDirty(true);
+  }, []);
+
+  const clearDirty = useCallback(() => {
+    setIsDirty(false);
+  }, []);
 
   const value = useMemo<BudgetSessionContextValue>(
     () => ({
       session,
       hydrated,
+      isDirty,
+      isUpdating,
       saveSession,
       setUserQuery,
       markClarified,
       markReadyForSummary,
       clearSession,
+      updateBudget,
+      markDirty,
+      clearDirty,
     }),
     [
       session,
       hydrated,
+      isDirty,
+      isUpdating,
       saveSession,
       setUserQuery,
       markClarified,
       markReadyForSummary,
       clearSession,
+      updateBudget,
+      markDirty,
+      clearDirty,
     ],
   );
 

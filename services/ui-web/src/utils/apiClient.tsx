@@ -765,6 +765,7 @@ type RawProviderMetadata = {
   clarification_provider: string;
   suggestion_provider: string;
   ai_enabled: boolean;
+  used_deterministic?: boolean;
 };
 
 type RawSummaryAndSuggestionsResponse = {
@@ -994,6 +995,7 @@ function normalizeSummaryAndSuggestionsResponse(
           clarificationProvider: raw.provider_metadata.clarification_provider,
           suggestionProvider: raw.provider_metadata.suggestion_provider,
           aiEnabled: raw.provider_metadata.ai_enabled,
+          usedDeterministic: raw.provider_metadata.used_deterministic,
         }
       : undefined,
     userQuery: raw.user_query ?? null,

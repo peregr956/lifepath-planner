@@ -171,16 +171,17 @@ export function isAIEnabled(): boolean {
 /**
  * Get provider metadata for API responses
  */
-export function getProviderMetadata(): {
+export function getProviderMetadata(usedDeterministic: boolean = false): {
   clarification_provider: string;
   suggestion_provider: string;
   ai_enabled: boolean;
   ai_gateway_enabled: boolean;
   model: string;
+  used_deterministic: boolean;
 } {
   const aiEnabled = isAIEnabled();
   const aiGatewayEnabled = isAIGatewayEnabled();
-  const provider = aiEnabled ? 'openai' : 'deterministic';
+  const provider = aiEnabled && !usedDeterministic ? 'openai' : 'deterministic';
   
   return {
     clarification_provider: provider,
@@ -188,7 +189,45 @@ export function getProviderMetadata(): {
     ai_enabled: aiEnabled,
     ai_gateway_enabled: aiGatewayEnabled,
     model: getModel(),
+    used_deterministic: usedDeterministic,
   };
+}
+
+/**
+ * Sleep helper for retry delays
+ */
+function sleep(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+/**
+ * Retry wrapper for AI calls
+ * Phase 8.5: Ensure AI is always used when possible with retry logic
+ */
+async function withRetry<T>(
+  fn: () => Promise<T>,
+  maxRetries: number = 2,
+  delayMs: number = 1000
+): Promise<{ result: T; usedRetry: boolean } | null> {
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      const result = await fn();
+      return { result, usedRetry: attempt > 0 };
+    } catch (error) {
+      const isLastAttempt = attempt === maxRetries;
+      
+      if (isLastAttempt) {
+        console.error(`[AI] All ${maxRetries + 1} attempts failed:`, error);
+        return null;
+      }
+      
+      console.warn(`[AI] Attempt ${attempt + 1} failed, retrying in ${delayMs}ms:`, error);
+      await sleep(delayMs);
+      // Exponential backoff
+      delayMs *= 2;
+    }
+  }
+  return null;
 }
 
 // System prompts
@@ -199,12 +238,24 @@ CRITICAL: The user has provided a specific question or concern. Your role is to:
 2. Skip questions that aren't relevant to what they're asking about
 3. Ask about financial philosophy and risk tolerance ONLY when relevant to their query
 
-Important guidelines:
+## QUESTION GENERATION RULES:
 - Ask 4-7 concise, actionable questions maximum (fewer is better if that answers their query)
 - Prioritize questions that directly help answer the user's specific question
 - Use specific UI components: toggle (yes/no), dropdown (choices), number_input (amounts/rates), slider (ranges)
 - Field IDs MUST follow exact naming conventions provided in the valid field IDs section
 - Each question_id must be unique
+
+## LINE ITEM SPECIFICITY (CRITICAL):
+- Reference specific budget line items by their ID (e.g., "expense-1", "expense-2")
+- Do NOT ask about broad categories like "Entertainment" - ask about specific line items
+- If multiple items seem related (e.g., "Entertainment" and "Entertainment Subscriptions"), ask ONE consolidated question
+- For essential/flexible classification, group ALL items into a single question with toggles for each item
+- Example: "Which of these expenses are essential to you?" with toggles for each specific line item
+
+## AVOID DUPLICATE QUESTIONS:
+- Do NOT generate multiple questions about the same concept (e.g., two questions about essential expenses)
+- Consolidate related questions into a single comprehensive question
+- If asking about debt details, ask about ALL debts in ONE question, not separate questions per debt
 
 Return structured JSON matching the provided function schema exactly.`;
 
@@ -733,6 +784,84 @@ function validateQuestionFieldIds(
 }
 
 /**
+ * Extract the semantic concept from a question for deduplication.
+ * Groups questions by their underlying purpose rather than exact ID.
+ */
+function extractSemanticConcept(question: QuestionSpec): string {
+  const questionId = question.question_id.toLowerCase();
+  
+  // Essential/flexible classification questions
+  if (questionId.includes('essential') || questionId.includes('flexible')) {
+    return 'essential_classification';
+  }
+  
+  // Financial philosophy questions
+  if (questionId.includes('philosophy') || questionId.includes('approach')) {
+    return 'financial_philosophy';
+  }
+  
+  // Risk tolerance questions
+  if (questionId.includes('risk')) {
+    return 'risk_tolerance';
+  }
+  
+  // Goal/timeline questions
+  if (questionId.includes('goal') || questionId.includes('timeline') || questionId.includes('timeframe')) {
+    return 'goal_timeline';
+  }
+  
+  // Optimization focus questions
+  if (questionId.includes('optimization') || questionId.includes('focus') || questionId.includes('priority')) {
+    return 'optimization_focus';
+  }
+  
+  // Debt-related questions - group by the concept, not individual debts
+  if (questionId.includes('debt')) {
+    return 'debt_details';
+  }
+  
+  // Income stability questions
+  if (questionId.includes('income') && (questionId.includes('stability') || questionId.includes('stable'))) {
+    return 'income_stability';
+  }
+  
+  // Default: use the question ID itself
+  return questionId;
+}
+
+/**
+ * Deduplicate questions based on their semantic concept.
+ * Prevents asking multiple questions about the same topic (e.g., two "essential expense" questions).
+ */
+function deduplicateQuestions(questions: QuestionSpec[]): QuestionSpec[] {
+  const seenConcepts = new Map<string, QuestionSpec>();
+  
+  for (const question of questions) {
+    const concept = extractSemanticConcept(question);
+    
+    if (!seenConcepts.has(concept)) {
+      seenConcepts.set(concept, question);
+    } else {
+      // Merge components from duplicate questions into the first one
+      const existing = seenConcepts.get(concept)!;
+      const existingFieldIds = new Set(existing.components.map(c => c.field_id));
+      
+      // Add any new components that don't already exist
+      for (const comp of question.components) {
+        if (!existingFieldIds.has(comp.field_id)) {
+          existing.components.push(comp);
+          existingFieldIds.add(comp.field_id);
+        }
+      }
+      
+      console.log(`[AI] Merged duplicate question concept: ${concept}`);
+    }
+  }
+  
+  return Array.from(seenConcepts.values());
+}
+
+/**
  * Parse questions from the AI response, supporting both grouped and flat formats.
  * Similar to Python _parse_questions() method.
  */
@@ -805,8 +934,11 @@ function parseQuestionsFromResponse(
       }
     }
 
+    // Deduplicate questions based on semantic concept
+    const deduplicatedQuestions = deduplicateQuestions(allQuestions);
+
     result.questionGroups = parsedGroups;
-    result.questions = allQuestions.slice(0, maxQuestions);
+    result.questions = deduplicatedQuestions.slice(0, maxQuestions);
   }
 
   return result;
@@ -890,20 +1022,26 @@ export async function generateClarificationQuestionsWithAnalysis(
 
 /**
  * Generate suggestions using AI
+ * Phase 8.5: Added retry logic to ensure AI is always used when possible
  */
 export async function generateSuggestions(
   model: UnifiedBudgetModel,
   userQuery?: string,
   userProfile?: Record<string, unknown>
-): Promise<Suggestion[]> {
+): Promise<{ suggestions: Suggestion[]; usedDeterministic: boolean }> {
   const client = getOpenAIClient();
 
   if (!client) {
     // Fall back to deterministic suggestions
-    return generateDeterministicSuggestions(model);
+    console.log('[AI] No AI client available, using deterministic suggestions');
+    return {
+      suggestions: generateDeterministicSuggestions(model),
+      usedDeterministic: true,
+    };
   }
 
-  try {
+  // Use retry wrapper to ensure AI is used when possible
+  const retryResult = await withRetry(async () => {
     const response = await client.chat.completions.create({
       model: getModel(),
       messages: [
@@ -921,26 +1059,37 @@ export async function generateSuggestions(
         },
       ],
       tool_choice: { type: 'function', function: { name: 'generate_optimization_suggestions' } },
-      temperature: 0.7,  // Higher for more creative, personalized responses
-      max_tokens: 4096,  // Increased for analysis + detailed suggestions
+      temperature: 0.7,
+      max_tokens: 4096,
     });
 
     const toolCalls = response.choices[0]?.message?.tool_calls;
     if (!toolCalls || toolCalls.length === 0) {
-      console.warn('[AI] No tool calls in response, falling back to deterministic');
-      return generateDeterministicSuggestions(model);
+      throw new Error('No tool calls in AI response');
     }
 
     const parsed = JSON.parse(toolCalls[0].function.arguments);
     return (parsed.suggestions || []) as Suggestion[];
-  } catch (error) {
-    console.error('[AI] Error generating suggestions:', error);
-    return generateDeterministicSuggestions(model);
+  });
+
+  if (retryResult) {
+    return {
+      suggestions: retryResult.result,
+      usedDeterministic: false,
+    };
   }
+
+  // All retries failed, use deterministic fallback
+  console.warn('[AI] All AI attempts failed, using deterministic suggestions');
+  return {
+    suggestions: generateDeterministicSuggestions(model),
+    usedDeterministic: true,
+  };
 }
 
 /**
  * Generate deterministic clarification questions (fallback)
+ * Expanded in Phase 8.5 to include financial philosophy, risk tolerance, and goal timeline.
  */
 function generateDeterministicQuestions(model: UnifiedBudgetModel, maxQuestions: number): QuestionSpec[] {
   const questions: QuestionSpec[] = [];
@@ -951,7 +1100,7 @@ function generateDeterministicQuestions(model: UnifiedBudgetModel, maxQuestions:
     questions.push({
       question_id: 'essential_expenses',
       prompt: 'Which of these expenses are essential (must pay) vs flexible (can reduce)?',
-      components: unclarifiedExpenses.slice(0, 5).map(exp => ({
+      components: unclarifiedExpenses.slice(0, 8).map(exp => ({
         component: 'toggle' as const,
         field_id: `essential_${exp.id}`,
         label: exp.category,
@@ -973,33 +1122,110 @@ function generateDeterministicQuestions(model: UnifiedBudgetModel, maxQuestions:
     }],
   });
 
+  // Ask about financial philosophy (Phase 8.5: Expanded options)
+  questions.push({
+    question_id: 'financial_philosophy',
+    prompt: 'Which budgeting or financial approach do you follow (if any)?',
+    components: [{
+      component: 'dropdown' as const,
+      field_id: 'financial_philosophy',
+      label: 'Financial Philosophy',
+      binding: 'profile.financial_philosophy',
+      options: [
+        'neutral',           // No specific framework
+        'r_personalfinance', // Reddit r/personalfinance flowchart
+        'money_guy',         // Money Guy Show FOO
+        'dave_ramsey',       // Dave Ramsey Baby Steps
+        'bogleheads',        // Bogleheads
+        'fire',              // FIRE movement
+        'custom',            // I have my own approach
+      ],
+    }],
+  });
+
+  // Ask about risk tolerance (Phase 8.5)
+  questions.push({
+    question_id: 'risk_tolerance',
+    prompt: 'How comfortable are you with financial risk?',
+    components: [{
+      component: 'dropdown' as const,
+      field_id: 'risk_tolerance',
+      label: 'Risk Tolerance',
+      binding: 'profile.risk_tolerance',
+      options: ['conservative', 'moderate', 'aggressive'],
+    }],
+  });
+
+  // Ask about goal timeline (Phase 8.5)
+  questions.push({
+    question_id: 'goal_timeline',
+    prompt: 'What is your primary financial goal timeframe?',
+    components: [{
+      component: 'dropdown' as const,
+      field_id: 'goal_timeline',
+      label: 'Goal Timeline',
+      binding: 'profile.goal_timeline',
+      options: ['immediate', 'short_term', 'medium_term', 'long_term'],
+    }],
+  });
+
   // Ask about debts if any exist with approximate values
   const approximateDebts = model.debts.filter(d => d.approximate);
   if (approximateDebts.length > 0) {
-    for (const debt of approximateDebts.slice(0, 2)) {
+    // Consolidate all debt details into one question (Phase 8.5: avoid duplicates)
+    const debtComponents: Array<{
+      component: 'number_input';
+      field_id: string;
+      label: string;
+      binding: string;
+      unit?: string;
+      min?: number;
+      max?: number;
+    }> = [];
+    
+    for (const debt of approximateDebts.slice(0, 3)) {
+      debtComponents.push(
+        {
+          component: 'number_input' as const,
+          field_id: `${debt.id}_balance`,
+          label: `${debt.name} Balance`,
+          binding: `debts.${debt.id}.balance`,
+          unit: 'USD',
+        },
+        {
+          component: 'number_input' as const,
+          field_id: `${debt.id}_interest_rate`,
+          label: `${debt.name} Interest Rate`,
+          binding: `debts.${debt.id}.interest_rate`,
+          unit: '%',
+          min: 0,
+          max: 100,
+        }
+      );
+    }
+    
+    if (debtComponents.length > 0) {
       questions.push({
-        question_id: `debt_details_${debt.id}`,
-        prompt: `What are the details for your ${debt.name}?`,
-        components: [
-          {
-            component: 'number_input' as const,
-            field_id: `${debt.id}_balance`,
-            label: 'Current Balance',
-            binding: `debts.${debt.id}.balance`,
-            unit: 'USD',
-          },
-          {
-            component: 'number_input' as const,
-            field_id: `${debt.id}_interest_rate`,
-            label: 'Interest Rate',
-            binding: `debts.${debt.id}.interest_rate`,
-            unit: '%',
-            min: 0,
-            max: 100,
-          },
-        ],
+        question_id: 'debt_details',
+        prompt: 'Please provide details about your debts:',
+        components: debtComponents,
       });
     }
+  }
+
+  // Ask about income stability if we have income
+  if (model.income.length > 0) {
+    questions.push({
+      question_id: 'income_stability',
+      prompt: 'How stable is your primary income source?',
+      components: [{
+        component: 'dropdown' as const,
+        field_id: 'primary_income_stability',
+        label: 'Income Stability',
+        binding: 'preferences.primary_income_stability',
+        options: ['stable', 'variable', 'seasonal'],
+      }],
+    });
   }
 
   return questions.slice(0, maxQuestions);
@@ -1027,28 +1253,75 @@ function generateDeterministicSuggestions(model: UnifiedBudgetModel): Suggestion
   }
 
   // Suggestion for emergency fund if surplus is positive
+  // Phase 8.5: Context-aware impact based on optimization_focus
   if (surplus > 0) {
-    suggestions.push({
-      id: 'emergency-fund',
-      title: 'Build Emergency Fund',
-      description: `With your $${surplus.toLocaleString()} monthly surplus, consider building a 3-6 month emergency fund.`,
-      expected_monthly_impact: 0,
-      rationale: 'An emergency fund prevents going into debt when unexpected expenses arise.',
-      tradeoffs: 'Money in savings earns less than paying down debt or investing.',
-    });
+    const focus = model.preferences.optimization_focus;
+    
+    // Calculate impact based on user's priorities
+    let emergencyFundAllocation = 0;
+    let description = '';
+    
+    if (focus === 'savings') {
+      // Savings-focused: suggest significant allocation
+      emergencyFundAllocation = surplus * 0.5;
+      description = `With your savings focus, consider allocating $${emergencyFundAllocation.toLocaleString()}/month toward a 3-6 month emergency fund.`;
+    } else if (focus === 'balanced') {
+      // Balanced: suggest moderate allocation
+      emergencyFundAllocation = surplus * 0.25;
+      description = `Consider allocating $${emergencyFundAllocation.toLocaleString()}/month toward emergency savings while balancing other goals.`;
+    } else if (focus === 'debt') {
+      // Debt-focused: minimal emergency fund suggestion, only if no debts or all low-interest
+      const hasHighInterestDebt = model.debts.some(d => d.interest_rate > 10);
+      if (!hasHighInterestDebt) {
+        emergencyFundAllocation = Math.min(surplus * 0.1, 100);
+        description = `While focusing on debt, maintain a small emergency buffer of $${emergencyFundAllocation.toLocaleString()}/month to avoid new debt for unexpected expenses.`;
+      }
+    }
+    
+    if (emergencyFundAllocation > 0) {
+      suggestions.push({
+        id: 'emergency-fund',
+        title: 'Build Emergency Fund',
+        description,
+        expected_monthly_impact: emergencyFundAllocation,
+        rationale: 'An emergency fund prevents going into debt when unexpected expenses arise.',
+        tradeoffs: 'Money in savings earns less than paying down high-interest debt or long-term investing.',
+      });
+    }
   }
 
   // Suggestion for flexible expense reduction
   // Note: Expenses are stored as POSITIVE values (matching Python convention)
+  // Phase 8.5: Calculate percentage based on budget health, not hardcoded 10%
   const flexibleExpenses = model.expenses.filter(e => !e.essential);
   const totalFlexible = flexibleExpenses.reduce((sum, e) => sum + e.monthly_amount, 0);
   if (totalFlexible > 0) {
+    // Calculate target reduction based on budget health
+    const surplusRatio = model.summary.total_income > 0 
+      ? model.summary.surplus / model.summary.total_income 
+      : 0;
+    
+    let targetReductionPercent = 0.1; // Default 10%
+    
+    if (surplusRatio < 0) {
+      // Deficit: suggest larger reduction to help break even
+      targetReductionPercent = Math.min(0.25, Math.abs(surplusRatio) + 0.1);
+    } else if (surplusRatio < 0.1) {
+      // Low surplus (< 10%): moderate reduction to boost savings
+      targetReductionPercent = 0.15;
+    } else if (surplusRatio > 0.3) {
+      // Already saving well (> 30%): smaller suggestion
+      targetReductionPercent = 0.05;
+    }
+    
+    const suggestedReduction = totalFlexible * targetReductionPercent;
+    
     suggestions.push({
       id: 'reduce-flexible',
       title: 'Review Flexible Spending',
-      description: `You have $${totalFlexible.toLocaleString()}/month in flexible expenses. Consider if there are areas to reduce.`,
-      expected_monthly_impact: totalFlexible * 0.1,
-      rationale: 'Small reductions across multiple categories add up over time.',
+      description: `Consider reducing flexible expenses by ${(targetReductionPercent * 100).toFixed(0)}% (~$${suggestedReduction.toLocaleString()}/month). You have $${totalFlexible.toLocaleString()}/month in flexible categories.`,
+      expected_monthly_impact: suggestedReduction,
+      rationale: `A ${(targetReductionPercent * 100).toFixed(0)}% reduction across flexible categories is typically achievable without major lifestyle changes.`,
       tradeoffs: 'Reducing spending may impact quality of life or convenience.',
     });
   }

@@ -137,6 +137,36 @@ This section documents the completed MVP phases for historical reference.
 
 ---
 
+## Phase 4.6 — Inline Editing on Summary Screen (Week 7.5) ✓ Complete
+
+**Goal**: Allow users to edit their inputs directly from the summary/suggestions screen without restarting the flow.
+
+**Rationale**: Users previously had to restart the entire flow to make any changes. This created friction and discouraged experimentation with different scenarios.
+
+**Features**:
+- [x] Edit budget line items (income, expenses, debts) inline with expandable sections
+- [x] Modify clarification answers and preferences without restarting
+- [x] Update user query and refresh suggestions
+- [x] Dirty state tracking with "Refresh Suggestions" button
+- [x] PATCH endpoint for budget updates
+
+**Implementation**:
+- `services/ui-web/src/app/api/budget/[budgetId]/route.ts` — New PATCH endpoint for inline updates
+- `services/ui-web/src/components/EditableBudgetSection.tsx` — Expandable budget editor component
+- `services/ui-web/src/components/EditableQuerySection.tsx` — Query edit component
+- `services/ui-web/src/hooks/useBudgetSession.tsx` — Added update mutations and dirty state tracking
+- `services/ui-web/src/app/(app)/summarize/page.tsx` — Integrated editors with refresh button
+
+**Milestones**
+
+- [x] Users can edit income, expenses, and debt amounts inline.
+- [x] Users can toggle essential/flexible status for expenses.
+- [x] Users can change optimization preferences.
+- [x] Users can edit their query and refresh suggestions.
+- [x] Dirty state indicator shows when changes need refresh.
+
+---
+
 ## Phase 5 — Integration, QA, and Launch Prep (Weeks 8–9) ✓ Mostly Complete
 
 - [x] Conduct integration tests across services (upload → clarification → summary → suggestions).
@@ -301,58 +331,65 @@ This section outlines the phases that will transform LifePath Planner from an MV
 
 **Rationale**: The reality assessment found that several advertised features don't work as claimed. These fixes ensure honest marketing and good user experience.
 
-### P0 Fixes (Must Fix)
+### P0 Fixes (Must Fix) ✅ Complete
 
-| Issue | Description | Files to Modify |
-|-------|-------------|-----------------|
-| **Question deduplication** | Similar categories (e.g., "Entertainment" + "Entertainment Subscriptions") generate duplicate questions | `services/ui-web/src/lib/ai.ts` |
-| **Financial framework UI** | `FinancialPhilosophy` type exists but is never surfaced to users. Either add selector UI or remove from marketing claims | `services/ui-web/src/components/ClarificationForm.tsx`, `services/ui-web/src/lib/ai.ts` |
+| Issue | Description | Status |
+|-------|-------------|--------|
+| **Question deduplication** | Similar categories generate duplicate questions | ✅ Semantic deduplication implemented in `ai.ts` |
+| **Financial framework UI** | `FinancialPhilosophy` type never surfaced to users | ✅ Added to deterministic questions with expanded options |
 
-### P1 Fixes (Should Fix Soon)
+### P1 Fixes (Should Fix Soon) ✅ Complete
 
-| Issue | Description | Files to Modify |
-|-------|-------------|-----------------|
-| **Emergency fund $0 impact** | Emergency fund suggestion always shows `expected_monthly_impact: 0` | `services/ui-web/src/lib/ai.ts` (line ~1035) |
-| **Arbitrary 10% reduction** | Flexible spending suggestion uses hardcoded 10% reduction | `services/ui-web/src/lib/ai.ts` (line ~1050) |
-| **AI/deterministic indicator** | Users don't know if AI or deterministic fallback was used | `services/ui-web/src/components/SuggestionsList.tsx` |
-| **Limited deterministic questions** | Fallback only generates 3 question types; should include financial philosophy, risk tolerance, goal timeline | `services/ui-web/src/lib/ai.ts` |
+| Issue | Description | Status |
+|-------|-------------|--------|
+| **Emergency fund $0 impact** | Always showed `expected_monthly_impact: 0` | ✅ Context-aware calculation based on optimization_focus |
+| **Arbitrary 10% reduction** | Hardcoded 10% reduction | ✅ Dynamic calculation based on surplus ratio |
+| **AI/deterministic indicator** | Users didn't know which mode was used | ✅ Mode badge added to SuggestionsList |
+| **Limited deterministic questions** | Only 3 question types in fallback | ✅ Expanded to 7 question types |
 
-**Implementation Details:**
+**Implementation Summary (January 2026):**
 
-```
-Question Deduplication:
-- Add deduplication in generateClarificationQuestions()
-- Group similar expense categories before generating questions
-- Merge questions that target the same semantic concept
-
-Financial Framework:
-Option A: Add framework selector dropdown to ClarificationForm
-  - Add to buildValidFieldIds() output
-  - Render as dropdown with options: r_personalfinance, money_guy, neutral
-  - Display selected framework in SuggestionsList
+- **Question Deduplication**: Added `deduplicateQuestions()` and `extractSemanticConcept()` functions
+  - Groups questions by semantic concept (essential, debt, philosophy, risk, goals)
+  - Merges components from duplicate questions into a single question
   
-Option B: Remove from marketing (faster, but loses differentiator)
-  - Update docs/competitive_audit.md
-  - Update landing page claims
+- **Financial Philosophy**: Expanded `FinancialPhilosophy` type with 7 options:
+  - r/personalfinance, Money Guy Show, Dave Ramsey, Bogleheads, FIRE, neutral, custom
+  - Added philosophy selector to deterministic questions
+  - Display selected philosophy badge in SuggestionsList
+  
+- **Impact Calculations**: Context-aware suggestions based on user priorities
+  - Emergency fund: 50% of surplus for savings focus, 25% for balanced, 10% for debt focus
+  - Flexible spending: 5-25% reduction based on surplus ratio (not hardcoded 10%)
+  
+- **AI Priority**: Added retry logic with exponential backoff
+  - `withRetry()` wrapper attempts AI calls up to 3 times
+  - Only falls back to deterministic after all retries fail
+  - `usedDeterministic` flag passed through to UI
 
-Mode Indicator:
-- Pass providerMetadata.usedDeterministic to SuggestionsList
-- Show badge: "AI-Powered Analysis" vs "Basic Analysis"
-- Add tooltip explaining the difference
-```
+- **Mode Indicator**: Clear badge showing analysis type
+  - "AI-Powered" badge when AI succeeds
+  - "Basic Analysis" badge when deterministic fallback used
+
+**Files Modified:**
+- `services/ui-web/src/lib/ai.ts` — Core fixes
+- `services/ui-web/src/types/budget.ts` — Type expansions
+- `services/ui-web/src/components/SuggestionsList.tsx` — Mode/philosophy badges
+- `services/ui-web/src/utils/apiClient.tsx` — usedDeterministic handling
+- `services/ui-web/src/app/api/summary-and-suggestions/route.ts` — Flag passing
 
 **Deliverables**:
-- [ ] No duplicate questions for similar categories
-- [ ] Financial framework either selectable or removed from claims
-- [ ] All impact estimates are non-zero and calculated
-- [ ] Clear indicator of AI vs deterministic mode
-- [ ] Expanded deterministic question set
+- [x] No duplicate questions for similar categories
+- [x] Financial framework selectable with expanded options
+- [x] All impact estimates are non-zero and context-aware
+- [x] Clear indicator of AI vs deterministic mode
+- [x] Expanded deterministic question set (7 types)
 
 **Success Criteria**:
-- Upload a budget with similar categories → no duplicate questions
-- See financial philosophy selection or no marketing claims about it
-- All suggestions have meaningful, calculated impact values
-- User can tell whether AI or fallback was used
+- Upload a budget with similar categories → deduplicated questions
+- Financial philosophy selector available with 7 options
+- Impact values calculated based on user's priorities
+- Clear mode indicator badge visible
 
 ---
 

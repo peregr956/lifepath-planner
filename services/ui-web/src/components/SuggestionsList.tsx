@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import type { BudgetSuggestion, ProviderMetadata } from '@/types';
+import type { BudgetSuggestion, ProviderMetadata, FinancialPhilosophy } from '@/types';
 import {
   Card,
   CardContent,
@@ -15,6 +15,7 @@ import {
   AccordionItem,
   AccordionTrigger,
   Separator,
+  Tooltip,
 } from '@/components/ui';
 import { cn, formatCurrency } from '@/lib/utils';
 import {
@@ -28,13 +29,31 @@ import {
   Info,
   CheckCircle2,
   X,
+  Calculator,
 } from 'lucide-react';
 
 type Props = {
   suggestions: BudgetSuggestion[];
   providerMetadata?: ProviderMetadata;
   userQuery?: string | null;
+  financialPhilosophy?: FinancialPhilosophy | null;
 };
+
+/**
+ * Format financial philosophy for display
+ */
+function formatPhilosophyName(philosophy: FinancialPhilosophy): string {
+  const names: Record<FinancialPhilosophy, string> = {
+    'r_personalfinance': 'r/personalfinance',
+    'money_guy': 'Money Guy Show',
+    'dave_ramsey': 'Dave Ramsey',
+    'bogleheads': 'Bogleheads',
+    'fire': 'FIRE',
+    'neutral': 'General',
+    'custom': 'Custom',
+  };
+  return names[philosophy] || philosophy;
+}
 
 function getPriorityFromImpact(impact: number): 'high' | 'medium' | 'low' {
   if (impact >= 200) return 'high';
@@ -189,8 +208,9 @@ function SuggestionCard({ suggestion, index }: SuggestionCardProps) {
   );
 }
 
-export function SuggestionsList({ suggestions, providerMetadata, userQuery }: Props) {
+export function SuggestionsList({ suggestions, providerMetadata, userQuery, financialPhilosophy }: Props) {
   const isAI = providerMetadata?.suggestionProvider === 'openai';
+  const usedDeterministic = providerMetadata?.usedDeterministic;
 
   if (!suggestions.length) {
     return (
@@ -226,19 +246,40 @@ export function SuggestionsList({ suggestions, providerMetadata, userQuery }: Pr
                 <Sparkles className="h-5 w-5 text-primary" />
               </div>
               <div>
-                <CardTitle>{isAI ? 'AI-Powered Suggestions' : 'Personalized Suggestions'}</CardTitle>
+                <CardTitle>
+                  {usedDeterministic 
+                    ? 'Basic Budget Analysis' 
+                    : isAI 
+                    ? 'AI-Powered Suggestions' 
+                    : 'Personalized Suggestions'}
+                </CardTitle>
                 <CardDescription>
                   {suggestions.length} recommendation{suggestions.length !== 1 ? 's' : ''} to improve
                   your finances
                 </CardDescription>
               </div>
             </div>
-            {isAI && (
-              <Badge variant="default" className="bg-primary/20 text-primary">
-                <Sparkles className="mr-1 h-3 w-3" />
-                Powered by AI
-              </Badge>
-            )}
+            <div className="flex items-center gap-2">
+              {/* Financial Philosophy Badge */}
+              {financialPhilosophy && financialPhilosophy !== 'neutral' && (
+                <Badge variant="outline" className="gap-1">
+                  <Target className="h-3 w-3" />
+                  {formatPhilosophyName(financialPhilosophy)}
+                </Badge>
+              )}
+              {/* Mode Indicator Badge */}
+              {usedDeterministic ? (
+                <Badge variant="secondary" className="gap-1">
+                  <Calculator className="h-3 w-3" />
+                  Basic Analysis
+                </Badge>
+              ) : isAI ? (
+                <Badge variant="default" className="bg-primary/20 text-primary gap-1">
+                  <Sparkles className="h-3 w-3" />
+                  AI-Powered
+                </Badge>
+              ) : null}
+            </div>
           </div>
         </CardHeader>
         <CardContent className="space-y-4">

@@ -172,6 +172,7 @@ export type ProviderMetadata = {
   clarificationProvider: string;
   suggestionProvider: string;
   aiEnabled: boolean;
+  usedDeterministic?: boolean;  // true if fallback was used due to AI unavailability or failure
 };
 
 export type ClarificationQuestionsResponseWithMeta = ClarificationQuestionsResponse & {
@@ -188,7 +189,14 @@ export type SummaryAndSuggestionsResponse = {
 };
 
 // User profile types for adaptive personalization
-export type FinancialPhilosophy = 'r_personalfinance' | 'money_guy' | 'neutral' | 'custom';
+export type FinancialPhilosophy = 
+  | 'r_personalfinance'  // Reddit r/personalfinance flowchart
+  | 'money_guy'          // Money Guy Show FOO (Financial Order of Operations)
+  | 'dave_ramsey'        // Dave Ramsey Baby Steps
+  | 'bogleheads'         // Bogleheads investment philosophy
+  | 'fire'               // Financial Independence, Retire Early
+  | 'neutral'            // No specific framework
+  | 'custom';            // User's own approach
 export type RiskTolerance = 'conservative' | 'moderate' | 'aggressive';
 export type GoalTimeline = 'immediate' | 'short_term' | 'medium_term' | 'long_term';
 

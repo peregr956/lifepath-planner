@@ -1,19 +1,58 @@
 'use client';
 
-import { useQuery } from '@tanstack/react-query';
-import { useEffect } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { SuggestionsList, SummaryView } from '@/components';
+import { EditableBudgetSection } from '@/components/EditableBudgetSection';
+import { EditableQuerySection } from '@/components/EditableQuerySection';
 import { useBudgetSession } from '@/hooks/useBudgetSession';
+import type { PatchIncomeEntry, PatchExpenseEntry, PatchDebtEntry } from '@/hooks/useBudgetSession';
 import { fetchSummaryAndSuggestions } from '@/utils/apiClient';
-import { Card, CardContent, Skeleton } from '@/components/ui';
-import { AlertCircle, Loader2, BarChart3 } from 'lucide-react';
+import { Card, CardContent, Skeleton, Button, Badge } from '@/components/ui';
+import { AlertCircle, Loader2, BarChart3, RefreshCw, Pencil } from 'lucide-react';
+import type { BudgetPreferences } from '@/types';
+
+// Raw API model uses snake_case
+type RawBudgetModel = {
+  income: Array<{
+    id: string;
+    name: string;
+    monthly_amount: number;
+    type: 'earned' | 'passive' | 'transfer';
+    stability: 'stable' | 'variable' | 'seasonal';
+  }>;
+  expenses: Array<{
+    id: string;
+    category: string;
+    monthly_amount: number;
+    essential?: boolean | null;
+    notes?: string | null;
+  }>;
+  debts: Array<{
+    id: string;
+    name: string;
+    balance: number;
+    interest_rate: number;
+    min_payment: number;
+    priority: 'high' | 'medium' | 'low';
+    approximate: boolean;
+  }>;
+  preferences: {
+    optimization_focus: 'debt' | 'savings' | 'balanced';
+    protect_essentials: boolean;
+    max_desired_change_per_category: number;
+  };
+};
 
 export default function SummarizePage() {
   const router = useRouter();
-  const { session, hydrated } = useBudgetSession();
+  const queryClient = useQueryClient();
+  const { session, hydrated, isDirty, isUpdating, updateBudget, clearDirty } = useBudgetSession();
   const budgetId = session?.budgetId;
   const readyForSummary = session?.readyForSummary ?? false;
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [showEditors, setShowEditors] = useState(false);
 
   useEffect(() => {
     if (hydrated && !budgetId) {
@@ -27,6 +66,78 @@ export default function SummarizePage() {
     enabled: Boolean(budgetId && readyForSummary),
     staleTime: 30_000,
   });
+
+  // Fetch budget model for editing
+  const budgetQuery = useQuery({
+    queryKey: ['budget-model', budgetId],
+    queryFn: async () => {
+      const response = await fetch(`/api/budget/${budgetId}`);
+      if (!response.ok) throw new Error('Failed to fetch budget');
+      return response.json();
+    },
+    enabled: Boolean(budgetId && readyForSummary),
+    staleTime: 60_000,
+  });
+
+  // Handle refresh suggestions after edits
+  const handleRefreshSuggestions = useCallback(async () => {
+    setIsRefreshing(true);
+    try {
+      await queryClient.invalidateQueries({ queryKey: ['summary-and-suggestions', budgetId] });
+      await queryClient.invalidateQueries({ queryKey: ['budget-model', budgetId] });
+      clearDirty();
+    } finally {
+      setIsRefreshing(false);
+    }
+  }, [budgetId, queryClient, clearDirty]);
+
+  // Handle budget updates
+  const handleIncomeChange = useCallback(
+    async (updates: PatchIncomeEntry[]) => {
+      await updateBudget({ income: updates });
+      queryClient.invalidateQueries({ queryKey: ['budget-model', budgetId] });
+    },
+    [updateBudget, budgetId, queryClient]
+  );
+
+  const handleExpenseChange = useCallback(
+    async (updates: PatchExpenseEntry[]) => {
+      await updateBudget({ expenses: updates });
+      queryClient.invalidateQueries({ queryKey: ['budget-model', budgetId] });
+    },
+    [updateBudget, budgetId, queryClient]
+  );
+
+  const handleDebtChange = useCallback(
+    async (updates: PatchDebtEntry[]) => {
+      await updateBudget({ debts: updates });
+      queryClient.invalidateQueries({ queryKey: ['budget-model', budgetId] });
+    },
+    [updateBudget, budgetId, queryClient]
+  );
+
+  const handlePreferenceChange = useCallback(
+    async (updates: Partial<BudgetPreferences>) => {
+      // Convert camelCase to snake_case for API
+      const apiUpdates: Record<string, unknown> = {};
+      if (updates.optimizationFocus !== undefined) apiUpdates.optimization_focus = updates.optimizationFocus;
+      if (updates.protectEssentials !== undefined) apiUpdates.protect_essentials = updates.protectEssentials;
+      if (updates.maxDesiredChangePerCategory !== undefined) apiUpdates.max_desired_change_per_category = updates.maxDesiredChangePerCategory;
+      await updateBudget({ preferences: apiUpdates as Partial<BudgetPreferences> });
+      queryClient.invalidateQueries({ queryKey: ['budget-model', budgetId] });
+    },
+    [updateBudget, budgetId, queryClient]
+  );
+
+  const handleQueryChange = useCallback(
+    async (query: string) => {
+      await updateBudget({ userQuery: query });
+    },
+    [updateBudget]
+  );
+
+  // Extract model data for editors (API returns snake_case)
+  const budgetModel = budgetQuery.data?.model as RawBudgetModel | undefined;
 
   return (
     <div className="flex flex-col gap-6 animate-fade-in">
@@ -70,19 +181,106 @@ export default function SummarizePage() {
 
       {/* Results */}
       {summaryQuery.data ? (
-        <div className="grid gap-6 lg:grid-cols-2">
-          <div>
-            <SummaryView
-              summary={summaryQuery.data.summary}
-              categoryShares={summaryQuery.data.categoryShares}
-            />
+        <div className="flex flex-col gap-6">
+          {/* Dirty state indicator and refresh button */}
+          {isDirty && (
+            <Card className="border-warning/50 bg-warning/5">
+              <CardContent className="flex items-center justify-between py-4">
+                <div className="flex items-center gap-3">
+                  <Badge variant="warning" className="gap-1">
+                    <Pencil className="h-3 w-3" />
+                    Changes Made
+                  </Badge>
+                  <p className="text-sm text-muted-foreground">
+                    You&apos;ve made changes. Refresh to update your suggestions.
+                  </p>
+                </div>
+                <Button
+                  onClick={handleRefreshSuggestions}
+                  disabled={isRefreshing}
+                  className="gap-2"
+                >
+                  <RefreshCw className={`h-4 w-4 ${isRefreshing ? 'animate-spin' : ''}`} />
+                  Refresh Suggestions
+                </Button>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Editable Query Section */}
+          <EditableQuerySection
+            query={summaryQuery.data.userQuery}
+            disabled={isUpdating || isRefreshing}
+            onQueryChange={handleQueryChange}
+          />
+
+          {/* Toggle editors button */}
+          <div className="flex justify-end">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setShowEditors(!showEditors)}
+              className="gap-2"
+            >
+              <Pencil className="h-3 w-3" />
+              {showEditors ? 'Hide Budget Details' : 'Edit Budget Details'}
+            </Button>
           </div>
-          <div>
-            <SuggestionsList
-              suggestions={summaryQuery.data.suggestions}
-              providerMetadata={summaryQuery.data.providerMetadata}
-              userQuery={summaryQuery.data.userQuery}
+
+          {/* Editable Budget Section (collapsible) */}
+          {showEditors && budgetModel && (
+            <EditableBudgetSection
+              income={budgetModel.income.map((inc) => ({
+                id: inc.id,
+                name: inc.name,
+                monthlyAmount: inc.monthly_amount,
+                type: inc.type,
+                stability: inc.stability,
+              }))}
+              expenses={budgetModel.expenses.map((exp) => ({
+                id: exp.id,
+                category: exp.category,
+                monthlyAmount: exp.monthly_amount,
+                essential: exp.essential,
+                notes: exp.notes,
+              }))}
+              debts={budgetModel.debts.map((debt) => ({
+                id: debt.id,
+                name: debt.name,
+                balance: debt.balance,
+                interestRate: debt.interest_rate,
+                minPayment: debt.min_payment,
+                priority: debt.priority,
+                approximate: debt.approximate,
+              }))}
+              preferences={{
+                optimizationFocus: budgetModel.preferences.optimization_focus,
+                protectEssentials: budgetModel.preferences.protect_essentials,
+                maxDesiredChangePerCategory: budgetModel.preferences.max_desired_change_per_category,
+              }}
+              disabled={isUpdating || isRefreshing}
+              onIncomeChange={handleIncomeChange}
+              onExpenseChange={handleExpenseChange}
+              onDebtChange={handleDebtChange}
+              onPreferenceChange={handlePreferenceChange}
             />
+          )}
+
+          {/* Main content grid */}
+          <div className="grid gap-6 lg:grid-cols-2">
+            <div>
+              <SummaryView
+                summary={summaryQuery.data.summary}
+                categoryShares={summaryQuery.data.categoryShares}
+              />
+            </div>
+            <div>
+              <SuggestionsList
+                suggestions={summaryQuery.data.suggestions}
+                providerMetadata={summaryQuery.data.providerMetadata}
+                userQuery={summaryQuery.data.userQuery}
+              />
+            </div>
           </div>
         </div>
       ) : (
