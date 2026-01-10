@@ -153,3 +153,11 @@ ENV/
 /env/
 # Re-include API routes that use 'env' in the path
 !services/ui-web/src/app/api/diagnostics/env/
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+
+# Vercel local env files
+vercel.env

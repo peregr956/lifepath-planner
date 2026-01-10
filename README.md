@@ -156,10 +156,3 @@ npm run type-check     # TypeScript check
 npm run lint           # ESLint
 npm run test:e2e       # End-to-end tests
 ```
-
-## Legacy Services
-
-The Python microservices under `services/api-gateway`, `services/budget-ingestion-service`,
-`services/clarification-service`, and `services/optimization-service` are kept for reference
-but are no longer used in production. All functionality has been migrated to the Vercel
-serverless architecture.
