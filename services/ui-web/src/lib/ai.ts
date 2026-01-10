@@ -259,53 +259,37 @@ CRITICAL: The user has provided a specific question or concern. Your role is to:
 
 Return structured JSON matching the provided function schema exactly.`;
 
+// Phase 8.5.1: Refactored to remove prescriptive goal-specific guidance
+// AI determines what's relevant based on user's full context
 const SUGGESTION_SYSTEM_PROMPT = `You are a personal finance advisor generating actionable budget optimization suggestions.
 
 ## CRITICAL PRIORITY: USER'S QUESTION COMES FIRST
-The user has asked a specific question. Your FIRST 1-2 suggestions MUST directly and specifically address their exact question.
-DO NOT start with generic advice (like "build emergency fund" or "cut expenses") unless that directly answers their question.
+The user has asked a specific question. Your suggestions MUST directly address their exact question.
+Analyze their budget data and query to understand what they're trying to achieve.
 
-## GOAL-SPECIFIC GUIDANCE
-When the user asks about specific goals, provide targeted advice:
-
-### Down Payment / House Savings:
-- Calculate monthly savings needed: (target amount - current savings) / months to goal
-- Recommend high-yield savings accounts or money market accounts (NOT investment accounts)
-- Suggest dedicated "house fund" separate from other savings
-- Discuss the 20% down payment benchmark vs PMI tradeoffs
-- Consider closing cost reserves (2-5% of home price)
-
-### Debt Payoff:
-- Compare avalanche (highest rate first) vs snowball (smallest balance first)
-- Calculate payoff timeline with extra payments
-- Discuss balance transfer options for high-rate credit cards
-
-### Retirement Savings:
-- Start with employer 401k match (free money)
-- Discuss Roth vs Traditional based on current vs expected future tax bracket
-- Target 15-20% of gross income as a long-term goal
-
-### Emergency Fund:
-- Target 3-6 months of essential expenses
-- Recommend high-yield savings account
-- Calculate specific dollar target based on their expenses
-
-## STRUCTURE YOUR SUGGESTIONS
-1. FIRST suggestion: Directly answers their question with specific action steps
-2. SECOND suggestion: Related action that supports their goal
-3. REMAINING suggestions: Other relevant optimizations (only if helpful)
+## YOUR ROLE
+- Interpret the user's needs from their query and budget context
+- Provide personalized suggestions based on their specific situation
+- Only recommend what's relevant to their stated goals and concerns
+- Do NOT assume they need advice on topics they haven't asked about
 
 ## SUGGESTION QUALITY REQUIREMENTS
-- Every rationale MUST explicitly reference their question (e.g., "To save for your down payment...")
-- Include specific dollar amounts calculated from their budget
-- Provide timelines when goals are mentioned
+- Every suggestion MUST relate to what the user is asking about
+- Include specific dollar amounts calculated from their budget data
 - Explain HOW to implement each suggestion, not just WHAT to do
+- Provide timelines when the user has mentioned goals
+- Reference their actual budget categories and amounts
+
+## STRUCTURE YOUR SUGGESTIONS
+1. FIRST 1-2 suggestions: Directly answer their question with specific action steps
+2. REMAINING suggestions: Other relevant optimizations based on their budget (only if helpful)
 
 ## DO NOT
-- Lead with generic advice like "build emergency fund" unless they asked about it
-- Suggest cutting $8 from entertainment when they're asking about saving $50k for a house
-- Provide suggestions that don't relate to their question
-- Be vague about dollar amounts or timelines
+- Assume the user needs advice on topics they haven't mentioned (e.g., emergency funds, retirement)
+- Lead with generic advice that doesn't relate to their question
+- Provide suggestions that don't connect to their stated goals
+- Be vague about dollar amounts when you have their budget data
+- Prescribe financial philosophies or frameworks they haven't asked about
 
 CRITICAL: Suggestions should be educational and thought-provoking. Never guarantee outcomes or provide specific investment advice. Frame recommendations as ideas to consider.
 
@@ -356,7 +340,10 @@ function buildValidFieldIds(model: UnifiedBudgetModel): string {
 
 /**
  * Build a section describing the analyzed user query for the AI prompt.
- * Ported from Python _build_query_analysis_section() in openai_clarification.py
+ * 
+ * Phase 8.5.1: Refactored to provide raw signals only.
+ * No longer includes prescriptive "suggested profile questions" -
+ * AI determines what's relevant from the raw signals.
  */
 function buildQueryAnalysisSection(userQuery: string): string {
   if (!userQuery || !userQuery.trim()) {
@@ -365,8 +352,8 @@ function buildQueryAnalysisSection(userQuery: string): string {
 
   const analysis = analyzeQuery(userQuery);
 
-  const lines: string[] = ['## Query Analysis (Use this to prioritize questions)'];
-  lines.push(`- Primary intent: ${analysis.primaryIntent} (${getIntentDescription(analysis.primaryIntent)})`);
+  const lines: string[] = ['## Query Analysis (Raw signals from user query)'];
+  lines.push(`- Detected intent: ${analysis.primaryIntent} (${getIntentDescription(analysis.primaryIntent)})`);
 
   if (analysis.secondaryIntents.length > 0) {
     lines.push(`- Secondary intents: ${analysis.secondaryIntents.join(', ')}`);
@@ -381,24 +368,11 @@ function buildQueryAnalysisSection(userQuery: string): string {
   }
 
   if (analysis.timeframe !== 'unspecified') {
-    lines.push(`- Timeframe: ${analysis.timeframe}`);
+    lines.push(`- Timeframe mentioned: ${analysis.timeframe}`);
   }
 
-  // Guidance on what profile questions to ask
-  const profileGuidance: string[] = [];
-  if (analysis.needsFinancialPhilosophy) {
-    profileGuidance.push('financial_philosophy');
-  }
-  if (analysis.needsRiskTolerance) {
-    profileGuidance.push('risk_tolerance');
-  }
-  if (analysis.needsTimelineClarification) {
-    profileGuidance.push('goal_timeline');
-  }
-
-  if (profileGuidance.length > 0) {
-    lines.push(`- Suggested profile questions: ${profileGuidance.join(', ')}`);
-  }
+  // Phase 8.5.1: Removed prescriptive "Suggested profile questions" line
+  // AI should determine what's relevant based on the raw signals above
 
   return lines.join('\n');
 }
@@ -460,116 +434,8 @@ ${validFieldIds}
 REMEMBER: Only ask questions that help answer: "${userQuery || 'Help me understand and optimize my budget'}"`;
 }
 
-/**
- * Detect the primary financial goal from the user's query
- */
-type GoalType = 'down_payment' | 'retirement' | 'debt_payoff' | 'emergency_fund' | 'savings' | null;
-
-function detectGoalType(userQuery: string): GoalType {
-  const queryLower = userQuery.toLowerCase();
-  
-  // Down payment / house related
-  if (['down payment', 'house', 'home', 'buy a home', 'buy a house', 'mortgage', 'first home', 'homeowner', 'property']
-      .some(keyword => queryLower.includes(keyword))) {
-    return 'down_payment';
-  }
-  
-  // Retirement related
-  if (['retirement', 'retire', '401k', 'ira', 'roth', 'pension', 'social security', 'retire early', 'fire']
-      .some(keyword => queryLower.includes(keyword))) {
-    return 'retirement';
-  }
-  
-  // Debt payoff related
-  if (['debt', 'pay off', 'payoff', 'credit card', 'student loan', 'loan', 'debt free', 'eliminate debt', 'pay down']
-      .some(keyword => queryLower.includes(keyword))) {
-    return 'debt_payoff';
-  }
-  
-  // Emergency fund related
-  if (['emergency fund', 'emergency savings', 'rainy day', 'safety net', 'buffer', 'unexpected expenses']
-      .some(keyword => queryLower.includes(keyword))) {
-    return 'emergency_fund';
-  }
-  
-  // Savings related (generic)
-  if (['save', 'saving', 'savings', 'save money', 'save more']
-      .some(keyword => queryLower.includes(keyword))) {
-    return 'savings';
-  }
-  
-  return null;
-}
-
-/**
- * Build goal-specific context section for the prompt
- */
-function buildGoalContext(goalType: GoalType, model: UnifiedBudgetModel): string {
-  if (!goalType) return '';
-  
-  const surplus = model.summary.surplus;
-  // Note: Expenses are stored as POSITIVE values (matching Python convention)
-  const essentialExpenses = model.expenses.filter(e => e.essential).reduce((sum, e) => sum + e.monthly_amount, 0);
-  const flexibleExpenses = model.expenses.filter(e => !e.essential).reduce((sum, e) => sum + e.monthly_amount, 0);
-  
-  const lines: string[] = ['\n## GOAL-SPECIFIC CONTEXT (Use this to provide targeted advice)'];
-  
-  switch (goalType) {
-    case 'down_payment':
-      lines.push('The user is asking about saving for a home purchase.');
-      lines.push(`- Current monthly surplus available: $${surplus.toLocaleString()}`);
-      lines.push(`- If they saved entire surplus: $${(surplus * 12).toLocaleString()}/year, $${(surplus * 24).toLocaleString()} in 2 years`);
-      lines.push('- Recommend: High-yield savings account (4-5% APY currently)');
-      lines.push('- Typical down payment: 20% to avoid PMI, or 3-5% with FHA/conventional');
-      lines.push("- Don't forget closing costs: 2-5% of home price");
-      break;
-    
-    case 'retirement':
-      lines.push('The user is asking about retirement savings.');
-      const income = model.summary.total_income;
-      const recommended15 = income * 0.15;
-      lines.push(`- Current monthly income: $${income.toLocaleString()}`);
-      lines.push(`- 15% of income (recommended target): $${recommended15.toLocaleString()}/month`);
-      lines.push('- 2024 401k limit: $23,000 ($30,500 if 50+)');
-      lines.push('- 2024 IRA limit: $7,000 ($8,000 if 50+)');
-      break;
-    
-    case 'debt_payoff':
-      lines.push('The user is asking about paying off debt.');
-      if (model.debts.length > 0) {
-        const totalDebt = model.debts.reduce((sum, d) => sum + d.balance, 0);
-        const totalMinPayments = model.debts.reduce((sum, d) => sum + d.min_payment, 0);
-        const highestRate = Math.max(...model.debts.map(d => d.interest_rate));
-        lines.push(`- Total debt: $${totalDebt.toLocaleString()}`);
-        lines.push(`- Total minimum payments: $${totalMinPayments.toLocaleString()}/month`);
-        lines.push(`- Highest interest rate: ${highestRate}%`);
-        lines.push(`- Extra available after minimums: $${surplus.toLocaleString()}/month`);
-      } else {
-        lines.push('- No debts detected in their budget');
-      }
-      break;
-    
-    case 'emergency_fund':
-      lines.push('The user is asking about building an emergency fund.');
-      lines.push(`- Monthly essential expenses: $${essentialExpenses.toLocaleString()}`);
-      lines.push(`- 3-month target: $${(essentialExpenses * 3).toLocaleString()}`);
-      lines.push(`- 6-month target: $${(essentialExpenses * 6).toLocaleString()}`);
-      if (surplus > 0) {
-        const monthsTo3mo = (essentialExpenses * 3) / surplus;
-        lines.push(`- Time to reach 3-month fund at current surplus: ${monthsTo3mo.toFixed(1)} months`);
-      }
-      break;
-    
-    case 'savings':
-      lines.push('The user is asking about saving money.');
-      lines.push(`- Current monthly surplus: $${surplus.toLocaleString()}`);
-      lines.push(`- Total flexible expenses: $${flexibleExpenses.toLocaleString()}/month`);
-      lines.push('- Areas to review: Subscriptions, dining out, entertainment');
-      break;
-  }
-  
-  return lines.join('\n');
-}
+// Phase 8.5.1: Removed detectGoalType() and buildGoalContext() functions
+// AI should determine user goals from full context rather than keyword matching
 
 /**
  * Build user prompt for suggestions
@@ -618,16 +484,15 @@ function buildSuggestionPrompt(
     }
   }
 
-  // Detect goal type and build goal-specific context
-  const goalType = detectGoalType(userQuery);
-  const goalContext = buildGoalContext(goalType, model);
+  // Phase 8.5.1: Removed goal detection and prescriptive context building
+  // AI should interpret user needs from full context
 
   return `## USER'S QUESTION (Generate suggestions that answer this)
 "${userQuery || 'Help me optimize my budget and improve my financial situation'}"
 
 ${profileSection}
 
-Generate suggestions that directly address their question above.
+Generate suggestions that directly address their question above. Analyze their budget data to understand their situation and provide relevant, personalized recommendations.
 
 ## Financial Summary
 - Total Monthly Income: $${model.summary.total_income.toLocaleString()}
@@ -650,8 +515,7 @@ Total Monthly Debt Service: $${totalDebtPayments.toLocaleString()}
 - Protect Essential Expenses: ${model.preferences.protect_essentials}
 - Maximum Category Adjustment: ${(model.preferences.max_desired_change_per_category * 100).toFixed(0)}%
 
-Generate 3-6 prioritized suggestions that answer: "${userQuery || 'Help me optimize my budget'}"
-${goalContext}`;
+Generate 3-6 prioritized suggestions that answer: "${userQuery || 'Help me optimize my budget'}"`;
 }
 
 /**
@@ -1233,98 +1097,55 @@ function generateDeterministicQuestions(model: UnifiedBudgetModel, maxQuestions:
 
 /**
  * Generate deterministic suggestions (fallback)
+ * 
+ * Phase 8.5.1: Refactored to be truly minimal and non-prescriptive.
+ * Only provides factual observations about the budget without assuming
+ * what the user's goals or priorities should be.
+ * 
+ * This is a fallback for when AI is unavailable - it should NOT make
+ * assumptions about what the user wants (emergency funds, specific
+ * savings percentages, etc.).
  */
 function generateDeterministicSuggestions(model: UnifiedBudgetModel): Suggestion[] {
   const suggestions: Suggestion[] = [];
   const surplus = model.summary.surplus;
 
-  // Suggestion for high-interest debt
+  // Factual observation: High-interest debt (>15% APR is objectively high)
   const highInterestDebt = model.debts.filter(d => d.interest_rate > 15);
   if (highInterestDebt.length > 0) {
     const topDebt = highInterestDebt.sort((a, b) => b.interest_rate - a.interest_rate)[0];
+    const monthlyInterestCost = topDebt.balance * (topDebt.interest_rate / 100 / 12);
     suggestions.push({
-      id: `debt-${topDebt.id}`,
-      title: `Prioritize ${topDebt.name} Payment`,
-      description: `Your ${topDebt.name} has a ${topDebt.interest_rate}% interest rate. Paying this down first saves the most money long-term.`,
-      expected_monthly_impact: topDebt.balance * (topDebt.interest_rate / 100 / 12),
-      rationale: 'High-interest debt compounds quickly. Every extra dollar paid reduces future interest.',
-      tradeoffs: 'Money used for debt payoff cannot be invested or saved elsewhere.',
+      id: `debt-observation-${topDebt.id}`,
+      title: `High-Interest Debt: ${topDebt.name}`,
+      description: `You have a ${topDebt.name} with ${topDebt.interest_rate}% APR and $${topDebt.balance.toLocaleString()} balance. This costs approximately $${monthlyInterestCost.toFixed(0)}/month in interest.`,
+      expected_monthly_impact: monthlyInterestCost,
+      rationale: 'This is a factual observation about your current debt situation.',
+      tradeoffs: 'How you prioritize this depends on your personal financial goals.',
     });
   }
 
-  // Suggestion for emergency fund if surplus is positive
-  // Phase 8.5: Context-aware impact based on optimization_focus
-  if (surplus > 0) {
-    const focus = model.preferences.optimization_focus;
-    
-    // Calculate impact based on user's priorities
-    let emergencyFundAllocation = 0;
-    let description = '';
-    
-    if (focus === 'savings') {
-      // Savings-focused: suggest significant allocation
-      emergencyFundAllocation = surplus * 0.5;
-      description = `With your savings focus, consider allocating $${emergencyFundAllocation.toLocaleString()}/month toward a 3-6 month emergency fund.`;
-    } else if (focus === 'balanced') {
-      // Balanced: suggest moderate allocation
-      emergencyFundAllocation = surplus * 0.25;
-      description = `Consider allocating $${emergencyFundAllocation.toLocaleString()}/month toward emergency savings while balancing other goals.`;
-    } else if (focus === 'debt') {
-      // Debt-focused: minimal emergency fund suggestion, only if no debts or all low-interest
-      const hasHighInterestDebt = model.debts.some(d => d.interest_rate > 10);
-      if (!hasHighInterestDebt) {
-        emergencyFundAllocation = Math.min(surplus * 0.1, 100);
-        description = `While focusing on debt, maintain a small emergency buffer of $${emergencyFundAllocation.toLocaleString()}/month to avoid new debt for unexpected expenses.`;
-      }
-    }
-    
-    if (emergencyFundAllocation > 0) {
-      suggestions.push({
-        id: 'emergency-fund',
-        title: 'Build Emergency Fund',
-        description,
-        expected_monthly_impact: emergencyFundAllocation,
-        rationale: 'An emergency fund prevents going into debt when unexpected expenses arise.',
-        tradeoffs: 'Money in savings earns less than paying down high-interest debt or long-term investing.',
-      });
-    }
-  }
-
-  // Suggestion for flexible expense reduction
-  // Note: Expenses are stored as POSITIVE values (matching Python convention)
-  // Phase 8.5: Calculate percentage based on budget health, not hardcoded 10%
-  const flexibleExpenses = model.expenses.filter(e => !e.essential);
-  const totalFlexible = flexibleExpenses.reduce((sum, e) => sum + e.monthly_amount, 0);
-  if (totalFlexible > 0) {
-    // Calculate target reduction based on budget health
-    const surplusRatio = model.summary.total_income > 0 
-      ? model.summary.surplus / model.summary.total_income 
-      : 0;
-    
-    let targetReductionPercent = 0.1; // Default 10%
-    
-    if (surplusRatio < 0) {
-      // Deficit: suggest larger reduction to help break even
-      targetReductionPercent = Math.min(0.25, Math.abs(surplusRatio) + 0.1);
-    } else if (surplusRatio < 0.1) {
-      // Low surplus (< 10%): moderate reduction to boost savings
-      targetReductionPercent = 0.15;
-    } else if (surplusRatio > 0.3) {
-      // Already saving well (> 30%): smaller suggestion
-      targetReductionPercent = 0.05;
-    }
-    
-    const suggestedReduction = totalFlexible * targetReductionPercent;
-    
+  // Factual observation: Budget position (surplus or deficit)
+  if (surplus !== 0) {
+    const isDeficit = surplus < 0;
     suggestions.push({
-      id: 'reduce-flexible',
-      title: 'Review Flexible Spending',
-      description: `Consider reducing flexible expenses by ${(targetReductionPercent * 100).toFixed(0)}% (~$${suggestedReduction.toLocaleString()}/month). You have $${totalFlexible.toLocaleString()}/month in flexible categories.`,
-      expected_monthly_impact: suggestedReduction,
-      rationale: `A ${(targetReductionPercent * 100).toFixed(0)}% reduction across flexible categories is typically achievable without major lifestyle changes.`,
-      tradeoffs: 'Reducing spending may impact quality of life or convenience.',
+      id: 'budget-position',
+      title: isDeficit ? 'Budget Deficit' : 'Budget Surplus',
+      description: isDeficit
+        ? `Your expenses exceed income by $${Math.abs(surplus).toLocaleString()}/month. This is unsustainable long-term.`
+        : `You have $${surplus.toLocaleString()}/month available after expenses. How you allocate this depends on your personal goals.`,
+      expected_monthly_impact: Math.abs(surplus),
+      rationale: 'This is a factual summary of your current budget position.',
+      tradeoffs: 'For personalized advice on how to use your surplus (or address your deficit), please try again when AI is available.',
     });
   }
+
+  // Note: We intentionally do NOT suggest:
+  // - Emergency fund allocations (user may or may not need this)
+  // - Specific spending reduction percentages (prescriptive)
+  // - Financial philosophy frameworks (user should choose)
+  // 
+  // These are left to AI to determine based on user's actual query and context.
 
   return suggestions;
 }

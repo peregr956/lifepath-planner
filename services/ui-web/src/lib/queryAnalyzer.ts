@@ -32,6 +32,10 @@ export type ConcernType =
 
 /**
  * Structured representation of a user's query analysis
+ * 
+ * Phase 8.5.1: Removed prescriptive `needs*` flags.
+ * This module now provides raw signals only - the AI should decide
+ * what's relevant based on the full context, not pre-determined flags.
  */
 export interface QueryAnalysis {
   rawQuery: string;
@@ -42,11 +46,12 @@ export interface QueryAnalysis {
   timeframe: Timeframe;
   confidence: number; // 0.0 to 1.0
 
-  // Flags for what profile questions might be relevant
-  needsRiskTolerance: boolean;
-  needsFinancialPhilosophy: boolean;
-  needsGoalClarification: boolean;
-  needsTimelineClarification: boolean;
+  // Phase 8.5.1: Removed prescriptive flags:
+  // - needsRiskTolerance
+  // - needsFinancialPhilosophy
+  // - needsGoalClarification
+  // - needsTimelineClarification
+  // AI should determine relevance from raw signals above
 }
 
 // Keyword patterns for intent detection
@@ -293,6 +298,8 @@ const GOAL_PATTERNS: RegExp[] = [
 
 /**
  * Analyze a user's natural language query to extract intent, goals, and concerns.
+ * 
+ * Phase 8.5.1: Returns raw signals only. AI determines what's relevant.
  */
 export function analyzeQuery(query: string): QueryAnalysis {
   if (!query || !query.trim()) {
@@ -304,10 +311,6 @@ export function analyzeQuery(query: string): QueryAnalysis {
       mentionedConcerns: [],
       timeframe: 'unspecified',
       confidence: 0.0,
-      needsRiskTolerance: false,
-      needsFinancialPhilosophy: false,
-      needsGoalClarification: false,
-      needsTimelineClarification: false,
     };
   }
 
@@ -381,20 +384,8 @@ export function analyzeQuery(query: string): QueryAnalysis {
     }
   }
 
-  // Determine which profile questions are needed based on intent
-  const investmentRelated = new Set<QueryIntent>(['investment', 'savings', 'retirement', 'debt_vs_savings']);
-  const needsRiskTolerance =
-    investmentRelated.has(primaryIntent) ||
-    secondaryIntents.some((intent) => intent === 'investment' || intent === 'retirement');
-
-  const philosophyRelated = new Set<QueryIntent>(['debt_vs_savings', 'debt_payoff', 'savings', 'retirement']);
-  const needsFinancialPhilosophy = philosophyRelated.has(primaryIntent) || secondaryIntents.length > 0;
-
-  const needsGoalClarification =
-    (primaryIntent === 'major_purchase' || primaryIntent === 'savings') && mentionedGoals.length === 0;
-
-  const timelineRelated = new Set<QueryIntent>(['savings', 'major_purchase', 'debt_payoff', 'retirement']);
-  const needsTimelineClarification = timeframe === 'unspecified' && timelineRelated.has(primaryIntent);
+  // Phase 8.5.1: Removed prescriptive flag computation
+  // AI should determine what's relevant from the raw signals above
 
   return {
     rawQuery: query,
@@ -404,10 +395,6 @@ export function analyzeQuery(query: string): QueryAnalysis {
     mentionedConcerns,
     timeframe,
     confidence,
-    needsRiskTolerance,
-    needsFinancialPhilosophy,
-    needsGoalClarification,
-    needsTimelineClarification,
   };
 }
 

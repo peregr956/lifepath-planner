@@ -117,10 +117,16 @@ export interface Suggestion {
 
 /**
  * Create a default preferences object
+ * 
+ * Phase 8.5.1 Note: The 'balanced' default is intentionally neutral and
+ * does not presume user intent. It simply indicates no strong preference
+ * for debt vs savings prioritization. The user can modify this during
+ * the clarification phase, and AI will not make assumptions based on
+ * this default - it will ask the user for their actual priorities.
  */
 export function createDefaultPreferences(): Preferences {
   return {
-    optimization_focus: 'balanced',
+    optimization_focus: 'balanced', // Neutral default - user can customize
     protect_essentials: true,
     max_desired_change_per_category: 0.25,
   };
