@@ -4,9 +4,12 @@
  * Converts raw draft budgets into unified budget models.
  * Ported from Python clarification-service normalization logic.
  * 
- * Two-stage normalization:
- * 1. AI normalization: Analyzes category labels to correctly sign amounts (income positive, expenses negative)
- * 2. Deterministic conversion: Converts normalized draft into structured UnifiedBudgetModel
+ * Phase 8.5.4: This module is now primarily used as a fallback when:
+ * - Pre-interpreted models from upload are not available
+ * - Legacy sessions need to be processed
+ * 
+ * For new uploads, the aiBudgetInterpretation.ts module handles the
+ * AI-first interpretation with meaningful labels.
  * 
  * IMPORTANT: Expense amounts are stored as POSITIVE values (matching Python convention).
  * This ensures consistency across the entire system.
@@ -24,6 +27,7 @@ import type {
 import { enrichBudgetModel } from './aiEnrichment';
 import { isAIEnabled } from './ai';
 import { normalizeDraftBudget, isNormalizationAIEnabled } from './aiNormalization';
+import { selectBestLabel } from './aiBudgetInterpretation';
 
 // Default preferences
 const DEFAULT_PREFERENCES: Preferences = {
@@ -254,27 +258,31 @@ function isEssentialCategory(category: string): boolean {
 
 /**
  * Create an income entry from a budget line
+ * 
+ * Phase 8.5.4: Uses selectBestLabel for more descriptive names.
  */
 function createIncome(line: RawBudgetLine, index: number): Income {
-  const category = line.category_label.toLowerCase();
+  // Phase 8.5.4: Use the best available label
+  const label = selectBestLabel(line) || `Income ${index + 1}`;
+  const labelLower = label.toLowerCase();
   
   let type: Income['type'] = 'earned';
-  if (category.includes('dividend') || category.includes('interest') || category.includes('rental')) {
+  if (labelLower.includes('dividend') || labelLower.includes('interest') || labelLower.includes('rental')) {
     type = 'passive';
-  } else if (category.includes('transfer') || category.includes('gift')) {
+  } else if (labelLower.includes('transfer') || labelLower.includes('gift')) {
     type = 'transfer';
   }
 
   let stability: Income['stability'] = 'stable';
-  if (category.includes('freelance') || category.includes('commission') || category.includes('bonus')) {
+  if (labelLower.includes('freelance') || labelLower.includes('commission') || labelLower.includes('bonus')) {
     stability = 'variable';
-  } else if (category.includes('seasonal')) {
+  } else if (labelLower.includes('seasonal')) {
     stability = 'seasonal';
   }
 
   return {
     id: `income-draft-${line.source_row_index}-${index}`,
-    name: line.category_label || `Income ${index + 1}`,
+    name: label,
     monthly_amount: Math.abs(line.amount),
     type,
     stability,
@@ -284,29 +292,42 @@ function createIncome(line: RawBudgetLine, index: number): Income {
 /**
  * Create an expense entry from a budget line
  * 
+ * Phase 8.5.4: Uses selectBestLabel to prefer description over category
+ * when description is more specific.
+ * 
  * IMPORTANT: Expenses are stored as POSITIVE values to match Python convention.
  * This ensures consistency across the entire system.
  */
 function createExpense(line: RawBudgetLine, index: number): Expense {
-  const category = line.category_label || `Expense ${index + 1}`;
-  const essential = isEssentialCategory(category) ? true : null; // null means needs clarification
+  // Phase 8.5.4: Use the best available label (prefers description over generic category)
+  const label = selectBestLabel(line) || `Expense ${index + 1}`;
+  const essential = isEssentialCategory(label) ? true : null; // null means needs clarification
+
+  // Store original category in notes if it differs from the label
+  const originalCategory = line.category_label || null;
+  const notes = originalCategory && originalCategory !== label ? originalCategory : line.description;
 
   return {
     id: `expense-draft-${line.source_row_index}-${index}`,
-    category,
+    category: label,
     monthly_amount: Math.abs(line.amount), // Expenses stored as POSITIVE (Python convention)
     essential,
-    notes: line.description,
+    notes,
   };
 }
 
 /**
  * Create a debt entry from a budget line
+ * 
+ * Phase 8.5.4: Uses selectBestLabel for more descriptive names.
  */
 function createDebt(line: RawBudgetLine, index: number): Debt {
+  // Phase 8.5.4: Use the best available label
+  const label = selectBestLabel(line) || `Debt ${index + 1}`;
+  
   return {
     id: `debt-draft-${line.source_row_index}-${index}`,
-    name: line.category_label || `Debt ${index + 1}`,
+    name: label,
     balance: 0, // Unknown, needs clarification
     interest_rate: 0, // Unknown, needs clarification
     min_payment: Math.abs(line.amount),

@@ -3,9 +3,8 @@
  * 
  * Generates clarification questions based on the draft budget.
  * 
- * Two-stage processing:
- * 1. AI normalization: Correctly classifies amounts as income/expenses
- * 2. Question generation: Creates clarification questions for the user
+ * Phase 8.5.4: Uses pre-interpreted model from upload when available.
+ * Falls back to two-stage processing if no interpreted model exists.
  * 
  * Phase 8.5.3: Accepts foundational context to inform question generation.
  * 
@@ -17,8 +16,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getSession, updateSessionPartial, getUserContext, initDatabase } from '@/lib/db';
 import { draftToUnifiedModel } from '@/lib/normalization';
 import { generateClarificationQuestionsWithContext, getProviderMetadata } from '@/lib/ai';
-import { isNormalizationAIEnabled } from '@/lib/aiNormalization';
 import type { DraftBudgetModel } from '@/lib/parsers';
+import type { UnifiedBudgetModel } from '@/lib/budgetModel';
 import type { FoundationalContext } from '@/types/budget';
 
 // Initialize database on first request
@@ -70,25 +69,51 @@ export async function GET(request: NextRequest) {
     // Phase 8.5.3: Get foundational context from session
     const foundationalContext = (session.foundational_context || null) as FoundationalContext | null;
 
-    // Convert draft to unified model (includes AI normalization)
-    const draftBudget = session.draft as unknown as DraftBudgetModel;
-    const normalizationEnabled = isNormalizationAIEnabled();
+    // Phase 8.5.4: Check for pre-interpreted model from upload
+    const draftPayload = session.draft as unknown as DraftBudgetModel & {
+      interpreted_model?: UnifiedBudgetModel | null;
+      interpretation_metadata?: {
+        used_ai?: boolean;
+        notes?: string;
+        ai_enabled?: boolean;
+      } | null;
+    };
     
-    console.log(`[clarification-questions] Processing budget ${budgetId}`, {
-      lineCount: draftBudget.lines?.length || 0,
-      detectedFormat: draftBudget.detected_format,
-      normalizationEnabled,
-    });
+    const hasInterpretedModel = !!draftPayload.interpreted_model;
+    let unifiedModel: UnifiedBudgetModel;
+    let interpretationUsedAI = false;
+    
+    if (hasInterpretedModel && draftPayload.interpreted_model) {
+      // Use the pre-interpreted model from upload (Phase 8.5.4)
+      unifiedModel = draftPayload.interpreted_model;
+      interpretationUsedAI = draftPayload.interpretation_metadata?.used_ai ?? false;
+      
+      console.log(`[clarification-questions] Using pre-interpreted model for budget ${budgetId}`, {
+        usedAI: interpretationUsedAI,
+        incomeCount: unifiedModel.income.length,
+        expenseCount: unifiedModel.expenses.length,
+        debtCount: unifiedModel.debts.length,
+      });
+    } else {
+      // Fallback: Convert draft to unified model (legacy flow)
+      const draftBudget = draftPayload as DraftBudgetModel;
+      
+      console.log(`[clarification-questions] No pre-interpreted model, running normalization for budget ${budgetId}`, {
+        lineCount: draftBudget.lines?.length || 0,
+        detectedFormat: draftBudget.detected_format,
+      });
 
-    const unifiedModel = await draftToUnifiedModel(draftBudget);
+      unifiedModel = await draftToUnifiedModel(draftBudget);
+    }
 
-    console.log(`[clarification-questions] Budget normalized:`, {
+    console.log(`[clarification-questions] Budget ready:`, {
       incomeCount: unifiedModel.income.length,
       expenseCount: unifiedModel.expenses.length,
       debtCount: unifiedModel.debts.length,
       totalIncome: unifiedModel.summary.total_income,
       totalExpenses: unifiedModel.summary.total_expenses,
       surplus: unifiedModel.summary.surplus,
+      usedPreInterpretation: hasInterpretedModel,
     });
 
     // Generate clarification questions (Phase 8.5.3: pass foundational context)
@@ -108,7 +133,8 @@ export async function GET(request: NextRequest) {
       sourceIp,
       { 
         question_count: questions.length,
-        normalization_enabled: normalizationEnabled,
+        used_pre_interpretation: hasInterpretedModel,
+        interpretation_used_ai: interpretationUsedAI,
       }
     );
 
@@ -127,7 +153,9 @@ export async function GET(request: NextRequest) {
       next_steps: clarificationResult.next_steps || null,
       provider_metadata: {
         ...providerMetadata,
-        normalization_enabled: normalizationEnabled,
+        // Phase 8.5.4: Include interpretation metadata
+        used_pre_interpretation: hasInterpretedModel,
+        interpretation_used_ai: interpretationUsedAI,
         foundational_context_provided: !!foundationalContext,
       },
     });

@@ -1,6 +1,17 @@
 /**
  * AI-powered budget normalization
  * 
+ * @deprecated Phase 8.5.4: This module is superseded by aiBudgetInterpretation.ts
+ * which provides a unified AI-first interpretation that handles both sign normalization
+ * AND meaningful label selection in a single step.
+ * 
+ * This module is retained for:
+ * - Backward compatibility with existing sessions
+ * - Fallback when aiBudgetInterpretation is not used
+ * 
+ * For new development, use aiBudgetInterpretation.ts instead.
+ * 
+ * Original purpose:
  * Analyzes raw budget data and correctly classifies amounts as income (positive)
  * or expenses (negative) regardless of the original format.
  * 
