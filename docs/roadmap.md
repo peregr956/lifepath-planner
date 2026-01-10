@@ -1,6 +1,8 @@
 # LifePath Planner Implementation Roadmap
 
-This roadmap outlines the complete delivery plan for LifePath Planner, from the initial MVP through its evolution into a comprehensive financial planning platform. The document is organized into three parts: completed MVP work, current in-progress items, and future platform expansion phases.
+This roadmap outlines the complete delivery plan for LifePath Planner, from the initial MVP through its evolution into a comprehensive financial planning platform. The document is organized into four parts: completed MVP work, current in-progress items, platform expansion phases, and supporting information.
+
+> **Important:** This roadmap was restructured in January 2026 based on the [Competitive Audit](competitive_audit.md), [Differentiation Analysis](differentiation_analysis.md), and [Current State Reality Assessment](current_state_reality_assessment.md). Phase priorities have been reordered to address critical gaps first.
 
 ---
 
@@ -22,12 +24,12 @@ Most features of the current MVP can be replicated by a knowledgeable user with 
 
 Transform LifePath Planner into a platform that:
 
-1. **Integrates financial calculators** (mortgage, retirement, debt payoff, savings, net worth, tax, investment) directly into planning workflows
-2. **Provides long-term planning** with accurate retirement paths for users in their 20s through retirement
-3. **Connects to real financial accounts** via Link or similar platforms for real-time data
-4. **Offers personalized, actionable guidance** tailored to unique financial situations
-5. **Maintains user profiles and history** for tracking progress over time
-6. **Delivers professional, accessible UI/UX** that meets industry best practices
+1. **Maintains user profiles and history** for tracking progress over time (highest priority for retention)
+2. **Delivers professional, accessible UI/UX** that meets industry best practices
+3. **Integrates financial calculators** (mortgage, retirement, debt payoff, savings, net worth, tax, investment) directly into planning workflows
+4. **Provides long-term planning** with accurate retirement paths for users in their 20s through retirement
+5. **Connects to real financial accounts** via Plaid or similar platforms for real-time data
+6. **Offers personalized, actionable guidance** tailored to unique financial situations
 7. **Operates as a globally accessible web platform** with user authentication
 
 ---
@@ -48,7 +50,17 @@ Transform LifePath Planner into a platform that:
 - **CI/CD pipeline implemented** (December 2024) — GitHub Actions workflow with linting (ruff, pyright, ESLint, Prettier), Python 3.11+ test matrix, and deterministic pipeline validation. See `docs/development.md` for local commands and `.github/workflows/ci.yml` for the workflow definition.
 - **Technical debt cleanup** (December 2024) — API gateway now validates answers before upstream calls; binding-style field IDs implemented; AI-related TODOs documented as future work. See Phase 6 for details.
 
-The MVP core functionality is complete. Remaining work focuses on platform expansion and differentiation.
+### Known Issues Requiring Immediate Attention
+
+The [Current State Reality Assessment](current_state_reality_assessment.md) identified critical gaps between documented features and actual functionality. These are addressed in **Phase 8.5** before proceeding to platform expansion.
+
+| Issue | Priority | Status |
+|-------|----------|--------|
+| Financial frameworks not surfaced to users | P0 | Scheduled for Phase 8.5 |
+| Duplicate clarification questions for similar categories | P0 | Scheduled for Phase 8.5 |
+| Impact estimates often $0 or arbitrary | P1 | Scheduled for Phase 8.5 |
+| Silent AI/deterministic fallback | P1 | Scheduled for Phase 8.5 |
+| Limited deterministic fallback question set | P1 | Scheduled for Phase 8.5 |
 
 ---
 
@@ -269,51 +281,86 @@ This section tracks in-progress items from MVP phases that are not yet complete.
 | Phase 7 | Lower-priority test coverage | Pending |
 | Phase 7 | Integration & E2E test gaps | Pending |
 
----
+## Priority: Phase 8.5 (MVP Quality Fixes)
 
-# Part III: Platform Expansion (Phases 9–20)
-
-This section outlines the future phases that will transform LifePath Planner from an MVP into a comprehensive financial planning platform.
+**Before proceeding to platform expansion**, the following critical issues from the [Current State Reality Assessment](current_state_reality_assessment.md) must be addressed. These are blocking issues for any marketing or public launch.
 
 ---
 
-## Phase 9 — Financial Calculators Foundation (Weeks 10–14)
+# Part III: Platform Expansion (Phases 8.5–20)
 
-**Goal**: Implement core financial calculators that users can access independently and integrate into planning workflows.
+This section outlines the phases that will transform LifePath Planner from an MVP into a comprehensive financial planning platform.
 
-**Calculators to Implement**:
-- **Debt Payoff Calculator**: Avalanche vs snowball strategies, payoff timelines, interest calculations
-- **Savings Growth Calculator**: Compound interest with contributions, goal timelines
-- **Retirement Calculator**: Retirement readiness, required savings, withdrawal strategies
-- **Mortgage Calculator**: Payment calculations, amortization schedules, refinancing analysis
-- **Net Worth Calculator**: Asset/debt tracking, growth projections
-- **Investment Return Calculator**: Portfolio growth, ROI analysis
-- **Tax Calculator**: Basic tax estimation, bracket analysis (future: full tax planning)
+> **Note:** Phase order was restructured in January 2026 based on competitive analysis. User retention features (accounts, history) now take priority over utility features (calculators). See the [Competitive Audit](competitive_audit.md) for rationale.
 
-**Implementation**:
-- Create `services/calculator-service/` with modular calculator engines
-- Each calculator: standalone API endpoint + integration hooks
-- Reuse formulas from `docs/architecture/projection_service.md` where applicable
-- UI: Calculator library page + embedded calculator widgets
-- Integration: Calculators accessible from budget analysis and goal planning
+---
 
-**Files to Create/Modify**:
-- `services/calculator-service/src/main.py` — FastAPI service (Port 8005)
-- `services/calculator-service/src/calculators/` — Individual calculator modules
-- `services/ui-web/src/app/calculators/` — Calculator UI pages
-- `services/ui-web/src/components/calculators/` — Reusable calculator components
-- `docs/calculators.md` — Calculator specifications and formulas
+## Phase 8.5 — MVP Quality Fixes (Weeks 10–11) ⬅️ START HERE
+
+**Goal**: Fix critical bugs and missing functionality identified in the [Current State Reality Assessment](current_state_reality_assessment.md). Must complete before any marketing or public launch.
+
+**Rationale**: The reality assessment found that several advertised features don't work as claimed. These fixes ensure honest marketing and good user experience.
+
+### P0 Fixes (Must Fix)
+
+| Issue | Description | Files to Modify |
+|-------|-------------|-----------------|
+| **Question deduplication** | Similar categories (e.g., "Entertainment" + "Entertainment Subscriptions") generate duplicate questions | `services/ui-web/src/lib/ai.ts` |
+| **Financial framework UI** | `FinancialPhilosophy` type exists but is never surfaced to users. Either add selector UI or remove from marketing claims | `services/ui-web/src/components/ClarificationForm.tsx`, `services/ui-web/src/lib/ai.ts` |
+
+### P1 Fixes (Should Fix Soon)
+
+| Issue | Description | Files to Modify |
+|-------|-------------|-----------------|
+| **Emergency fund $0 impact** | Emergency fund suggestion always shows `expected_monthly_impact: 0` | `services/ui-web/src/lib/ai.ts` (line ~1035) |
+| **Arbitrary 10% reduction** | Flexible spending suggestion uses hardcoded 10% reduction | `services/ui-web/src/lib/ai.ts` (line ~1050) |
+| **AI/deterministic indicator** | Users don't know if AI or deterministic fallback was used | `services/ui-web/src/components/SuggestionsList.tsx` |
+| **Limited deterministic questions** | Fallback only generates 3 question types; should include financial philosophy, risk tolerance, goal timeline | `services/ui-web/src/lib/ai.ts` |
+
+**Implementation Details:**
+
+```
+Question Deduplication:
+- Add deduplication in generateClarificationQuestions()
+- Group similar expense categories before generating questions
+- Merge questions that target the same semantic concept
+
+Financial Framework:
+Option A: Add framework selector dropdown to ClarificationForm
+  - Add to buildValidFieldIds() output
+  - Render as dropdown with options: r_personalfinance, money_guy, neutral
+  - Display selected framework in SuggestionsList
+  
+Option B: Remove from marketing (faster, but loses differentiator)
+  - Update docs/competitive_audit.md
+  - Update landing page claims
+
+Mode Indicator:
+- Pass providerMetadata.usedDeterministic to SuggestionsList
+- Show badge: "AI-Powered Analysis" vs "Basic Analysis"
+- Add tooltip explaining the difference
+```
 
 **Deliverables**:
-- 7+ financial calculators accessible via web UI
-- Calculator API endpoints for programmatic access
-- Integration points for use in planning workflows
+- [ ] No duplicate questions for similar categories
+- [ ] Financial framework either selectable or removed from claims
+- [ ] All impact estimates are non-zero and calculated
+- [ ] Clear indicator of AI vs deterministic mode
+- [ ] Expanded deterministic question set
+
+**Success Criteria**:
+- Upload a budget with similar categories → no duplicate questions
+- See financial philosophy selection or no marketing claims about it
+- All suggestions have meaningful, calculated impact values
+- User can tell whether AI or fallback was used
 
 ---
 
-## Phase 10 — User Accounts & Authentication (Weeks 15–18)
+## Phase 9 — User Accounts & Authentication (Weeks 12–15)
 
 **Goal**: Enable user accounts, authentication, and profile management to support persistent data and multi-session planning.
+
+**Rationale** (from Competitive Audit): *"Without persistence, LifePath is a demo, not a product."* Every competitor has user accounts. This is the #1 retention-critical feature.
 
 **Features**:
 - User registration and authentication (email/password + OAuth options)
@@ -322,18 +369,18 @@ This section outlines the future phases that will transform LifePath Planner fro
 - Data privacy and compliance (GDPR, financial data protection)
 
 **Implementation**:
-- Extend `services/api-gateway/src/persistence/models.py` with User model
-- Add authentication service (JWT-based)
-- Implement user registration/login endpoints
+- Use Vercel-compatible auth solution (NextAuth.js, Clerk, or Auth0)
+- Add User and UserProfile models to Vercel Postgres
+- Implement user registration/login endpoints as Next.js API routes
 - Add user profile management
 - Update UI with login/signup flows
 - Add data encryption for sensitive financial information
 
 **Files to Create/Modify**:
-- `services/api-gateway/src/auth/` — Authentication logic
-- `services/api-gateway/src/persistence/models.py` — Add User, UserProfile models
-- `services/api-gateway/src/routes/auth.py` — Auth endpoints
-- `services/ui-web/src/app/auth/` — Login/signup pages
+- `services/ui-web/src/app/api/auth/` — Authentication API routes
+- `services/ui-web/src/lib/auth.ts` — Auth configuration and helpers
+- `services/ui-web/src/lib/db.ts` — Extend with User, UserProfile models
+- `services/ui-web/src/app/(app)/auth/` — Login/signup pages
 - `services/ui-web/src/components/auth/` — Auth components
 - `docs/security.md` — Security and privacy documentation
 
@@ -345,9 +392,11 @@ This section outlines the future phases that will transform LifePath Planner fro
 
 ---
 
-## Phase 11 — Budget History & Trends (Weeks 19–22)
+## Phase 10 — Budget History & Trends (Weeks 16–19)
 
 **Goal**: Enable users to track budgets over time, view trends, and compare periods.
+
+**Rationale**: Direct dependency on Phase 9. Together with accounts, this is the minimum viable persistent experience that differentiates from ChatGPT.
 
 **Features**:
 - Budget snapshots (monthly/quarterly saves)
@@ -364,12 +413,11 @@ This section outlines the future phases that will transform LifePath Planner fro
 - Add comparison tools (this month vs last month, year-over-year)
 
 **Files to Create/Modify**:
-- `services/api-gateway/src/persistence/models.py` — Add BudgetSnapshot model
-- `services/api-gateway/src/persistence/snapshot_repository.py` — Snapshot CRUD
-- `services/api-gateway/src/routes/snapshots.py` — Snapshot endpoints
-- `services/api-gateway/src/services/trend_analysis.py` — Trend calculations
-- `services/ui-web/src/app/history/` — History dashboard
-- `services/ui-web/src/components/charts/` — Chart components
+- `services/ui-web/src/lib/db.ts` — Add BudgetSnapshot model
+- `services/ui-web/src/app/api/snapshots/` — Snapshot API routes
+- `services/ui-web/src/lib/trendAnalysis.ts` — Trend calculations
+- `services/ui-web/src/app/(app)/history/` — History dashboard
+- `services/ui-web/src/components/history/` — History components
 
 **Deliverables**:
 - Users can save and view budget history
@@ -378,43 +426,84 @@ This section outlines the future phases that will transform LifePath Planner fro
 
 ---
 
-## Phase 12 — Long-Term Projections Service (Weeks 23–30)
+## Phase 11 — UI/UX Polish & Accessibility (Weeks 20–23)
 
-**Goal**: Implement comprehensive multi-year financial projections that integrate calculators into real planning scenarios.
+**Goal**: Improve the UI to be professional, accessible, and easy to use. This is a focused polish phase, not a full redesign.
 
-**Features**:
-- **Retirement Projections**: Full retirement readiness analysis for users in their 20s through retirement age
-- **Debt Payoff Projections**: Long-term debt elimination with strategy comparison
-- **Savings Growth Projections**: Investment and savings growth over decades
-- **Net Worth Trajectory**: Complete net worth projections with life events
-- **Life Event Modeling**: Job changes, home purchases, marriage, children, etc.
-- **Scenario Comparison**: Side-by-side "what if" analysis
+**Rationale**: Originally scheduled as Phase 16 (weeks 45-50), this was moved earlier because every subsequent feature benefits from a polished foundation. Scope is reduced to essentials; full design system deferred.
+
+**Features (Essentials Only)**:
+- **Accessibility**: WCAG 2.1 AA compliance, keyboard navigation, screen reader support
+- **Responsive Design**: Mobile and tablet optimization
+- **Loading States**: Skeleton screens, progress indicators
+- **Error Handling**: Clear error messages, recovery paths
+- **Basic Onboarding**: Simple guided tour for new users
+
+**Deferred to Future Phase**:
+- Full design system with custom components
+- Advanced animations and micro-interactions
+- Custom charting library
+- Complete rebrand/visual overhaul
 
 **Implementation**:
-- Implement `services/projection-service/` (see `docs/architecture/projection_service.md`)
-- Integrate calculator engines into projection workflows
-- Add life event modeling (see projection_service.md for LifeEvent types)
-- Create projection API endpoints
-- Build projection UI with interactive charts
-- Connect projections to user's actual budget data
+- Audit current UI for accessibility issues
+- Add ARIA labels, keyboard navigation, focus management
+- Implement responsive breakpoints
+- Add skeleton loading states
+- Create error boundaries
+- Build simple onboarding flow (3-5 steps)
 
 **Files to Create/Modify**:
-- `services/projection-service/` — New service (Port 8004)
-- `services/projection-service/src/engines/` — Calculation engines
-- `services/api-gateway/src/http_client.py` — Add projection service client
-- `services/ui-web/src/app/projections/` — Projection views
-- `services/ui-web/src/components/projections/` — Projection components
+- `services/ui-web/src/components/ui/` — Update with accessibility
+- `services/ui-web/src/app/(app)/onboarding/` — Onboarding flow
+- `services/ui-web/src/components/Skeleton.tsx` — Loading skeletons
+- `services/ui-web/src/components/ErrorBoundary.tsx` — Error handling
+- `docs/accessibility.md` — Accessibility guidelines
 
 **Deliverables**:
-- Retirement readiness calculator with full projections
-- Debt payoff timelines with strategy comparison
-- Net worth trajectory over 30+ years
-- Life event impact modeling
-- Scenario comparison tools
+- WCAG 2.1 AA compliance
+- Responsive design for mobile/tablet
+- Loading states throughout
+- Error handling with recovery
+- Basic onboarding flow
 
 ---
 
-## Phase 13 — Goal Tracking & Progress Monitoring (Weeks 31–36)
+## Phase 12 — Financial Calculators (Weeks 24–28)
+
+**Goal**: Implement core financial calculators that users can access independently and integrate into planning workflows.
+
+**Rationale**: Originally Phase 9, moved after retention features. Calculators are valuable but not retention-critical. Users won't return just for calculators they can find elsewhere.
+
+**Calculators to Implement**:
+- **Debt Payoff Calculator**: Avalanche vs snowball strategies, payoff timelines, interest calculations
+- **Savings Growth Calculator**: Compound interest with contributions, goal timelines
+- **Retirement Calculator**: Retirement readiness, required savings, withdrawal strategies
+- **Mortgage Calculator**: Payment calculations, amortization schedules, refinancing analysis
+- **Net Worth Calculator**: Asset/debt tracking, growth projections
+- **Investment Return Calculator**: Portfolio growth, ROI analysis
+- **Tax Calculator**: Basic tax estimation, bracket analysis
+
+**Implementation**:
+- Build calculators as client-side TypeScript modules (no separate service needed)
+- Each calculator: standalone page + reusable component
+- Reuse formulas from `docs/architecture/projection_service.md` where applicable
+- UI: Calculator library page + embedded calculator widgets
+
+**Files to Create/Modify**:
+- `services/ui-web/src/lib/calculators/` — Calculator logic modules
+- `services/ui-web/src/app/(app)/calculators/` — Calculator UI pages
+- `services/ui-web/src/components/calculators/` — Reusable calculator components
+- `docs/calculators.md` — Calculator specifications and formulas (already exists)
+
+**Deliverables**:
+- 7+ financial calculators accessible via web UI
+- Reusable calculator components
+- Integration points for use in planning workflows
+
+---
+
+## Phase 13 — Goal Tracking & Progress Monitoring (Weeks 29–34)
 
 **Goal**: Enable users to set financial goals and track progress over time with automated updates.
 
@@ -434,11 +523,10 @@ This section outlines the future phases that will transform LifePath Planner fro
 - Connect goals to budget snapshots for auto-tracking
 
 **Files to Create/Modify**:
-- `services/api-gateway/src/persistence/models.py` — Add goal models
-- `services/api-gateway/src/persistence/goal_repository.py` — Goal CRUD
-- `services/api-gateway/src/services/goal_service.py` — Goal logic
-- `services/api-gateway/src/routes/goals.py` — Goal endpoints
-- `services/ui-web/src/app/goals/` — Goal dashboard
+- `services/ui-web/src/lib/db.ts` — Add goal models
+- `services/ui-web/src/app/api/goals/` — Goal API routes
+- `services/ui-web/src/lib/goalService.ts` — Goal logic
+- `services/ui-web/src/app/(app)/goals/` — Goal dashboard
 - `services/ui-web/src/components/goals/` — Goal components
 
 **Deliverables**:
@@ -449,7 +537,42 @@ This section outlines the future phases that will transform LifePath Planner fro
 
 ---
 
-## Phase 14 — Scenario Planning & "What If" Analysis (Weeks 37–40)
+## Phase 14 — Long-Term Projections (Weeks 35–42)
+
+**Goal**: Implement comprehensive multi-year financial projections that provide planning scenarios.
+
+**Rationale**: Originally Phase 12. Moved after Goals because projections are most valuable when connected to user goals and history.
+
+**Features**:
+- **Retirement Projections**: Full retirement readiness analysis for users in their 20s through retirement age
+- **Debt Payoff Projections**: Long-term debt elimination with strategy comparison
+- **Savings Growth Projections**: Investment and savings growth over decades
+- **Net Worth Trajectory**: Complete net worth projections with life events
+- **Life Event Modeling**: Job changes, home purchases, marriage, children, etc.
+
+**Implementation**:
+- Build projection engines as client-side TypeScript (leverage calculator modules)
+- Integrate calculator engines into projection workflows
+- Add life event modeling (see `docs/architecture/projection_service.md` for LifeEvent types)
+- Create projection API endpoints for saving/loading projections
+- Build projection UI with interactive charts
+- Connect projections to user's actual budget data and goals
+
+**Files to Create/Modify**:
+- `services/ui-web/src/lib/projections/` — Projection engines
+- `services/ui-web/src/app/api/projections/` — Projection API routes
+- `services/ui-web/src/app/(app)/projections/` — Projection views
+- `services/ui-web/src/components/projections/` — Projection components
+
+**Deliverables**:
+- Retirement readiness calculator with full projections
+- Debt payoff timelines with strategy comparison
+- Net worth trajectory over 30+ years
+- Life event impact modeling
+
+---
+
+## Phase 15 — Scenario Planning & "What If" Analysis (Weeks 43–46)
 
 **Goal**: Enable users to model different financial futures and compare outcomes.
 
@@ -468,10 +591,10 @@ This section outlines the future phases that will transform LifePath Planner fro
 - Integrate with projections and goals
 
 **Files to Create/Modify**:
-- `services/api-gateway/src/persistence/models.py` — Add scenario models
-- `services/api-gateway/src/services/scenario_engine.py` — Scenario logic
-- `services/api-gateway/src/routes/scenarios.py` — Scenario endpoints
-- `services/ui-web/src/app/scenarios/` — Scenario builder
+- `services/ui-web/src/lib/db.ts` — Add scenario models
+- `services/ui-web/src/lib/scenarioEngine.ts` — Scenario logic
+- `services/ui-web/src/app/api/scenarios/` — Scenario API routes
+- `services/ui-web/src/app/(app)/scenarios/` — Scenario builder
 - `services/ui-web/src/components/scenarios/` — Scenario components
 
 **Deliverables**:
@@ -481,221 +604,143 @@ This section outlines the future phases that will transform LifePath Planner fro
 
 ---
 
-## Phase 15 — Calculator Integration into Planning Workflows (Weeks 41–44)
+## Phases 16–18 — Platform Expansion (Weeks 47–60)
 
-**Goal**: Seamlessly integrate calculators into planning workflows so users get calculator-powered insights within their planning journey.
+These phases consolidate advanced features that build on the core platform.
+
+### Phase 16 — Calculator & Workflow Integration (Weeks 47–50)
+
+**Goal**: Seamlessly integrate calculators into planning workflows.
 
 **Features**:
-- **Contextual Calculator Access**: Calculators appear when relevant (e.g., mortgage calculator when planning home purchase)
-- **Calculator Results in Projections**: Use calculator outputs directly in projections
-- **Guided Planning Workflows**: Step-by-step planning wizards that use calculators
-- **Calculator-Powered Recommendations**: Suggestions backed by calculator analysis
-- **Export/Share Calculations**: Users can export calculator results and share scenarios
-
-**Implementation**:
-- Create planning workflow engine that orchestrates calculators
-- Build guided planning wizards (retirement planning, home buying, debt payoff, etc.)
-- Integrate calculator results into AI suggestions
-- Add calculator widgets to relevant planning pages
-- Create workflow templates
+- Contextual calculator access (calculators appear when relevant)
+- Calculator results feed into projections
+- Guided planning wizards (retirement planning, home buying, debt payoff)
+- Calculator-powered recommendations in suggestions
+- Export/share calculations
 
 **Files to Create/Modify**:
-- `services/api-gateway/src/services/planning_workflow.py` — Workflow orchestration
-- `services/ui-web/src/app/planning/` — Planning workflow pages
+- `services/ui-web/src/lib/planningWorkflow.ts` — Workflow orchestration
+- `services/ui-web/src/app/(app)/planning/` — Planning workflow pages
 - `services/ui-web/src/components/workflows/` — Workflow components
-- `services/ui-web/src/components/calculators/` — Enhance for embedding
-- `docs/planning_workflows.md` — Workflow specifications
-
-**Deliverables**:
-- Guided planning workflows using calculators
-- Calculator results integrated into projections and goals
-- Contextual calculator access throughout the app
 
 ---
 
-## Phase 16 — Professional UI/UX Overhaul (Weeks 45–50)
+### Phase 17 — Account Integration (Weeks 51–56)
 
-**Goal**: Transform the UI into a professional, robust, accessible, and easy-to-use interface that meets financial tool standards.
-
-**Features**:
-- **Design System**: Consistent design language, typography, colors, components
-- **Accessibility**: WCAG 2.1 AA compliance, keyboard navigation, screen reader support
-- **Responsive Design**: Mobile, tablet, desktop optimization
-- **Performance**: Fast load times, smooth interactions, optimized rendering
-- **User Onboarding**: Guided tour, tooltips, help system
-- **Data Visualization**: Professional charts, graphs, and financial visualizations
-- **Error Handling**: Clear error messages, recovery paths
-- **Loading States**: Skeleton screens, progress indicators
-
-**Implementation**:
-- Audit current UI for accessibility and UX issues
-- Create design system documentation
-- Implement accessibility improvements (ARIA labels, keyboard navigation, focus management)
-- Optimize performance (code splitting, lazy loading, image optimization)
-- Add comprehensive error boundaries and error handling
-- Create onboarding flow
-- Enhance data visualizations with professional charting library
-- Mobile-first responsive design
-
-**Files to Create/Modify**:
-- `services/ui-web/src/components/design-system/` — Reusable design components
-- `services/ui-web/src/styles/` — Design tokens and themes
-- `services/ui-web/src/app/onboarding/` — Onboarding flow
-- `services/ui-web/src/components/charts/` — Enhanced charting
-- `docs/design-system.md` — Design system documentation
-- `docs/accessibility.md` — Accessibility guidelines and audit
-
-**Deliverables**:
-- WCAG 2.1 AA compliant UI
-- Professional design system
-- Responsive design for all devices
-- Comprehensive onboarding
-- Performance optimizations
-
----
-
-## Phase 17 — Account Integration (Link/Real-Time Data) (Weeks 51–58)
-
-**Goal**: Integrate with financial account aggregation services (Plaid Link or similar) to bring in real-time account data and enable automated financial planning.
+**Goal**: Integrate with financial account aggregation (Plaid or similar) for real-time data.
 
 **Features**:
-- **Account Connection**: Connect bank accounts, credit cards, investment accounts via Link
-- **Transaction Import**: Automatic transaction import and categorization
-- **Balance Sync**: Real-time account balance updates
-- **Spending Analysis**: Analyze actual spending vs budget
-- **Automated Budget Updates**: Update budgets from actual transactions
-- **Goal Progress from Accounts**: Track goal progress from real account data
-- **Security**: Bank-level security, encryption, read-only access
+- Connect bank accounts, credit cards, investment accounts via Plaid Link
+- Automatic transaction import and categorization
+- Real-time balance updates
+- Analyze actual spending vs budget
+- Update budgets from actual transactions
+- Track goal progress from real account data
 
 **Implementation**:
-- Research and select account aggregation provider (Plaid, Yodlee, etc.)
+- Research and select account aggregation provider (Plaid recommended)
 - Implement OAuth flow for account connection
 - Create account data models and storage
-- Build transaction import and categorization service
+- Build transaction import and categorization
 - Integrate account data into budget analysis
-- Add account management UI
 - Implement security and compliance measures
 
 **Files to Create/Modify**:
-- `services/account-service/` — New service for account management (Port 8006)
-- `services/account-service/src/integrations/` — Provider integrations (Plaid, etc.)
-- `services/account-service/src/transaction_processor.py` — Transaction processing
-- `services/api-gateway/src/persistence/models.py` — Add account models
-- `services/api-gateway/src/routes/accounts.py` — Account endpoints
-- `services/ui-web/src/app/accounts/` — Account management UI
-- `docs/account_integration.md` — Integration documentation
+- `services/ui-web/src/lib/plaid.ts` — Plaid integration
+- `services/ui-web/src/app/api/accounts/` — Account API routes
+- `services/ui-web/src/app/(app)/accounts/` — Account management UI
+- `docs/account_integration.md` — Integration documentation (exists)
 - `docs/security.md` — Update with account security measures
 
-**Deliverables**:
-- Users can connect financial accounts
-- Automatic transaction import
-- Real-time balance updates
-- Spending analysis from actual data
-- Automated budget and goal updates
-
 ---
 
-## Phase 18 — Advanced Planning Features (Weeks 59–64)
+### Phase 18 — Advanced Planning Features (Weeks 57–60)
 
-**Goal**: Add advanced planning capabilities that leverage real account data and provide comprehensive financial guidance.
+**Goal**: Advanced planning capabilities leveraging real account data.
 
 **Features**:
-- **Automated Recommendations**: AI-powered suggestions based on real account data
-- **Spending Pattern Detection**: Identify unusual spending, trends, opportunities
-- **Cash Flow Forecasting**: Predict future cash flow based on historical patterns
-- **Tax Planning**: Basic tax optimization suggestions (expand tax calculator)
-- **Investment Analysis**: Portfolio analysis and recommendations
-- **Insurance Needs Analysis**: Calculate insurance coverage needs
-- **Estate Planning Basics**: Basic estate planning guidance
-
-**Implementation**:
-- Enhance AI suggestion engine with account data context
-- Build pattern detection algorithms
-- Create cash flow forecasting service
-- Expand tax calculator with planning features
-- Add investment analysis tools
-- Create insurance and estate planning modules
+- AI-powered suggestions based on real account data
+- Spending pattern detection and insights
+- Cash flow forecasting from historical patterns
+- Basic tax optimization suggestions
+- Portfolio analysis and recommendations
+- Insurance needs analysis
 
 **Files to Create/Modify**:
-- `services/optimization-service/src/account_aware_suggestions.py` — Account-based suggestions
-- `services/account-service/src/pattern_detection.py` — Spending pattern analysis
-- `services/projection-service/src/engines/cash_flow.py` — Cash flow forecasting
-- `services/calculator-service/src/calculators/tax_planning.py` — Tax planning calculator
-- `services/calculator-service/src/calculators/insurance.py` — Insurance calculator
+- `services/ui-web/src/lib/patternDetection.ts` — Spending patterns
+- `services/ui-web/src/lib/cashFlowForecast.ts` — Cash flow forecasting
+- `services/ui-web/src/lib/calculators/taxPlanning.ts` — Tax planning
 - `docs/advanced_planning.md` — Advanced features documentation
 
-**Deliverables**:
-- Account-aware recommendations
-- Spending pattern insights
-- Cash flow forecasting
-- Tax and investment planning tools
-
 ---
 
-## Phase 19 — Web Hosting & Global Deployment (Weeks 65–68)
+## Phase 19 — Production Hardening (Weeks 61–64)
 
-**Goal**: Deploy the platform as a globally accessible web application with proper infrastructure, monitoring, and scalability.
+**Goal**: Harden the platform for production scale with proper monitoring, security, and compliance.
+
+**Rationale**: Rewritten to reflect actual Vercel-based architecture. Original phase referenced AWS/GCP which is not the current architecture.
 
 **Features**:
-- **Cloud Infrastructure**: Deploy to cloud provider (AWS, GCP, Azure)
-- **CDN & Global Distribution**: Fast access worldwide
-- **Database Scaling**: Production database with backups and replication
-- **Monitoring & Observability**: Application monitoring, error tracking, performance metrics
-- **CI/CD Pipeline**: Automated deployment pipeline
-- **Security Hardening**: Production security measures, rate limiting, DDoS protection
-- **Compliance**: Financial data compliance (SOC 2, etc.)
+- **Vercel Production Configuration**: Environment optimization, edge functions, caching
+- **Vercel Postgres Production**: Production database with proper backups and connection pooling
+- **Monitoring & Observability**: Vercel Analytics, Sentry error tracking, custom metrics
+- **Security Hardening**: Rate limiting, input validation, CORS configuration
+- **Performance Optimization**: Edge caching, image optimization, bundle analysis
+- **Compliance**: GDPR compliance, data retention policies, audit logging
 
 **Implementation**:
-- Set up cloud infrastructure (containers, load balancers, databases)
-- Configure CDN for static assets
-- Set up production database with backups
-- Implement monitoring (application logs, error tracking, metrics)
-- Create CI/CD pipeline for automated deployments
+- Configure Vercel project for production (environment variables, domains)
+- Set up Vercel Postgres with connection pooling
+- Integrate Sentry for error tracking
+- Add Vercel Analytics for performance monitoring
+- Implement rate limiting on API routes
 - Security audit and hardening
-- Compliance documentation and certifications
+- Document compliance measures
 
 **Files to Create/Modify**:
-- `infrastructure/` — Infrastructure as code (Terraform, CloudFormation)
-- `.github/workflows/deploy.yml` — Deployment pipeline
+- `services/ui-web/vercel.json` — Update production configuration
+- `services/ui-web/src/lib/monitoring.ts` — Monitoring utilities
+- `services/ui-web/src/middleware.ts` — Rate limiting, security headers
+- `.github/workflows/deploy.yml` — Production deployment pipeline
 - `docs/deployment.md` — Deployment documentation
 - `docs/operations.md` — Update with production operations
 - `docs/compliance.md` — Compliance documentation
 
 **Deliverables**:
-- Production deployment
-- Global CDN distribution
-- Monitoring and observability
-- Automated CI/CD
-- Security and compliance measures
+- Production-ready Vercel configuration
+- Monitoring and error tracking
+- Security hardening
+- Compliance documentation
+- CI/CD pipeline for production deploys
 
 ---
 
-## Phase 20 — Differentiation & Marketing Features (Weeks 69–72)
+## Phase 20 — Marketing & Differentiation (Weeks 65–68)
 
-**Goal**: Add features that clearly differentiate LifePath Planner from ChatGPT and competitors, and prepare for user acquisition.
+**Goal**: Add features that differentiate LifePath from competitors and prepare for user acquisition.
 
 **Features**:
-- **Comparison Dashboard**: Side-by-side comparison with "ChatGPT-only" approach
-- **Value Demonstration**: Clear messaging on unique value proposition
-- **User Testimonials & Case Studies**: Social proof
-- **Free vs Premium Tiers**: Freemium model with clear upgrade paths
-- **Export & Integration**: Export to other tools, API access
-- **Mobile Web App**: Progressive Web App (PWA) for mobile experience
+- **Comparison Content**: Clear "Why LifePath vs ChatGPT" messaging
+- **Value Demonstration**: Interactive demos, case studies
+- **Freemium Model**: Free tier with clear upgrade paths
+- **Export & Integration**: PDF reports, CSV exports, API access
+- **Progressive Web App**: PWA for mobile experience
 
 **Implementation**:
 - Create comparison content and features
-- Build freemium tier system
-- Add export functionality (PDF reports, CSV exports, etc.)
+- Build freemium tier system (Stripe integration)
+- Add export functionality
 - Create API documentation for third-party integrations
 - Implement PWA features
-- Add marketing pages and case studies
+- Add marketing pages
 
 **Files to Create/Modify**:
-- `services/ui-web/src/app/comparison/` — Comparison pages
-- `services/api-gateway/src/routes/export.py` — Export endpoints
+- `services/ui-web/src/app/(marketing)/comparison/` — Comparison pages
+- `services/ui-web/src/app/api/export/` — Export endpoints
+- `services/ui-web/src/app/api/subscription/` — Subscription management
 - `docs/api_documentation.md` — Public API documentation
-- `services/ui-web/public/` — Marketing pages
-- Update `docs/differentiation_analysis.md` — Updated differentiation
+- Update `docs/differentiation_analysis.md` — Updated positioning
 
 **Deliverables**:
 - Clear differentiation messaging
@@ -708,67 +753,102 @@ This section outlines the future phases that will transform LifePath Planner fro
 
 # Part IV: Supporting Information
 
+## Phase Timeline Summary
+
+| Phase | Name | Weeks | Duration | Key Deliverable |
+|-------|------|-------|----------|-----------------|
+| 8.5 | MVP Quality Fixes | 10–11 | 2 weeks | Fix critical bugs before launch |
+| 9 | User Accounts | 12–15 | 4 weeks | User retention capability |
+| 10 | Budget History | 16–19 | 4 weeks | Persistent value |
+| 11 | UI/UX Polish | 20–23 | 4 weeks | Professional experience |
+| 12 | Calculators | 24–28 | 5 weeks | Utility features |
+| 13 | Goal Tracking | 29–34 | 6 weeks | Engagement driver |
+| 14 | Projections | 35–42 | 8 weeks | Long-term planning |
+| 15 | Scenarios | 43–46 | 4 weeks | "What if" analysis |
+| 16 | Workflow Integration | 47–50 | 4 weeks | Connected experience |
+| 17 | Account Integration | 51–56 | 6 weeks | Real-time data |
+| 18 | Advanced Planning | 57–60 | 4 weeks | Premium features |
+| 19 | Production Hardening | 61–64 | 4 weeks | Scale & security |
+| 20 | Marketing | 65–68 | 4 weeks | Growth preparation |
+
+---
+
 ## Success Metrics
 
 | Phase | Key Metrics |
 |-------|-------------|
-| Phase 9 (Calculators) | Calculator usage rate, integration into planning workflows |
-| Phase 10 (Accounts) | User registration rate, active users |
-| Phase 11 (History) | Users saving budgets, history view engagement |
-| Phase 12 (Projections) | Projection usage, retirement planning completion |
+| Phase 8.5 (Quality) | Zero duplicate questions, all impacts non-zero, mode indicator visible |
+| Phase 9 (Accounts) | User registration rate, return user rate |
+| Phase 10 (History) | Users saving budgets, history view engagement |
+| Phase 11 (UI/UX) | Accessibility score, mobile usage, error rate reduction |
+| Phase 12 (Calculators) | Calculator usage rate |
 | Phase 13 (Goals) | Goal creation rate, goal completion rate |
-| Phase 14 (Scenarios) | Scenario creation, comparison usage |
-| Phase 15 (Integration) | Workflow completion rate, calculator usage in workflows |
-| Phase 16 (UI/UX) | Accessibility score, user satisfaction, task completion time |
+| Phase 14 (Projections) | Projection usage, retirement planning completion |
+| Phase 15 (Scenarios) | Scenario creation, comparison usage |
+| Phase 16 (Integration) | Workflow completion rate |
 | Phase 17 (Accounts) | Account connection rate, transaction import success |
 | Phase 18 (Advanced) | Feature adoption, recommendation effectiveness |
-| Phase 19 (Deployment) | Uptime, response time, error rate |
-| Phase 20 (Differentiation) | User acquisition, conversion to paid, retention |
-
----
-
-## Technical Considerations
-
-### Architecture Evolution
-
-The system will evolve from:
-- **Current**: Vercel Serverless Functions (consolidating Ingestion, Clarification, Optimization)
-- **Future**: Extended serverless capabilities or additional services (add Calculator, Projection, Account services)
-
-### Data Model Expansion
-
-New entities to add:
-- User, UserProfile
-- BudgetSnapshot
-- FinancialGoal, GoalProgress
-- Scenario, ScenarioSet
-- Account, Transaction
-- CalculatorResult (for saved calculations)
-
-### Integration Points
-
-Key integrations:
-- **Account Aggregation**: Plaid Link or similar (OAuth, API)
-- **Payment Processing**: For premium subscriptions (Stripe, etc.)
-- **Email Service**: For alerts and notifications (SendGrid, etc.)
-- **Analytics**: User behavior tracking (privacy-compliant)
-
-### Security & Compliance
-
-- **Financial Data**: Encryption at rest and in transit
-- **Authentication**: Secure JWT, OAuth flows
-- **Compliance**: GDPR, CCPA, financial data regulations
-- **Audit Logs**: Track all financial data access
+| Phase 19 (Production) | Uptime, response time, error rate |
+| Phase 20 (Marketing) | User acquisition, conversion to paid, retention |
 
 ---
 
 ## Dependencies & Prerequisites
 
-- **Phase 10 (User Accounts)** must complete before Phase 11 (History) — need user identity
-- **Phase 12 (Projections)** should leverage Phase 9 (Calculators) — reuse calculator engines
-- **Phase 13 (Goals)** depends on Phase 11 (History) — need budget snapshots
-- **Phase 17 (Account Integration)** can start after Phase 10 but benefits from Phase 13 (Goals) — can auto-track goals
-- **Phase 19 (Deployment)** should happen after core features are stable
+```
+Phase 8.5 → Required before any public marketing
+    ↓
+Phase 9 (Accounts) → Required for all persistence features
+    ↓
+Phase 10 (History) → Required for goal tracking
+    ↓
+Phase 11 (UI/UX) → Benefits all subsequent phases
+    ↓
+Phase 12 (Calculators) → Used by projections
+    ↓
+Phase 13 (Goals) → Enhanced by projections
+    ↓
+Phase 14 (Projections) → Used by scenarios
+    ↓
+Phase 15 (Scenarios)
+    ↓
+Phases 16-18 (Platform Expansion)
+    ↓
+Phase 19 (Production) → Required for scale
+    ↓
+Phase 20 (Marketing) → Requires stable product
+```
+
+---
+
+## Technical Considerations
+
+### Architecture
+
+The system uses a **unified Vercel serverless architecture**:
+- **Frontend**: Next.js App Router
+- **API**: Next.js API Routes (serverless functions)
+- **Database**: Vercel Postgres
+- **AI**: OpenAI API (via Vercel AI SDK)
+- **CDN**: Vercel Edge Network
+
+No additional services or containers are needed for Phases 8.5–15. The architecture is sufficient for the core platform.
+
+### Data Model Expansion
+
+New entities to add progressively:
+- **Phase 9**: User, UserProfile, Session
+- **Phase 10**: BudgetSnapshot
+- **Phase 13**: FinancialGoal, GoalProgress
+- **Phase 15**: Scenario, ScenarioSet
+- **Phase 17**: Account, Transaction
+
+### Security & Compliance
+
+- **Financial Data**: Encryption at rest (Vercel Postgres) and in transit (TLS)
+- **Authentication**: NextAuth.js or Clerk with secure session management
+- **Compliance**: GDPR, CCPA, financial data regulations
+- **Audit Logs**: Track all financial data access
 
 ---
 
@@ -776,17 +856,31 @@ Key integrations:
 
 | Risk | Mitigation Strategy |
 |------|---------------------|
-| Account Integration Complexity | Start with single provider (Plaid), add others later |
-| Regulatory Compliance | Consult with legal/compliance experts early |
-| Scale Challenges | Design for scale from Phase 19, use cloud-native patterns |
-| User Adoption | Focus on clear value proposition and onboarding (Phase 16) |
+| Phase 8.5 scope creep | Timebox to 2 weeks; defer non-critical fixes |
+| Auth complexity | Use managed auth (Clerk/Auth0) vs building custom |
+| Account Integration Complexity | Start with Plaid only; add others later |
+| Regulatory Compliance | Consult with legal/compliance experts in Phase 17 |
+| User Adoption | Focus on clear value proposition and onboarding |
+
+---
+
+## Related Documentation
+
+- [`docs/current_state_reality_assessment.md`](current_state_reality_assessment.md) — Feature gap analysis driving Phase 8.5
+- [`docs/competitive_audit.md`](competitive_audit.md) — Competitive landscape driving phase prioritization
+- [`docs/differentiation_analysis.md`](differentiation_analysis.md) — ChatGPT comparison
+- [`docs/calculators.md`](calculators.md) — Calculator specifications
+- [`docs/architecture/projection_service.md`](architecture/projection_service.md) — Projection engine design
+- [`docs/architecture/goal_tracking.md`](architecture/goal_tracking.md) — Goal system design
+- [`docs/architecture/scenario_planning.md`](architecture/scenario_planning.md) — Scenario planning design
+- [`docs/account_integration.md`](account_integration.md) — Account aggregation strategy
 
 ---
 
 ## Next Steps
 
-1. **Review and prioritize phases** — Adjust timeline based on resources
-2. **Create detailed tickets** — Break each phase into specific tasks
-3. **Set up project tracking** — Use project management tool
-4. **Begin Phase 9** — Start with calculator service foundation
+1. **Begin Phase 8.5** — Fix P0 issues (question deduplication, financial frameworks)
+2. **Select auth provider** — Evaluate Clerk, Auth0, NextAuth.js for Phase 9
+3. **Create detailed tickets** — Break Phase 8.5 and 9 into specific tasks
+4. **Set up project tracking** — Use project management tool for phase tracking
 5. **Regular roadmap reviews** — Update quarterly based on user feedback and market changes

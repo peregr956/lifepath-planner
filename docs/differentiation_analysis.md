@@ -1,6 +1,8 @@
 # LifePath Planner Differentiation Analysis
 
-This document provides a comprehensive analysis of LifePath Planner's current capabilities compared to what users could achieve by uploading their budget directly to ChatGPT. It identifies differentiation gaps and outlines the strategic roadmap to create unique, defensible value.
+> **See also:** [`docs/competitive_audit.md`](competitive_audit.md) for a comprehensive analysis of all competitors including AI assistants (ChatGPT, Claude, Gemini), traditional budgeting apps (Monarch, YNAB, Copilot, Empower), and spreadsheet solutions (Tiller, templates).
+
+This document provides a focused analysis of LifePath Planner's current capabilities compared to what users could achieve by uploading their budget directly to ChatGPT. It identifies differentiation gaps and outlines the strategic roadmap to create unique, defensible value.
 
 ---
 
@@ -690,6 +692,7 @@ The MVP establishes the foundation, but differentiation requires:
 
 ## Related Documentation
 
+- `docs/competitive_audit.md` — **Comprehensive competitive audit** covering AI assistants (ChatGPT, Claude, Gemini), traditional budgeting apps (Monarch, YNAB, Copilot), and spreadsheet solutions with gap analysis and strategic positioning
 - `docs/roadmap.md` — Implementation timeline for all phases
 - `docs/calculators.md` — Financial calculator specifications
 - `docs/account_integration.md` — Account aggregation strategy
