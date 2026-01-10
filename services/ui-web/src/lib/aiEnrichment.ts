@@ -17,11 +17,16 @@ import OpenAI from 'openai';
 import { UnifiedBudgetModel, Income, Expense, Debt, computeSummary } from './budgetModel';
 import { loadProviderSettings } from './providerSettings';
 
+// Auto-detect OpenAI when API key is available, otherwise fall back to deterministic
 const providerSettings = loadProviderSettings({
   providerEnv: 'CLARIFICATION_PROVIDER',
   timeoutEnv: 'AI_TIMEOUT_SECONDS',
   temperatureEnv: 'AI_TEMPERATURE',
   maxTokensEnv: 'AI_MAX_TOKENS',
+  defaultProvider: process.env.OPENAI_API_KEY ? 'openai' : 'deterministic',
+  defaultTimeout: 30,
+  defaultTemperature: 0.3,
+  defaultMaxTokens: 2048,
 });
 
 function getOpenAIClient(): OpenAI | null {

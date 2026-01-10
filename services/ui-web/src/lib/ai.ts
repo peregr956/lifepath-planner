@@ -26,11 +26,16 @@ import { loadProviderSettings, isAIGatewayEnabled } from './providerSettings';
 import { analyzeQuery, getIntentDescription, type QueryAnalysis } from './queryAnalyzer';
 
 // Load default provider settings
+// Auto-detect OpenAI when API key is available, otherwise fall back to deterministic
 const providerSettings = loadProviderSettings({
   providerEnv: 'CLARIFICATION_PROVIDER', // Using clarification as default focus
   timeoutEnv: 'AI_TIMEOUT_SECONDS',
   temperatureEnv: 'AI_TEMPERATURE',
   maxTokensEnv: 'AI_MAX_TOKENS',
+  defaultProvider: process.env.OPENAI_API_KEY ? 'openai' : 'deterministic',
+  defaultTimeout: 30,
+  defaultTemperature: 0.7,
+  defaultMaxTokens: 4096,
 });
 
 // Question component schema (shared between flat questions and grouped questions)
