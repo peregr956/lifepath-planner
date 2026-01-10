@@ -228,6 +228,7 @@ function NumberInputField({
   descriptor,
   value,
   disabled,
+  ariaLabelledBy,
   ariaDescribedBy,
   onChange,
 }: BasePrimitiveProps<ClarificationNumberInputDescriptor>) {
@@ -243,6 +244,7 @@ function NumberInputField({
       min={constraints.minimum}
       max={constraints.maximum}
       step={constraints.step ?? 'any'}
+      aria-labelledby={ariaLabelledBy}
       aria-describedby={ariaDescribedBy}
       aria-required="true"
       placeholder={unit ? `Value (${unit})` : 'Enter a value'}
