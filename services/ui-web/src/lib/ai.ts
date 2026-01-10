@@ -3,6 +3,19 @@
  * 
  * Uses OpenAI or Vercel AI Gateway for generating contextual questions
  * and personalized budget optimization suggestions.
+ * 
+ * Phase 8.5.2: Prompt Engineering with AI Generalizability
+ * 
+ * Design Philosophy (aligned with Phase 8.5.1):
+ * - The AI is more intelligent than hardcoded program rules
+ * - Prompts provide objective, role, context, and output format
+ * - Prompts do NOT prescribe behavioral rules or "do not" constraints
+ * - AI determines relevance, priorities, and appropriate responses
+ * 
+ * Structure:
+ * - System prompts define objective/role/output format only
+ * - User prompts provide delimited data sections
+ * - <user_profile> section prepared for Phase 8.5.3 foundational context
  */
 
 import OpenAI from 'openai';
@@ -230,83 +243,53 @@ async function withRetry<T>(
   return null;
 }
 
-// System prompts
-const CLARIFICATION_SYSTEM_PROMPT = `You are a financial planning assistant that generates clarification questions to help understand a user's budget and answer their specific question.
-
-CRITICAL: The user has provided a specific question or concern. Your role is to:
-1. Generate ONLY the questions needed to answer their specific query
-2. Skip questions that aren't relevant to what they're asking about
-3. Ask about financial philosophy and risk tolerance ONLY when relevant to their query
-
-## QUESTION GENERATION RULES:
-- Ask 4-7 concise, actionable questions maximum (fewer is better if that answers their query)
-- Prioritize questions that directly help answer the user's specific question
-- Use specific UI components: toggle (yes/no), dropdown (choices), number_input (amounts/rates), slider (ranges)
-- Field IDs MUST follow exact naming conventions provided in the valid field IDs section
-- Each question_id must be unique
-
-## LINE ITEM SPECIFICITY (CRITICAL):
-- Reference specific budget line items by their ID (e.g., "expense-1", "expense-2")
-- Do NOT ask about broad categories like "Entertainment" - ask about specific line items
-- If multiple items seem related (e.g., "Entertainment" and "Entertainment Subscriptions"), ask ONE consolidated question
-- For essential/flexible classification, group ALL items into a single question with toggles for each item
-- Example: "Which of these expenses are essential to you?" with toggles for each specific line item
-
-## AVOID DUPLICATE QUESTIONS:
-- Do NOT generate multiple questions about the same concept (e.g., two questions about essential expenses)
-- Consolidate related questions into a single comprehensive question
-- If asking about debt details, ask about ALL debts in ONE question, not separate questions per debt
-
-Return structured JSON matching the provided function schema exactly.`;
-
-// Phase 8.5.1: Refactored to remove prescriptive goal-specific guidance
-// AI determines what's relevant based on user's full context
-const SUGGESTION_SYSTEM_PROMPT = `You are a personal finance advisor generating actionable budget optimization suggestions.
-
-## CRITICAL PRIORITY: USER'S QUESTION COMES FIRST
-The user has asked a specific question. Your suggestions MUST directly address their exact question.
-Analyze their budget data and query to understand what they're trying to achieve.
-
-## YOUR ROLE
-- Interpret the user's needs from their query and budget context
-- Provide personalized suggestions based on their specific situation
-- Only recommend what's relevant to their stated goals and concerns
-- Do NOT assume they need advice on topics they haven't asked about
-
-## SUGGESTION QUALITY REQUIREMENTS
-- Every suggestion MUST relate to what the user is asking about
-- Include specific dollar amounts calculated from their budget data
-- Explain HOW to implement each suggestion, not just WHAT to do
-- Provide timelines when the user has mentioned goals
-- Reference their actual budget categories and amounts
-
-## STRUCTURE YOUR SUGGESTIONS
-1. FIRST 1-2 suggestions: Directly answer their question with specific action steps
-2. REMAINING suggestions: Other relevant optimizations based on their budget (only if helpful)
-
-## DO NOT
-- Assume the user needs advice on topics they haven't mentioned (e.g., emergency funds, retirement)
-- Lead with generic advice that doesn't relate to their question
-- Provide suggestions that don't connect to their stated goals
-- Be vague about dollar amounts when you have their budget data
-- Prescribe financial philosophies or frameworks they haven't asked about
-
-CRITICAL: Suggestions should be educational and thought-provoking. Never guarantee outcomes or provide specific investment advice. Frame recommendations as ideas to consider.
-
-Return structured JSON matching the provided function schema exactly.`;
+// System prompts - Phase 8.5.2: Refactored for AI generalizability
 
 /**
- * Build valid field IDs section for the prompt
+ * CLARIFICATION_SYSTEM_PROMPT
+ * 
+ * Refactored to trust AI intelligence rather than prescribe behavior.
+ * Provides objective, role, context, and output format only.
+ */
+const CLARIFICATION_SYSTEM_PROMPT = `Objective: Generate clarification questions that gather the context needed to answer this user's budget question.
+
+Role: You are a financial planning assistant helping someone understand and optimize their budget.
+
+Context: The user has uploaded budget data and asked a question. Their data arrives in delimited sections: <user_query>, <user_profile>, <budget_data>, and <available_fields>. Use whatever profile context is available to avoid redundant questions.
+
+Output: Return JSON matching the provided function schema with your budget analysis, grouped questions, and next steps. Reference field_ids from <available_fields> for question components.
+
+Success: Fewer, more targeted questions are better than comprehensive coverage.`;
+
+/**
+ * SUGGESTION_SYSTEM_PROMPT
+ * 
+ * Refactored to trust AI intelligence rather than prescribe behavior.
+ * Removed "do not" rules - AI naturally focuses on relevance.
+ */
+const SUGGESTION_SYSTEM_PROMPT = `Objective: Generate actionable budget suggestions that address this user's specific question.
+
+Role: You are a personal finance advisor. Your suggestions should be practical, grounded in the user's actual numbers, and relevant to what they asked.
+
+Context: The user's data arrives in delimited sections: <user_query>, <user_profile>, and <budget_data>. Their profile reflects stated preferences—use it to align your suggestions with their goals.
+
+Output: Return JSON matching the provided function schema. Each suggestion should include expected monthly impact (calculated from their data), your reasoning, and tradeoffs worth considering.
+
+Success: Suggestions framed as ideas to consider, with specific dollar amounts from their budget.`;
+
+/**
+ * Build available field IDs section for the prompt
+ * These are the fields that can be used in question components
  */
 function buildValidFieldIds(model: UnifiedBudgetModel): string {
-  const lines = ['## VALID FIELD_IDS (use ONLY these exact field_ids):'];
+  const lines = ['## Available Field IDs'];
 
   // Expense essentials
   if (model.expenses.length > 0) {
-    lines.push('\n### Expense Essentials (use "essential_" prefix):');
+    lines.push('\n### Expense Essentials (essential_ prefix):');
     for (const exp of model.expenses) {
       if (exp.essential === null) {
-        lines.push(`  - essential_${exp.id}  (for ${exp.category})`);
+        lines.push(`  - essential_${exp.id}  (${exp.category})`);
       }
     }
   }
@@ -318,14 +301,14 @@ function buildValidFieldIds(model: UnifiedBudgetModel): string {
   lines.push('  - primary_income_stability');
 
   // Profile fields
-  lines.push('\n### Profile (ask only when relevant to user\'s query):');
-  lines.push('  - financial_philosophy  (r_personalfinance, money_guy, neutral)');
-  lines.push('  - risk_tolerance  (conservative, moderate, aggressive)');
-  lines.push('  - goal_timeline  (immediate, short_term, medium_term, long_term)');
+  lines.push('\n### Profile:');
+  lines.push('  - financial_philosophy');
+  lines.push('  - risk_tolerance');
+  lines.push('  - goal_timeline');
 
   // Debts
   if (model.debts.length > 0) {
-    lines.push('\n### Debt Fields (use "{debt_id}_" prefix):');
+    lines.push('\n### Debt Fields:');
     for (const debt of model.debts) {
       lines.push(`  - ${debt.id}_balance`);
       lines.push(`  - ${debt.id}_interest_rate`);
@@ -334,7 +317,6 @@ function buildValidFieldIds(model: UnifiedBudgetModel): string {
     }
   }
 
-  lines.push('\n⚠️ CRITICAL: Only use field_ids listed above. Do NOT invent new field_ids.');
   return lines.join('\n');
 }
 
@@ -378,9 +360,36 @@ function buildQueryAnalysisSection(userQuery: string): string {
 }
 
 /**
- * Build user prompt for clarification questions
+ * User profile type for foundational context (Phase 8.5.3 preparation)
+ * Initially optional, will be populated by foundational questions flow
  */
-function buildClarificationPrompt(model: UnifiedBudgetModel, userQuery: string): string {
+export interface FoundationalContext {
+  financial_philosophy?: string;
+  risk_tolerance?: string;
+  primary_goal?: string;
+  goal_timeline?: string;
+  life_stage?: string;
+  has_emergency_fund?: boolean;
+}
+
+/**
+ * Build user prompt for clarification questions
+ * 
+ * Phase 8.5.2: Restructured with clear XML-style delimiters for:
+ * - <user_query>: The user's question
+ * - <user_profile>: Foundational context (Phase 8.5.3 will populate)
+ * - <budget_data>: Financial data
+ * - <constraints>: Valid field IDs
+ * 
+ * @param model - The unified budget model
+ * @param userQuery - The user's question
+ * @param foundationalContext - Optional foundational context from Phase 8.5.3
+ */
+function buildClarificationPrompt(
+  model: UnifiedBudgetModel,
+  userQuery: string,
+  foundationalContext?: FoundationalContext
+): string {
   const incomeSection = model.income.length > 0
     ? model.income.map(inc => `- ${inc.name}: $${inc.monthly_amount.toLocaleString()}/mo (${inc.type}, ${inc.stability})`).join('\n')
     : 'No income sources detected.';
@@ -402,16 +411,28 @@ function buildClarificationPrompt(model: UnifiedBudgetModel, userQuery: string):
   
   // Build query analysis section for better context
   const queryAnalysisSection = buildQueryAnalysisSection(userQuery);
-  const queryAnalysisBlock = queryAnalysisSection
-    ? `\n${queryAnalysisSection}\n`
-    : '';
 
-  return `## USER'S QUESTION (This is what they need help with)
-"${userQuery || 'Help me understand and optimize my budget'}"
+  // Build user profile section (Phase 8.5.3 preparation)
+  const profileLines = [
+    `- Financial Philosophy: ${foundationalContext?.financial_philosophy || 'not specified'}`,
+    `- Risk Tolerance: ${foundationalContext?.risk_tolerance || 'not specified'}`,
+    `- Primary Goal: ${foundationalContext?.primary_goal || 'not specified'}`,
+    `- Goal Timeline: ${foundationalContext?.goal_timeline || 'not specified'}`,
+    `- Life Stage: ${foundationalContext?.life_stage || 'not specified'}`,
+    `- Has Emergency Fund: ${foundationalContext?.has_emergency_fund !== undefined ? (foundationalContext.has_emergency_fund ? 'yes' : 'no') : 'not specified'}`,
+  ];
 
-Generate ONLY the clarification questions needed to answer their specific question above.
-${queryAnalysisBlock}
-## Budget Summary
+  return `<user_query>
+${userQuery || 'Help me understand and optimize my budget'}
+</user_query>
+
+<user_profile>
+${profileLines.join('\n')}
+</user_profile>
+
+${queryAnalysisSection ? `<query_analysis>\n${queryAnalysisSection}\n</query_analysis>\n` : ''}
+<budget_data>
+## Summary
 - Total Monthly Income: $${model.summary.total_income.toLocaleString()}
 - Total Monthly Expenses: $${model.summary.total_expenses.toLocaleString()}
 - Monthly Surplus: $${model.summary.surplus.toLocaleString()}
@@ -428,10 +449,11 @@ ${debtSection}
 ## Current Preferences
 - Optimization Focus: ${model.preferences.optimization_focus}
 - Protect Essentials: ${model.preferences.protect_essentials}
+</budget_data>
 
+<available_fields>
 ${validFieldIds}
-
-REMEMBER: Only ask questions that help answer: "${userQuery || 'Help me understand and optimize my budget'}"`;
+</available_fields>`;
 }
 
 // Phase 8.5.1: Removed detectGoalType() and buildGoalContext() functions
@@ -439,6 +461,15 @@ REMEMBER: Only ask questions that help answer: "${userQuery || 'Help me understa
 
 /**
  * Build user prompt for suggestions
+ * 
+ * Phase 8.5.2: Restructured with clear XML-style delimiters for:
+ * - <user_query>: The user's question
+ * - <user_profile>: User profile and preferences
+ * - <budget_data>: Complete financial breakdown
+ * 
+ * @param model - The unified budget model
+ * @param userQuery - The user's question
+ * @param userProfile - User profile including foundational context
  */
 function buildSuggestionPrompt(
   model: UnifiedBudgetModel,
@@ -470,30 +501,30 @@ function buildSuggestionPrompt(
 
   const totalDebtPayments = model.debts.reduce((sum, d) => sum + d.min_payment, 0);
 
-  let profileSection = '';
-  if (userProfile && Object.keys(userProfile).length > 0) {
-    profileSection = '## User Profile (Personalize based on this)\n';
-    if (userProfile.financial_philosophy) {
-      profileSection += `- Financial Philosophy: ${userProfile.financial_philosophy}\n`;
+  // Build user profile section (Phase 8.5.3 preparation)
+  const profileLines: string[] = [];
+  if (userProfile) {
+    profileLines.push(`- Financial Philosophy: ${userProfile.financial_philosophy || 'not specified'}`);
+    profileLines.push(`- Risk Tolerance: ${userProfile.risk_tolerance || 'not specified'}`);
+    profileLines.push(`- Primary Goal: ${userProfile.primary_goal || 'not specified'}`);
+    profileLines.push(`- Goal Timeline: ${userProfile.goal_timeline || 'not specified'}`);
+    profileLines.push(`- Life Stage: ${userProfile.life_stage || 'not specified'}`);
+    if (userProfile.has_emergency_fund !== undefined) {
+      profileLines.push(`- Has Emergency Fund: ${userProfile.has_emergency_fund ? 'yes' : 'no'}`);
     }
-    if (userProfile.risk_tolerance) {
-      profileSection += `- Risk Tolerance: ${userProfile.risk_tolerance}\n`;
-    }
-    if (userProfile.primary_goal) {
-      profileSection += `- Primary Goal: ${userProfile.primary_goal}\n`;
-    }
+  } else {
+    profileLines.push('No profile information provided.');
   }
 
-  // Phase 8.5.1: Removed goal detection and prescriptive context building
-  // AI should interpret user needs from full context
+  return `<user_query>
+${userQuery || 'Help me optimize my budget and improve my financial situation'}
+</user_query>
 
-  return `## USER'S QUESTION (Generate suggestions that answer this)
-"${userQuery || 'Help me optimize my budget and improve my financial situation'}"
+<user_profile>
+${profileLines.join('\n')}
+</user_profile>
 
-${profileSection}
-
-Generate suggestions that directly address their question above. Analyze their budget data to understand their situation and provide relevant, personalized recommendations.
-
+<budget_data>
 ## Financial Summary
 - Total Monthly Income: $${model.summary.total_income.toLocaleString()}
 - Total Monthly Expenses: $${model.summary.total_expenses.toLocaleString()}
@@ -514,8 +545,7 @@ Total Monthly Debt Service: $${totalDebtPayments.toLocaleString()}
 - Primary Optimization Focus: ${model.preferences.optimization_focus}
 - Protect Essential Expenses: ${model.preferences.protect_essentials}
 - Maximum Category Adjustment: ${(model.preferences.max_desired_change_per_category * 100).toFixed(0)}%
-
-Generate 3-6 prioritized suggestions that answer: "${userQuery || 'Help me optimize my budget'}"`;
+</budget_data>`;
 }
 
 /**

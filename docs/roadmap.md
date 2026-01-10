@@ -552,6 +552,8 @@ Before deploying prompts, score 0–2 on each dimension:
 - [ ] Quality boundaries and uncertainty handling added
 - [ ] Model-specific optimizations applied
 - [ ] All prompts score 10+/12 on quality rubric
+- [ ] **Phase 8.5.3 Preparation**: Standard delimiter conventions (`<user_query>`, `<user_profile>`, `<budget_data>`, `<constraints>`) established for extensibility
+- [ ] **Phase 8.5.3 Preparation**: System prompts include "User Profile Handling" sections for when foundational context is available
 
 **Success Criteria**:
 - Consistent AI output format across all calls
@@ -644,6 +646,12 @@ Stage 2: AI-Generated Clarification Questions
 | `services/ui-web/src/lib/ai.ts` | Update `buildClarificationPrompt()` to prioritize foundational context |
 | `services/ui-web/src/types/budget.ts` | Add new profile fields (life_stage, has_emergency_fund, etc.) |
 | `services/ui-web/src/hooks/useBudgetSession.tsx` | Store foundational answers in session |
+
+> **Phase 8.5.2 Dependency**: This phase leverages the CORE prompt framework established in Phase 8.5.2:
+> - Use the `<user_profile>` delimiter convention for foundational context
+> - Extend `buildClarificationPrompt()` with optional `foundationalContext` parameter
+> - Extend `buildSuggestionPrompt()` `userProfile` type with new foundational fields
+> - System prompts include "User Profile Handling" sections explaining how to use this context
 
 ### UI/UX Considerations
 
@@ -1121,9 +1129,9 @@ Phase 8.5 → Required before any public marketing
     ↓
 Phase 8.5.1 (Generalizability) → Improves AI quality for all features
     ↓
-Phase 8.5.2 (Prompts) → Improves AI consistency; can run in parallel with 8.5.1
+Phase 8.5.2 (Prompts) → Improves AI consistency; establishes delimiter conventions for future context
     ↓
-Phase 8.5.3 (Questions) → Optimal question flow; depends on 8.5.1 + 8.5.2
+Phase 8.5.3 (Questions) → Uses 8.5.2 delimiters (<user_profile>) for foundational context
     ↓
 Phase 9 (Accounts) → Required for all persistence features
     ↓

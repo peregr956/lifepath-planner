@@ -5,6 +5,11 @@
  * or expenses (negative) regardless of the original format.
  * 
  * Ported from Python services/clarification-service/src/providers/openai_budget_normalization.py
+ * 
+ * Phase 8.5.2: Refactored for AI generalizability
+ * - Removed keyword classification lists (AI understands financial terms)
+ * - Retained sign convention (technical requirement, not behavioral rule)
+ * - Retained traceability requirement (architectural need)
  */
 
 import OpenAI from 'openai';
@@ -84,33 +89,27 @@ const NORMALIZATION_SCHEMA = {
   ],
 };
 
-const SYSTEM_PROMPT = `You are a financial data analyst that normalizes budget data into a standard format.
+/**
+ * SYSTEM_PROMPT for Budget Normalization
+ * 
+ * Refactored for AI generalizability - removed keyword lists.
+ */
+const SYSTEM_PROMPT = `Objective: Normalize budget amounts so income is positive and expenses are negative.
 
-Your task is to analyze raw budget data and normalize the amounts so that:
-- INCOME (money coming in) = POSITIVE numbers
-- EXPENSES (money going out) = NEGATIVE numbers
-- DEBT PAYMENTS = NEGATIVE numbers (they are outflows)
-- SAVINGS CONTRIBUTIONS = NEGATIVE numbers (they are outflows from spending budget)
-- TRANSFERS = Can be positive or negative depending on direction
+Role: You are a financial data analyst preparing raw budget data for analysis.
 
-CRITICAL RULES:
-1. Preserve the original source_row_index for each line - this is essential for traceability
-2. Analyze the category labels and descriptions to determine if each item is income or expense
-3. Common INCOME indicators: salary, wages, paycheck, income, deposit, revenue, bonus, refund
-4. Common EXPENSE indicators: rent, mortgage, groceries, utilities, bills, payment, subscription, insurance
-5. Common DEBT indicators: loan payment, credit card, student loan, car payment, debt
-6. Common SAVINGS indicators: 401k, retirement, savings, investment, IRA, HSA
-7. If amounts are already correctly signed (income positive, expenses negative), keep them as-is
-8. If all amounts are positive but the budget has expenses, negate the expense amounts
-9. Use the category_label and description to make classification decisions
+Context: The budget data arrives in a <budget_data> section. Input may have all-positive amounts, all-negative, or mixed signs depending on the source format.
 
-IMPORTANT: Look at the semantic meaning of each line. A "Salary" of 5000 should be +5000.
-A "Rent" of 1800 should be -1800 even if the input shows it as positive.
+Sign convention:
+- Income (money coming in) → positive
+- Expenses, debt payments, savings contributions → negative
 
-Return the normalized data in the exact schema specified.`;
+Output: Return JSON matching the normalize_budget schema. Preserve source_row_index for traceability. Include brief notes explaining non-obvious classification decisions.`;
 
 /**
  * Build the user prompt from draft budget data
+ * 
+ * Phase 8.5.2: Restructured with clear XML-style delimiters
  */
 function buildUserPrompt(draft: DraftBudgetModel): string {
   const positiveCount = draft.lines.filter(line => line.amount > 0).length;
@@ -128,8 +127,7 @@ function buildUserPrompt(draft: DraftBudgetModel): string {
         return `- Row ${line.source_row_index}: category='${line.category_label}', amount=${line.amount}, description='${desc}', date=${line.date || 'N/A'}, metadata={${metadataStr}}`;
       }).join('\n');
 
-  return `Analyze and normalize this budget data:
-
+  return `<budget_data>
 ## Detected Format
 ${draft.detected_format}
 
@@ -143,9 +141,7 @@ ${linesSection}
 - Lines with positive amounts: ${positiveCount}
 - Lines with negative amounts: ${negativeCount}
 - Lines with zero amounts: ${zeroCount}
-
-Normalize all amounts so income is positive and expenses/debt are negative.
-Preserve the exact source_row_index for each line.`;
+</budget_data>`;
 }
 
 export interface NormalizationResult {

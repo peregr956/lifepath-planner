@@ -6,6 +6,11 @@
  * - AI-based essential expense detection
  * - AI-based debt detection from expense patterns
  * - AI-based income stability inference
+ * 
+ * Phase 8.5.2: Refactored for AI generalizability
+ * - Removed prescriptive classification lists
+ * - AI determines essential/discretionary based on context
+ * - Null values used when classification is ambiguous
  */
 
 import OpenAI from 'openai';
@@ -74,16 +79,25 @@ const ENRICHMENT_SCHEMA = {
   },
 };
 
-const ENRICHMENT_SYSTEM_PROMPT = `You are a financial expert that enriches raw budget data.
-Analyze the provided budget sources and categories to improve classification.
+/**
+ * ENRICHMENT_SYSTEM_PROMPT
+ * 
+ * Refactored for AI generalizability - removed prescriptive classification lists.
+ */
+const ENRICHMENT_SYSTEM_PROMPT = `Objective: Enrich budget line items with accurate classifications based on what each item represents.
 
-Your tasks:
-1. Income Classification: Identify if income is 'earned' (salary), 'passive' (dividends, rent), or 'transfer' (gifts, gov aid).
-2. Income Stability: Determine if income is 'stable', 'variable' (freelance, bonus), or 'seasonal'.
-3. Essential Expenses: Identify if an expense is 'essential' (housing, utilities, groceries, insurance) or discretionary.
-4. Debt Detection: Identify if an expense item is actually a debt payment (e.g., "Credit Card Payment", "Student Loan", "Car Loan").
+Role: You are a financial data analyst reviewing raw budget entries.
 
-Respond with structured enrichments for the provided items.`;
+Context: The budget data arrives in a <budget_data> section containing income and expense items with names, categories, and amounts.
+
+Tasks:
+- Classify income sources by type (earned, passive, transfer) and stability (stable, variable, seasonal)
+- Identify which expenses are essential vs discretionary
+- Detect expense items that appear to be debt payments
+
+Output: Return JSON matching the enrich_budget function schema.
+
+Success: Where classification is ambiguous, leave fields null—the user can clarify later.`;
 
 /**
  * Enrich a unified budget model using AI
@@ -98,11 +112,15 @@ export async function enrichBudgetModel(model: UnifiedBudgetModel): Promise<Unif
       expenses: model.expenses.map(exp => ({ id: exp.id, category: exp.category, amount: exp.monthly_amount, notes: exp.notes })),
     };
 
+    const userPrompt = `<budget_data>
+${JSON.stringify(budgetData, null, 2)}
+</budget_data>`;
+
     const response = await client.chat.completions.create({
       model: getModel(),
       messages: [
         { role: 'system', content: ENRICHMENT_SYSTEM_PROMPT },
-        { role: 'user', content: `Enrich this budget data:\n${JSON.stringify(budgetData, null, 2)}` },
+        { role: 'user', content: userPrompt },
       ],
       tools: [
         {
