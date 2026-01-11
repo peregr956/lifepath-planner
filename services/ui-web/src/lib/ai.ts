@@ -20,10 +20,12 @@
 
 import OpenAI from 'openai';
 import type { UnifiedBudgetModel, QuestionSpec, Suggestion, QuestionGroup, ClarificationAnalysis, ClarificationResult } from './budgetModel';
-import type { FoundationalContext } from '@/types/budget';
+import type { FoundationalContext, HydratedFoundationalContext } from '@/types/budget';
+import type { UserProfile } from '@/lib/db';
 import { ESSENTIAL_PREFIX, SUPPORTED_SIMPLE_FIELD_IDS, parseDebtFieldId } from './normalization';
 import { loadProviderSettings, isAIGatewayEnabled } from './providerSettings';
 import { analyzeQuery, getIntentDescription, type QueryAnalysis } from './queryAnalyzer';
+import { buildLayeredContextString } from './aiContextBuilder';
 
 // Load default provider settings
 // Auto-detect OpenAI when API key is available, otherwise fall back to deterministic
@@ -381,20 +383,28 @@ interface InternalFoundationalContext {
 /**
  * Build user prompt for clarification questions
  * 
- * Phase 8.5.2: Restructured with clear XML-style delimiters for:
+ * Phase 9.1.4: Restructured with layered context sections including:
  * - <user_query>: The user's question
- * - <user_profile>: Foundational context (Phase 8.5.3 will populate)
+ * - <user_profile source="account" confidence="high/medium">: Established preferences
+ * - <session_context>: Values set this session
+ * - <observed_patterns>: Patterns from budget data
+ * - <tensions>: Discrepancies to surface
+ * - <guidance>: Behavior calibration
  * - <budget_data>: Financial data
- * - <constraints>: Valid field IDs
+ * - <available_fields>: Valid field IDs
  * 
  * @param model - The unified budget model
  * @param userQuery - The user's question
  * @param foundationalContext - Optional foundational context from Phase 8.5.3
+ * @param hydratedContext - Optional hydrated context with source tracking (Phase 9.1.2)
+ * @param accountProfile - Optional account profile with metadata (Phase 9.1.4)
  */
 function buildClarificationPrompt(
   model: UnifiedBudgetModel,
   userQuery: string,
-  foundationalContext?: InternalFoundationalContext
+  foundationalContext?: InternalFoundationalContext,
+  hydratedContext?: HydratedFoundationalContext | null,
+  accountProfile?: UserProfile | null
 ): string {
   const incomeSection = model.income.length > 0
     ? model.income.map(inc => `- ${inc.name}: $${inc.monthly_amount.toLocaleString()}/mo (${inc.type}, ${inc.stability})`).join('\n')
@@ -418,23 +428,31 @@ function buildClarificationPrompt(
   // Build query analysis section for better context
   const queryAnalysisSection = buildQueryAnalysisSection(userQuery);
 
-  // Build user profile section (Phase 8.5.3 preparation)
-  const profileLines = [
-    `- Financial Philosophy: ${foundationalContext?.financial_philosophy || 'not specified'}`,
-    `- Risk Tolerance: ${foundationalContext?.risk_tolerance || 'not specified'}`,
-    `- Primary Goal: ${foundationalContext?.primary_goal || 'not specified'}`,
-    `- Goal Timeline: ${foundationalContext?.goal_timeline || 'not specified'}`,
-    `- Life Stage: ${foundationalContext?.life_stage || 'not specified'}`,
-    `- Has Emergency Fund: ${foundationalContext?.has_emergency_fund !== undefined ? (foundationalContext.has_emergency_fund ? 'yes' : 'no') : 'not specified'}`,
-  ];
+  // Phase 9.1.4: Build layered context with confidence signals
+  // Convert InternalFoundationalContext to FoundationalContext for the builder
+  const plainContext: FoundationalContext | null = foundationalContext ? {
+    financialPhilosophy: foundationalContext.financial_philosophy as FoundationalContext['financialPhilosophy'],
+    riskTolerance: foundationalContext.risk_tolerance as FoundationalContext['riskTolerance'],
+    primaryGoal: foundationalContext.primary_goal,
+    goalTimeline: foundationalContext.goal_timeline as FoundationalContext['goalTimeline'],
+    lifeStage: foundationalContext.life_stage as FoundationalContext['lifeStage'],
+    hasEmergencyFund: foundationalContext.has_emergency_fund === true ? 'adequate' : 
+                      foundationalContext.has_emergency_fund === false ? 'none' : null,
+  } : null;
+
+  const layeredContextString = buildLayeredContextString(
+    hydratedContext || null,
+    plainContext,
+    accountProfile || null,
+    model,
+    userQuery
+  );
 
   return `<user_query>
 ${userQuery || 'Help me understand and optimize my budget'}
 </user_query>
 
-<user_profile>
-${profileLines.join('\n')}
-</user_profile>
+${layeredContextString}
 
 ${queryAnalysisSection ? `<query_analysis>\n${queryAnalysisSection}\n</query_analysis>\n` : ''}
 <budget_data>
@@ -468,19 +486,27 @@ ${validFieldIds}
 /**
  * Build user prompt for suggestions
  * 
- * Phase 8.5.2: Restructured with clear XML-style delimiters for:
+ * Phase 9.1.4: Restructured with layered context sections including:
  * - <user_query>: The user's question
- * - <user_profile>: User profile and preferences
+ * - <user_profile source="account" confidence="high/medium">: Established preferences
+ * - <session_context>: Values set this session
+ * - <observed_patterns>: Patterns from budget data
+ * - <tensions>: Discrepancies to surface
+ * - <guidance>: Behavior calibration
  * - <budget_data>: Complete financial breakdown
  * 
  * @param model - The unified budget model
  * @param userQuery - The user's question
  * @param userProfile - User profile including foundational context
+ * @param hydratedContext - Optional hydrated context with source tracking (Phase 9.1.2)
+ * @param accountProfile - Optional account profile with metadata (Phase 9.1.4)
  */
 function buildSuggestionPrompt(
   model: UnifiedBudgetModel,
   userQuery: string,
-  userProfile?: Record<string, unknown>
+  userProfile?: Record<string, unknown>,
+  hydratedContext?: HydratedFoundationalContext | null,
+  accountProfile?: UserProfile | null
 ): string {
   const surplusRatio = model.summary.total_income > 0 
     ? model.summary.surplus / model.summary.total_income 
@@ -507,28 +533,30 @@ function buildSuggestionPrompt(
 
   const totalDebtPayments = model.debts.reduce((sum, d) => sum + d.min_payment, 0);
 
-  // Build user profile section (Phase 8.5.3 preparation)
-  const profileLines: string[] = [];
-  if (userProfile) {
-    profileLines.push(`- Financial Philosophy: ${userProfile.financial_philosophy || 'not specified'}`);
-    profileLines.push(`- Risk Tolerance: ${userProfile.risk_tolerance || 'not specified'}`);
-    profileLines.push(`- Primary Goal: ${userProfile.primary_goal || 'not specified'}`);
-    profileLines.push(`- Goal Timeline: ${userProfile.goal_timeline || 'not specified'}`);
-    profileLines.push(`- Life Stage: ${userProfile.life_stage || 'not specified'}`);
-    if (userProfile.has_emergency_fund !== undefined) {
-      profileLines.push(`- Has Emergency Fund: ${userProfile.has_emergency_fund ? 'yes' : 'no'}`);
-    }
-  } else {
-    profileLines.push('No profile information provided.');
-  }
+  // Phase 9.1.4: Build layered context with confidence signals
+  // Convert userProfile to FoundationalContext for the builder
+  const plainContext: FoundationalContext | null = userProfile ? {
+    financialPhilosophy: userProfile.financial_philosophy as FoundationalContext['financialPhilosophy'],
+    riskTolerance: userProfile.risk_tolerance as FoundationalContext['riskTolerance'],
+    primaryGoal: userProfile.primary_goal as string | null,
+    goalTimeline: userProfile.goal_timeline as FoundationalContext['goalTimeline'],
+    lifeStage: userProfile.life_stage as FoundationalContext['lifeStage'],
+    hasEmergencyFund: userProfile.has_emergency_fund as FoundationalContext['hasEmergencyFund'],
+  } : null;
+
+  const layeredContextString = buildLayeredContextString(
+    hydratedContext || null,
+    plainContext,
+    accountProfile || null,
+    model,
+    userQuery
+  );
 
   return `<user_query>
 ${userQuery || 'Help me optimize my budget and improve my financial situation'}
 </user_query>
 
-<user_profile>
-${profileLines.join('\n')}
-</user_profile>
+${layeredContextString}
 
 <budget_data>
 ## Financial Summary
@@ -857,16 +885,26 @@ export async function generateClarificationQuestions(
 }
 
 /**
- * Phase 8.5.3: Generate clarification questions with foundational context
+ * Phase 9.1.4: Generate clarification questions with layered context
  * 
  * This is the primary entry point for clarification question generation.
- * It accepts foundational context from the pre-clarification step.
+ * It accepts foundational context, hydrated context, and account profile
+ * to build confidence-aware prompts.
+ * 
+ * @param model - The unified budget model
+ * @param userQuery - The user's question
+ * @param foundationalContext - Plain foundational context (Phase 8.5.3)
+ * @param maxQuestions - Maximum number of questions to generate
+ * @param hydratedContext - Hydrated context with source tracking (Phase 9.1.2)
+ * @param accountProfile - Account profile with metadata (Phase 9.1.4)
  */
 export async function generateClarificationQuestionsWithContext(
   model: UnifiedBudgetModel,
   userQuery?: string,
   foundationalContext?: FoundationalContext | null,
-  maxQuestions: number = 5
+  maxQuestions: number = 5,
+  hydratedContext?: HydratedFoundationalContext | null,
+  accountProfile?: UserProfile | null
 ): Promise<ClarificationResult> {
   const client = getOpenAIClient();
   
@@ -893,7 +931,7 @@ export async function generateClarificationQuestionsWithContext(
       model: getModel(),
       messages: [
         { role: 'system', content: CLARIFICATION_SYSTEM_PROMPT },
-        { role: 'user', content: buildClarificationPrompt(model, userQuery || '', internalContext) },
+        { role: 'user', content: buildClarificationPrompt(model, userQuery || '', internalContext, hydratedContext, accountProfile) },
       ],
       tools: [
         {
@@ -948,16 +986,26 @@ export async function generateClarificationQuestionsWithAnalysis(
 }
 
 /**
- * Phase 8.5.3: Generate suggestions with foundational context
+ * Phase 9.1.4: Generate suggestions with layered context
  * 
  * This is the primary entry point for suggestion generation.
- * It accepts foundational context from the pre-clarification step.
+ * It accepts foundational context, hydrated context, and account profile
+ * to build confidence-aware prompts.
+ * 
+ * @param model - The unified budget model
+ * @param userQuery - The user's question
+ * @param foundationalContext - Plain foundational context (Phase 8.5.3)
+ * @param userProfile - Session user profile data
+ * @param hydratedContext - Hydrated context with source tracking (Phase 9.1.2)
+ * @param accountProfile - Account profile with metadata (Phase 9.1.4)
  */
 export async function generateSuggestionsWithContext(
   model: UnifiedBudgetModel,
   userQuery?: string,
   foundationalContext?: FoundationalContext | null,
-  userProfile?: Record<string, unknown>
+  userProfile?: Record<string, unknown>,
+  hydratedContext?: HydratedFoundationalContext | null,
+  accountProfile?: UserProfile | null
 ): Promise<{ suggestions: Suggestion[]; usedDeterministic: boolean }> {
   const client = getOpenAIClient();
 
@@ -990,7 +1038,7 @@ export async function generateSuggestionsWithContext(
       model: getModel(),
       messages: [
         { role: 'system', content: SUGGESTION_SYSTEM_PROMPT },
-        { role: 'user', content: buildSuggestionPrompt(model, userQuery || '', enrichedProfile) },
+        { role: 'user', content: buildSuggestionPrompt(model, userQuery || '', enrichedProfile, hydratedContext, accountProfile) },
       ],
       tools: [
         {

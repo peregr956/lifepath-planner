@@ -185,6 +185,13 @@ export default function ClarifyPage() {
     [queryMutation]
   );
 
+  // Phase 9.1.3: Handle user choosing to edit preferences from questions step
+  // NOTE: This hook must be defined here (before early returns) to satisfy React hooks rules
+  const handleEditPreferences = useCallback(() => {
+    setUserChoseToEdit(true);
+    setStep('foundational');
+  }, []);
+
   const clarificationQuery = useQuery({
     queryKey: ['clarification-questions', budgetId, localUserQuery],
     queryFn: () => fetchClarificationQuestions(budgetId!, localUserQuery || undefined),
@@ -315,12 +322,6 @@ export default function ClarifyPage() {
       </div>
     );
   }
-
-  // Phase 9.1.3: Handle user choosing to edit preferences from questions step
-  const handleEditPreferences = useCallback(() => {
-    setUserChoseToEdit(true);
-    setStep('foundational');
-  }, []);
 
   // Render clarification questions step
   return (
