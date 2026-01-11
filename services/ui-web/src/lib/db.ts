@@ -37,13 +37,48 @@ export interface User {
   updated_at: Date;
 }
 
+// Phase 9.1.1: Confidence metadata types for user profile fields
+export type ConfidenceLevel = 'high' | 'medium' | 'low';
+export type ContextSource = 'explicit' | 'onboarding' | 'session_promoted' | 'inferred';
+
+/**
+ * Metadata for a single profile field tracking its source and confidence
+ */
+export interface FieldMetadata {
+  source: ContextSource;
+  last_confirmed: string; // ISO timestamp
+  confidence: ConfidenceLevel;
+}
+
+/**
+ * Per-field metadata for the user profile
+ * Enables confidence-based inference in AI prompts (Phase 9.1.4)
+ */
+export interface ProfileMetadata {
+  financial_philosophy?: FieldMetadata;
+  optimization_focus?: FieldMetadata;
+  risk_tolerance?: FieldMetadata;
+  primary_goal?: FieldMetadata;
+  goal_timeline?: FieldMetadata;
+  life_stage?: FieldMetadata;
+  emergency_fund_status?: FieldMetadata;
+}
+
 export interface UserProfile {
   id: string;
   user_id: string;
+  // Original Phase 9 fields
   default_financial_philosophy: string | null;
   default_optimization_focus: string | null;
   default_risk_tolerance: string | null;
   onboarding_completed: boolean;
+  // Phase 9.1.1: Extended foundational fields
+  default_primary_goal: string | null;
+  default_goal_timeline: string | null;
+  default_life_stage: string | null;
+  default_emergency_fund_status: string | null;
+  // Phase 9.1.1: Confidence metadata (JSONB)
+  profile_metadata: ProfileMetadata | null;
   created_at: Date;
   updated_at: Date;
 }
@@ -242,6 +277,13 @@ export async function initDatabase(): Promise<void> {
         default_optimization_focus VARCHAR(32),
         default_risk_tolerance VARCHAR(32),
         onboarding_completed BOOLEAN DEFAULT FALSE,
+        -- Phase 9.1.1: Extended foundational fields
+        default_primary_goal VARCHAR(200),
+        default_goal_timeline VARCHAR(32),
+        default_life_stage VARCHAR(32),
+        default_emergency_fund_status VARCHAR(32),
+        -- Phase 9.1.1: Confidence metadata (JSONB for flexibility)
+        profile_metadata JSONB,
         created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
         updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
       )
@@ -257,6 +299,24 @@ export async function initDatabase(): Promise<void> {
         ) THEN
           ALTER TABLE budget_sessions ADD COLUMN user_id VARCHAR(36) REFERENCES users(id);
           CREATE INDEX IF NOT EXISTS idx_budget_sessions_user_id ON budget_sessions(user_id);
+        END IF;
+      END $$;
+    `);
+
+    // Phase 9.1.1: Add extended foundational fields and metadata to user_profiles
+    await dbPool.query(`
+      DO $$ 
+      BEGIN
+        -- Add new foundational columns if they don't exist
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns 
+          WHERE table_name = 'user_profiles' AND column_name = 'default_primary_goal'
+        ) THEN
+          ALTER TABLE user_profiles ADD COLUMN default_primary_goal VARCHAR(200);
+          ALTER TABLE user_profiles ADD COLUMN default_goal_timeline VARCHAR(32);
+          ALTER TABLE user_profiles ADD COLUMN default_life_stage VARCHAR(32);
+          ALTER TABLE user_profiles ADD COLUMN default_emergency_fund_status VARCHAR(32);
+          ALTER TABLE user_profiles ADD COLUMN profile_metadata JSONB;
         END IF;
       END $$;
     `);
@@ -837,7 +897,7 @@ export async function associateSessionWithUser(
 }
 
 /**
- * Get or create user profile
+ * Get user profile with all foundational fields
  */
 export async function getUserProfile(userId: string): Promise<UserProfile | null> {
   if (!hasPostgres()) {
@@ -863,17 +923,26 @@ export async function getUserProfile(userId: string): Promise<UserProfile | null
   return {
     id: row.id,
     user_id: row.user_id,
+    // Original Phase 9 fields
     default_financial_philosophy: row.default_financial_philosophy,
     default_optimization_focus: row.default_optimization_focus,
     default_risk_tolerance: row.default_risk_tolerance,
     onboarding_completed: row.onboarding_completed,
+    // Phase 9.1.1: Extended foundational fields
+    default_primary_goal: row.default_primary_goal ?? null,
+    default_goal_timeline: row.default_goal_timeline ?? null,
+    default_life_stage: row.default_life_stage ?? null,
+    default_emergency_fund_status: row.default_emergency_fund_status ?? null,
+    // Phase 9.1.1: Confidence metadata
+    profile_metadata: row.profile_metadata ?? null,
     created_at: new Date(row.created_at),
     updated_at: new Date(row.updated_at),
   };
 }
 
 /**
- * Create or update user profile
+ * Create or update user profile with all foundational fields
+ * Phase 9.1.1: Extended to support all foundational fields and metadata
  */
 export async function upsertUserProfile(
   userId: string,
@@ -893,14 +962,26 @@ export async function upsertUserProfile(
   const now = new Date();
 
   await dbPool.query(
-    `INSERT INTO user_profiles (id, user_id, default_financial_philosophy, default_optimization_focus, default_risk_tolerance, onboarding_completed, created_at, updated_at)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+    `INSERT INTO user_profiles (
+       id, user_id,
+       default_financial_philosophy, default_optimization_focus, default_risk_tolerance,
+       onboarding_completed,
+       default_primary_goal, default_goal_timeline, default_life_stage, default_emergency_fund_status,
+       profile_metadata,
+       created_at, updated_at
+     )
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::jsonb, $12, $13)
      ON CONFLICT (user_id) DO UPDATE SET
        default_financial_philosophy = COALESCE($3, user_profiles.default_financial_philosophy),
        default_optimization_focus = COALESCE($4, user_profiles.default_optimization_focus),
        default_risk_tolerance = COALESCE($5, user_profiles.default_risk_tolerance),
        onboarding_completed = COALESCE($6, user_profiles.onboarding_completed),
-       updated_at = $8`,
+       default_primary_goal = COALESCE($7, user_profiles.default_primary_goal),
+       default_goal_timeline = COALESCE($8, user_profiles.default_goal_timeline),
+       default_life_stage = COALESCE($9, user_profiles.default_life_stage),
+       default_emergency_fund_status = COALESCE($10, user_profiles.default_emergency_fund_status),
+       profile_metadata = COALESCE($11::jsonb, user_profiles.profile_metadata),
+       updated_at = $13`,
     [
       profileId,
       userId,
@@ -908,6 +989,11 @@ export async function upsertUserProfile(
       profileData.default_optimization_focus ?? null,
       profileData.default_risk_tolerance ?? null,
       profileData.onboarding_completed ?? false,
+      profileData.default_primary_goal ?? null,
+      profileData.default_goal_timeline ?? null,
+      profileData.default_life_stage ?? null,
+      profileData.default_emergency_fund_status ?? null,
+      profileData.profile_metadata ? JSON.stringify(profileData.profile_metadata) : null,
       now.toISOString(),
       now.toISOString(),
     ]

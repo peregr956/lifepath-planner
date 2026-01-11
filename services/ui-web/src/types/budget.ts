@@ -263,6 +263,76 @@ export function getFoundationalCompletionPercent(context: FoundationalContext | 
   return Math.round((answered / fields.length) * 100);
 }
 
+// ============================================================================
+// Phase 9.1.1: Account Profile Metadata Types
+// ============================================================================
+
+/**
+ * Confidence level for account profile fields
+ * Used by AI to calibrate inference behavior (Phase 9.1.4)
+ */
+export type ConfidenceLevel = 'high' | 'medium' | 'low';
+
+/**
+ * Source of a profile field value
+ * Enables distinction between explicit user input and system inference
+ */
+export type ContextSource = 
+  | 'explicit'           // User set directly in profile settings
+  | 'onboarding'         // User provided during initial onboarding
+  | 'session_promoted'   // Value from a session that user approved for profile
+  | 'inferred';          // System inferred from behavior patterns
+
+/**
+ * Metadata for a single profile field tracking its source and confidence
+ * Enables confidence-based inference in AI prompts
+ */
+export type FieldMetadata = {
+  source: ContextSource;
+  last_confirmed: string; // ISO timestamp
+  confidence: ConfidenceLevel;
+};
+
+/**
+ * Per-field metadata for the user account profile
+ * Stored as JSONB in the user_profiles table
+ */
+export type ProfileMetadata = {
+  financial_philosophy?: FieldMetadata;
+  optimization_focus?: FieldMetadata;
+  risk_tolerance?: FieldMetadata;
+  primary_goal?: FieldMetadata;
+  goal_timeline?: FieldMetadata;
+  life_stage?: FieldMetadata;
+  emergency_fund_status?: FieldMetadata;
+};
+
+/**
+ * Account-level user profile (persisted in database)
+ * Extended from Phase 9 to include all foundational fields
+ * 
+ * Note: This mirrors the db.ts UserProfile interface but uses
+ * frontend-friendly naming for type reuse in components.
+ */
+export type AccountProfile = {
+  id: string;
+  userId: string;
+  // Original Phase 9 fields
+  defaultFinancialPhilosophy: FinancialPhilosophy | null;
+  defaultOptimizationFocus: 'debt' | 'savings' | 'balanced' | null;
+  defaultRiskTolerance: RiskTolerance | null;
+  onboardingCompleted: boolean;
+  // Phase 9.1.1: Extended foundational fields
+  defaultPrimaryGoal: string | null;
+  defaultGoalTimeline: GoalTimeline | null;
+  defaultLifeStage: LifeStage | null;
+  defaultEmergencyFundStatus: EmergencyFundStatus | null;
+  // Phase 9.1.1: Confidence metadata
+  profileMetadata: ProfileMetadata | null;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
 export type UserProfile = {
   userQuery?: string | null;
   financialPhilosophy?: FinancialPhilosophy | null;
