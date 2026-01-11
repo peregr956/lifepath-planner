@@ -1,6 +1,6 @@
 # Phase 9.1: AI-Account Context Integration
 
-> **Status**: In Progress (9.1.1, 9.1.2, 9.1.3, 9.1.5 Complete; 9.1.4 Pending)  
+> **Status**: ✅ Complete (January 2026)  
 > **Prerequisite**: Phase 9 (User Accounts & Authentication) ✅ Complete  
 > **Roadmap**: See [roadmap.md](../roadmap.md) for timeline and context
 
@@ -15,7 +15,7 @@ Transform the AI from a data collector into an interpreter by establishing a lay
 | 9.1.1 | Extend account profile to store all foundational context fields with confidence metadata | — | ✅ Complete |
 | 9.1.2 | Implement session context hydration from account profile with override support | 9.1.1 | ✅ Complete |
 | 9.1.3 | Implement onboarding vs returning user flows with streamlined experience | 9.1.2 | ✅ Complete |
-| 9.1.4 | Restructure AI prompts with layered context and confidence-based inference | 9.1.2 | Pending |
+| 9.1.4 | Restructure AI prompts with layered context and confidence-based inference | 9.1.2 | ✅ Complete |
 | 9.1.5 | Expand profile settings UI with all foundational fields and enrichment visibility | 9.1.1 | ✅ Complete |
 
 ---
@@ -96,6 +96,29 @@ Returning User (complete profile, 100%):
 - `services/ui-web/src/components/FoundationalQuestions.tsx` — Condensed view, toggle logic, onboarding polish
 - `services/ui-web/src/app/(app)/clarify/page.tsx` — Auto-advance logic, edit preferences link
 - `services/ui-web/src/lib/foundationalQuestions.ts` — Added label helper functions
+
+---
+
+## Phase 9.1.4 Implementation Summary (January 2026)
+
+**Completed:**
+- Created `aiContextBuilder.ts` module for constructing confidence-aware AI prompt sections
+- Implemented layered context builder with high/medium confidence sections
+- Added tension detection between stated preferences and observed budget patterns
+- Integrated account profile data into clarification and suggestion API routes
+- Updated AI prompts to include layered context with confidence signals
+
+**Key Features:**
+- **Layered Context Sections**: `<user_profile source="account" confidence="high">`, `<session_context>`, `<observed_patterns>`, `<tensions>`, `<guidance>`
+- **Tension Detection**: Identifies discrepancies like FIRE philosophy with low savings rate, aggressive risk tolerance with high-interest debt
+- **Confidence Signals**: AI receives information about field staleness, source (explicit vs. inferred), enabling appropriate calibration
+- **Observed Patterns**: Extracts savings rate, debt-to-income ratio, top expense categories from budget data
+
+**Files Created/Modified:**
+- `services/ui-web/src/lib/aiContextBuilder.ts` — New module with `buildLayeredContextString()`, `detectTensions()`, `extractObservedPatterns()`
+- `services/ui-web/src/lib/ai.ts` — Updated to use layered context builder in prompts
+- `services/ui-web/src/app/api/clarification-questions/route.ts` — Fetches account profile, passes to AI
+- `services/ui-web/src/app/api/summary-and-suggestions/route.ts` — Fetches account profile, passes to AI
 
 ---
 

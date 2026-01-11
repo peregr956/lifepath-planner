@@ -1336,10 +1336,9 @@ New entities to add progressively:
 
 ## Next Steps
 
-1. **Continue Phase 9.1.4** — AI Prompt Enhancement (restructure prompts with layered context and confidence-based inference)
-2. **Then Phase 10** — Budget History & Trends (budget snapshots, trend analysis, history dashboard)
-4. **Create detailed tickets** — Break remaining phases into specific tasks
-5. **Regular roadmap reviews** — Update quarterly based on user feedback and market changes
+1. **Begin Phase 10** — Budget History & Trends (budget snapshots, trend analysis, history dashboard)
+2. **Create detailed tickets** — Break remaining phases into specific tasks
+3. **Regular roadmap reviews** — Update quarterly based on user feedback and market changes
 
 ### Completed
 
@@ -1349,7 +1348,9 @@ New entities to add progressively:
 - ✅ **Phase 8.5.3** — Strategic Question Design (January 2026)
 - ✅ **Phase 8.5.4** — AI-First Budget Interpretation (January 2026)
 - ✅ **Phase 9** — User Accounts & Authentication (January 2026)
-- ✅ **Phase 9.1.1** — Context Model Foundation (January 2026)
-- ✅ **Phase 9.1.2** — Session Hydration (January 2026)
-- ✅ **Phase 9.1.3** — UI Flow Optimization (January 2026)
-- ✅ **Phase 9.1.5** — Profile Settings Expansion (January 2026)
+- ✅ **Phase 9.1** — AI-Account Context Integration (January 2026)
+  - ✅ Phase 9.1.1 — Context Model Foundation
+  - ✅ Phase 9.1.2 — Session Hydration
+  - ✅ Phase 9.1.3 — UI Flow Optimization
+  - ✅ Phase 9.1.4 — AI Prompt Enhancement
+  - ✅ Phase 9.1.5 — Profile Settings Expansion
