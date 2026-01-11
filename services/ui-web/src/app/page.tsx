@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import type { Route } from 'next';
 import {
   ArrowRight,
   BarChart3,
@@ -11,10 +12,51 @@ import {
   Upload,
 } from 'lucide-react';
 import { Button } from '@/components/ui';
+import { auth } from '@/lib/auth';
 
-export default function LandingPage() {
+export default async function LandingPage() {
+  const session = await auth();
+  const isLoggedIn = !!session?.user;
+
   return (
     <div className="min-h-screen bg-background">
+      {/* Header with auth */}
+      <header className="absolute left-0 right-0 top-0 z-20">
+        <div className="container mx-auto flex items-center justify-between px-4 py-4">
+          <Link href="/" className="flex items-center gap-2">
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary">
+              <TrendingUp className="h-5 w-5 text-primary-foreground" />
+            </div>
+            <span className="text-lg font-semibold text-foreground">LifePath Planner</span>
+          </Link>
+
+          <nav className="flex items-center gap-3">
+            {isLoggedIn ? (
+              <>
+                <Button asChild variant="ghost" size="sm">
+                  <Link href="/upload">Dashboard</Link>
+                </Button>
+                <Button asChild size="sm">
+                  <Link href="/upload">
+                    Get Started
+                    <ArrowRight className="ml-1 h-4 w-4" />
+                  </Link>
+                </Button>
+              </>
+            ) : (
+              <>
+                <Button asChild variant="ghost" size="sm">
+                  <Link href={'/login' as Route}>Sign in</Link>
+                </Button>
+                <Button asChild size="sm">
+                  <Link href={'/signup' as Route}>Sign up</Link>
+                </Button>
+              </>
+            )}
+          </nav>
+        </div>
+      </header>
+
       {/* Hero Section */}
       <section className="relative overflow-hidden">
         {/* Background gradient */}
@@ -31,7 +73,7 @@ export default function LandingPage() {
           }}
         />
 
-        <div className="container relative mx-auto px-4 py-24 lg:py-32">
+        <div className="container relative mx-auto px-4 pt-32 pb-24 lg:pt-40 lg:pb-32">
           <div className="mx-auto max-w-4xl text-center">
             {/* Badge */}
             <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-primary/30 bg-primary/10 px-4 py-1.5 text-sm text-primary animate-fade-in">

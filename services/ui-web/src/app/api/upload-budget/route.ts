@@ -10,8 +10,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { v4 as uuidv4 } from 'uuid';
 import { parseCsvToDraftModel, parseXlsxToDraftModel } from '@/lib/parsers';
-import { createSession, initDatabase } from '@/lib/db';
+import { createSession, initDatabase, associateSessionWithUser } from '@/lib/db';
 import { interpretBudgetWithAI, isInterpretationAIEnabled } from '@/lib/aiBudgetInterpretation';
+import { auth } from '@/lib/auth';
 
 // Initialize database on first request
 let dbInitialized = false;
@@ -40,6 +41,10 @@ function getFileType(contentType: string | null, filename: string): 'csv' | 'xls
 
 export async function POST(request: NextRequest) {
   try {
+    // Get authenticated user (optional - budgets can be created anonymously)
+    const session = await auth();
+    const userId = session?.user?.id ?? null;
+
     // Initialize database
     try {
       await ensureDbInitialized();
@@ -185,6 +190,12 @@ export async function POST(request: NextRequest) {
           interpretation_used_ai: usedAI,
         }
       );
+
+      // Phase 9: Associate budget session with authenticated user
+      if (userId) {
+        await associateSessionWithUser(budgetId, userId);
+        console.log(`[upload-budget] Associated session ${budgetId} with user ${userId}`);
+      }
     } catch (sessionError) {
       const errorMessage = sessionError instanceof Error ? sessionError.message : String(sessionError);
       console.error('[upload-budget] Session creation error:', {

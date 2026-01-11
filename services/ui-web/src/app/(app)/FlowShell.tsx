@@ -6,7 +6,8 @@ import type { ReactNode } from 'react';
 import { useMemo } from 'react';
 import { DeveloperPanel } from '@/components';
 import { useBudgetSession } from '@/hooks/useBudgetSession';
-import { Button, Progress, Separator } from '@/components/ui';
+import { Button, Progress } from '@/components/ui';
+import { UserMenu } from '@/components/auth';
 import { cn } from '@/lib/utils';
 import {
   Upload,
@@ -94,9 +95,9 @@ export function FlowShell({ children }: { children: ReactNode }) {
             </div>
           </Link>
 
-          {/* Quick actions */}
-          {hydrated && session && (
-            <div className="flex items-center gap-2">
+          {/* Quick actions and user menu */}
+          <div className="flex items-center gap-3">
+            {hydrated && session && (
               <Button
                 variant="ghost"
                 size="sm"
@@ -106,8 +107,9 @@ export function FlowShell({ children }: { children: ReactNode }) {
                 <RotateCcw className="mr-2 h-4 w-4" />
                 Start over
               </Button>
-            </div>
-          )}
+            )}
+            <UserMenu />
+          </div>
         </div>
 
         <div>

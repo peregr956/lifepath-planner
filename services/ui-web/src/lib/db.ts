@@ -19,6 +19,31 @@ export interface BudgetSession {
   user_profile: Record<string, unknown> | null;
   // Phase 8.5.3: Foundational context from pre-clarification questions
   foundational_context: Record<string, unknown> | null;
+  // Phase 9: User account association
+  user_id: string | null;
+  created_at: Date;
+  updated_at: Date;
+}
+
+// Phase 9: User account types
+export interface User {
+  id: string;
+  email: string;
+  emailVerified: Date | null;
+  name: string | null;
+  image: string | null;
+  password_hash: string | null;
+  created_at: Date;
+  updated_at: Date;
+}
+
+export interface UserProfile {
+  id: string;
+  user_id: string;
+  default_financial_philosophy: string | null;
+  default_optimization_focus: string | null;
+  default_risk_tolerance: string | null;
+  onboarding_completed: boolean;
   created_at: Date;
   updated_at: Date;
 }
@@ -160,6 +185,82 @@ export async function initDatabase(): Promise<void> {
       )
     `);
 
+    // Phase 9: Auth tables for NextAuth.js
+    await dbPool.query(`
+      CREATE TABLE IF NOT EXISTS users (
+        id VARCHAR(36) PRIMARY KEY,
+        email VARCHAR(255) UNIQUE NOT NULL,
+        "emailVerified" TIMESTAMP WITH TIME ZONE,
+        name VARCHAR(100),
+        image TEXT,
+        password_hash VARCHAR(255),
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+        updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+      )
+    `);
+
+    await dbPool.query(`
+      CREATE TABLE IF NOT EXISTS accounts (
+        id VARCHAR(36) PRIMARY KEY,
+        "userId" VARCHAR(36) NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        type VARCHAR(50) NOT NULL,
+        provider VARCHAR(50) NOT NULL,
+        "providerAccountId" VARCHAR(255) NOT NULL,
+        refresh_token TEXT,
+        access_token TEXT,
+        expires_at INTEGER,
+        token_type VARCHAR(50),
+        scope TEXT,
+        id_token TEXT,
+        UNIQUE(provider, "providerAccountId")
+      )
+    `);
+
+    await dbPool.query(`
+      CREATE TABLE IF NOT EXISTS sessions (
+        id VARCHAR(36) PRIMARY KEY,
+        "sessionToken" VARCHAR(255) UNIQUE NOT NULL,
+        "userId" VARCHAR(36) NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        expires TIMESTAMP WITH TIME ZONE NOT NULL
+      )
+    `);
+
+    await dbPool.query(`
+      CREATE TABLE IF NOT EXISTS verification_tokens (
+        identifier VARCHAR(255) NOT NULL,
+        token VARCHAR(255) NOT NULL,
+        expires TIMESTAMP WITH TIME ZONE NOT NULL,
+        PRIMARY KEY (identifier, token)
+      )
+    `);
+
+    await dbPool.query(`
+      CREATE TABLE IF NOT EXISTS user_profiles (
+        id VARCHAR(36) PRIMARY KEY,
+        user_id VARCHAR(36) UNIQUE NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        default_financial_philosophy VARCHAR(32),
+        default_optimization_focus VARCHAR(32),
+        default_risk_tolerance VARCHAR(32),
+        onboarding_completed BOOLEAN DEFAULT FALSE,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+        updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+      )
+    `);
+
+    // Phase 9: Add user_id FK to budget_sessions if it doesn't exist
+    await dbPool.query(`
+      DO $$ 
+      BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns 
+          WHERE table_name = 'budget_sessions' AND column_name = 'user_id'
+        ) THEN
+          ALTER TABLE budget_sessions ADD COLUMN user_id VARCHAR(36) REFERENCES users(id);
+          CREATE INDEX IF NOT EXISTS idx_budget_sessions_user_id ON budget_sessions(user_id);
+        END IF;
+      END $$;
+    `);
+
     const duration = Date.now() - startTime;
     console.log(`[DB] Tables initialized successfully in ${duration}ms`);
   } catch (error) {
@@ -216,6 +317,7 @@ export async function createSession(
     user_query: null,
     user_profile: null,
     foundational_context: null,
+    user_id: null,
     created_at: now,
     updated_at: now,
   };
@@ -316,6 +418,7 @@ export async function getSession(sessionId: string): Promise<BudgetSession | nul
         user_query: row.user_query,
         user_profile: row.user_profile,
         foundational_context: row.foundational_context,
+        user_id: row.user_id,
         created_at: new Date(row.created_at),
         updated_at: new Date(row.updated_at),
       };
@@ -652,3 +755,173 @@ async function recordAuditEvent(event: Omit<AuditEvent, 'id' | 'created_at'>): P
     );
   }
 }
+
+// ============================================================================
+// Phase 9: User and Auth-related functions
+// ============================================================================
+
+/**
+ * Get budget sessions for a specific user
+ */
+export async function getUserBudgetSessions(
+  userId: string,
+  limit: number = 20
+): Promise<BudgetSession[]> {
+  if (!hasPostgres()) {
+    // In-memory fallback: filter by user_id
+    return Array.from(memoryStore.values())
+      .filter(s => s.user_id === userId)
+      .sort((a, b) => b.created_at.getTime() - a.created_at.getTime())
+      .slice(0, limit);
+  }
+
+  const dbPool = getPool();
+  if (!dbPool) {
+    throw new Error('Database connection pool not available');
+  }
+
+  const result = await dbPool.query(
+    `SELECT * FROM budget_sessions 
+     WHERE user_id = $1 
+     ORDER BY created_at DESC 
+     LIMIT $2`,
+    [userId, limit]
+  );
+
+  return result.rows.map(row => ({
+    id: row.id,
+    stage: row.stage,
+    draft: row.draft,
+    partial: row.partial,
+    final: row.final,
+    user_query: row.user_query,
+    user_profile: row.user_profile,
+    foundational_context: row.foundational_context,
+    user_id: row.user_id,
+    created_at: new Date(row.created_at),
+    updated_at: new Date(row.updated_at),
+  }));
+}
+
+/**
+ * Associate a budget session with a user
+ */
+export async function associateSessionWithUser(
+  sessionId: string,
+  userId: string
+): Promise<BudgetSession | null> {
+  const session = await getSession(sessionId);
+  if (!session) return null;
+
+  const now = new Date();
+
+  if (hasPostgres()) {
+    const dbPool = getPool();
+    if (!dbPool) {
+      throw new Error('Database connection pool not available');
+    }
+
+    await dbPool.query(
+      `UPDATE budget_sessions 
+       SET user_id = $1, updated_at = $2
+       WHERE id = $3`,
+      [userId, now.toISOString(), sessionId]
+    );
+  } else {
+    session.user_id = userId;
+    session.updated_at = now;
+    memoryStore.set(sessionId, session);
+  }
+
+  return getSession(sessionId);
+}
+
+/**
+ * Get or create user profile
+ */
+export async function getUserProfile(userId: string): Promise<UserProfile | null> {
+  if (!hasPostgres()) {
+    // In-memory: no profile storage
+    return null;
+  }
+
+  const dbPool = getPool();
+  if (!dbPool) {
+    throw new Error('Database connection pool not available');
+  }
+
+  const result = await dbPool.query(
+    'SELECT * FROM user_profiles WHERE user_id = $1',
+    [userId]
+  );
+
+  if (result.rows.length === 0) {
+    return null;
+  }
+
+  const row = result.rows[0];
+  return {
+    id: row.id,
+    user_id: row.user_id,
+    default_financial_philosophy: row.default_financial_philosophy,
+    default_optimization_focus: row.default_optimization_focus,
+    default_risk_tolerance: row.default_risk_tolerance,
+    onboarding_completed: row.onboarding_completed,
+    created_at: new Date(row.created_at),
+    updated_at: new Date(row.updated_at),
+  };
+}
+
+/**
+ * Create or update user profile
+ */
+export async function upsertUserProfile(
+  userId: string,
+  profileData: Partial<Omit<UserProfile, 'id' | 'user_id' | 'created_at' | 'updated_at'>>
+): Promise<UserProfile> {
+  if (!hasPostgres()) {
+    throw new Error('User profiles require PostgreSQL database');
+  }
+
+  const dbPool = getPool();
+  if (!dbPool) {
+    throw new Error('Database connection pool not available');
+  }
+
+  const { v4: uuidv4 } = await import('uuid');
+  const profileId = uuidv4();
+  const now = new Date();
+
+  await dbPool.query(
+    `INSERT INTO user_profiles (id, user_id, default_financial_philosophy, default_optimization_focus, default_risk_tolerance, onboarding_completed, created_at, updated_at)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+     ON CONFLICT (user_id) DO UPDATE SET
+       default_financial_philosophy = COALESCE($3, user_profiles.default_financial_philosophy),
+       default_optimization_focus = COALESCE($4, user_profiles.default_optimization_focus),
+       default_risk_tolerance = COALESCE($5, user_profiles.default_risk_tolerance),
+       onboarding_completed = COALESCE($6, user_profiles.onboarding_completed),
+       updated_at = $8`,
+    [
+      profileId,
+      userId,
+      profileData.default_financial_philosophy ?? null,
+      profileData.default_optimization_focus ?? null,
+      profileData.default_risk_tolerance ?? null,
+      profileData.onboarding_completed ?? false,
+      now.toISOString(),
+      now.toISOString(),
+    ]
+  );
+
+  const profile = await getUserProfile(userId);
+  if (!profile) {
+    throw new Error('Failed to create/update user profile');
+  }
+
+  return profile;
+}
+
+/**
+ * Export the pool getter for use by auth adapter
+ */
+export { getPool, hasPostgres };
