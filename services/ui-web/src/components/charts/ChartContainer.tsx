@@ -10,6 +10,8 @@ type ChartContainerProps = {
   loading?: boolean;
   className?: string;
   children: ReactNode;
+  /** Optional action element to display in header (e.g., toggle button) */
+  headerAction?: ReactNode;
 };
 
 export function ChartContainer({
@@ -18,12 +20,18 @@ export function ChartContainer({
   loading = false,
   className,
   children,
+  headerAction,
 }: ChartContainerProps) {
   return (
     <Card className={cn('', className)}>
       <CardHeader className="pb-2">
-        <CardTitle className="text-base font-semibold">{title}</CardTitle>
-        {description && <CardDescription className="text-xs">{description}</CardDescription>}
+        <div className="flex items-start justify-between gap-2">
+          <div>
+            <CardTitle className="text-base font-semibold">{title}</CardTitle>
+            {description && <CardDescription className="text-xs">{description}</CardDescription>}
+          </div>
+          {headerAction}
+        </div>
       </CardHeader>
       <CardContent>
         {loading ? (

@@ -199,6 +199,11 @@ export type SummaryAndSuggestionsResponse = {
   suggestions: BudgetSuggestion[];
   providerMetadata?: ProviderMetadata;
   userQuery?: string | null;
+  // Phase 9.5: Extended response fields
+  executiveSummary?: ExecutiveSummary | null;
+  extendedSuggestions?: ExtendedBudgetSuggestion[];
+  assumptions?: SuggestionAssumption[];
+  projectedOutcomes?: ProjectedOutcome[];
 };
 
 // User profile types for adaptive personalization
@@ -443,4 +448,87 @@ export type UserQueryResponse = {
   budgetId: string;
   query: string;
   status: string;
+};
+
+// ============================================================================
+// Phase 9.5: Summary Page Redesign Types
+// ============================================================================
+
+// Note: ConfidenceLevel is already defined in Phase 9.1.1 above
+
+/**
+ * Executive summary synthesizing the AI's response to the user's question
+ */
+export type ExecutiveSummary = {
+  /** Direct answer to the user's question (2-3 sentences) */
+  answer: string;
+  /** Key numbers/metrics highlighted in the summary */
+  keyMetrics?: {
+    label: string;
+    value: string;
+    highlight?: boolean;
+  }[];
+  /** Confidence level for this summary */
+  confidenceLevel: ConfidenceLevel;
+  /** Explanation for the confidence level */
+  confidenceExplanation: string;
+  /** Methodology explanation (shown in expandable section) */
+  methodology?: string;
+};
+
+/**
+ * Assumptions made by the AI in generating suggestions
+ */
+export type SuggestionAssumption = {
+  id: string;
+  assumption: string;
+  /** Whether this assumption is based on explicit user data or inference */
+  source: 'explicit' | 'inferred';
+};
+
+/**
+ * Extended suggestion with priority and assumptions
+ */
+export type ExtendedBudgetSuggestion = BudgetSuggestion & {
+  /** Priority order (1 = highest) */
+  priority: number;
+  /** Category for grouping (debt, savings, spending, income) */
+  category: 'debt' | 'savings' | 'spending' | 'income' | 'general';
+  /** Assumptions specific to this suggestion */
+  assumptions?: string[];
+  /** Short key insight (one sentence) */
+  keyInsight?: string;
+};
+
+/**
+ * Projected outcomes if user follows recommendations
+ */
+export type ProjectedOutcome = {
+  /** Current value before implementing suggestions */
+  currentValue: number;
+  /** Projected value after implementing suggestions */
+  projectedValue: number;
+  /** Label for this outcome (e.g., "Monthly Surplus") */
+  label: string;
+  /** Percentage change */
+  percentChange: number;
+  /** Timeline outcome (e.g., "14 months → 6 months") */
+  timelineChange?: {
+    before: string;
+    after: string;
+  };
+};
+
+/**
+ * Extended response from summary-and-suggestions API
+ */
+export type ExtendedSummaryResponse = SummaryAndSuggestionsResponse & {
+  /** AI-generated executive summary answering the user's question */
+  executiveSummary?: ExecutiveSummary | null;
+  /** Extended suggestions with priority ordering */
+  extendedSuggestions?: ExtendedBudgetSuggestion[];
+  /** Global assumptions across all suggestions */
+  assumptions?: SuggestionAssumption[];
+  /** Projected outcomes if suggestions are followed */
+  projectedOutcomes?: ProjectedOutcome[];
 };

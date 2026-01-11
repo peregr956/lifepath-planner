@@ -3,7 +3,6 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { SuggestionsList, SummaryView } from '@/components';
 import { EditableBudgetSection } from '@/components/EditableBudgetSection';
 import { EditableQuerySection } from '@/components/EditableQuerySection';
 import { useBudgetSession } from '@/hooks/useBudgetSession';
@@ -11,7 +10,17 @@ import type { PatchIncomeEntry, PatchExpenseEntry, PatchDebtEntry } from '@/hook
 import { fetchSummaryAndSuggestions } from '@/utils/apiClient';
 import { Card, CardContent, Skeleton, Button, Badge } from '@/components/ui';
 import { AlertCircle, Loader2, BarChart3, RefreshCw, Pencil } from 'lucide-react';
-import type { BudgetPreferences } from '@/types';
+import type { BudgetPreferences, FoundationalContext } from '@/types';
+
+// Phase 9.5: Import new summary components
+import {
+  AnswerCard,
+  ProfileContextBar,
+  BudgetSnapshotCard,
+  SuggestionsSection,
+  ProjectedImpactCard,
+  NextActionsCard,
+} from '@/components/summary';
 
 // Raw API model uses snake_case
 type RawBudgetModel = {
@@ -53,6 +62,9 @@ export default function SummarizePage() {
   const readyForSummary = session?.readyForSummary ?? false;
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [showEditors, setShowEditors] = useState(false);
+
+  // Get foundational context from session
+  const foundationalContext = session?.foundationalContext as FoundationalContext | null | undefined;
 
   useEffect(() => {
     if (hydrated && !budgetId) {
@@ -136,8 +148,15 @@ export default function SummarizePage() {
     [updateBudget]
   );
 
+  const handleAskAnotherQuestion = useCallback(() => {
+    router.push('/clarify');
+  }, [router]);
+
   // Extract model data for editors (API returns snake_case)
   const budgetModel = budgetQuery.data?.model as RawBudgetModel | undefined;
+
+  const isAIPowered = summaryQuery.data?.providerMetadata?.suggestionProvider === 'openai' 
+    && !summaryQuery.data?.providerMetadata?.usedDeterministic;
 
   return (
     <div className="flex flex-col gap-6 animate-fade-in">
@@ -148,17 +167,22 @@ export default function SummarizePage() {
             <div className="flex items-center gap-3">
               <Loader2 className="h-5 w-5 animate-spin text-primary" />
               <p className="text-sm text-muted-foreground">
-                Analyzing your budget and preparing suggestions…
+                Analyzing your budget and preparing personalized insights…
               </p>
             </div>
-            <div className="mt-6 grid gap-4 sm:grid-cols-3">
-              <Skeleton className="h-24" />
-              <Skeleton className="h-24" />
-              <Skeleton className="h-24" />
-            </div>
-            <div className="mt-6 grid gap-4 md:grid-cols-2">
-              <Skeleton className="h-[300px]" />
-              <Skeleton className="h-[300px]" />
+            {/* Loading skeleton for new layout */}
+            <div className="mt-6 space-y-4">
+              <Skeleton className="h-12" /> {/* Profile bar */}
+              <Skeleton className="h-48" /> {/* Answer card */}
+              <div className="grid gap-4 lg:grid-cols-3">
+                <div className="lg:col-span-2">
+                  <Skeleton className="h-96" /> {/* Suggestions */}
+                </div>
+                <div className="space-y-4">
+                  <Skeleton className="h-40" /> {/* Budget snapshot */}
+                  <Skeleton className="h-48" /> {/* Projected impact */}
+                </div>
+              </div>
             </div>
           </CardContent>
         </Card>
@@ -174,18 +198,26 @@ export default function SummarizePage() {
               <p className="mt-1 text-sm text-destructive/80">
                 Something went wrong while loading your results. Please try again.
               </p>
+              <Button
+                variant="outline"
+                size="sm"
+                className="mt-3"
+                onClick={() => summaryQuery.refetch()}
+              >
+                Try Again
+              </Button>
             </div>
           </div>
         </div>
       )}
 
-      {/* Results */}
+      {/* Results - Phase 9.5 Redesigned Layout */}
       {summaryQuery.data ? (
         <div className="flex flex-col gap-6">
           {/* Dirty state indicator and refresh button */}
           {isDirty && (
             <Card className="border-warning/50 bg-warning/5">
-              <CardContent className="flex items-center justify-between py-4">
+              <CardContent className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 py-4">
                 <div className="flex items-center gap-3">
                   <Badge variant="warning" className="gap-1">
                     <Pencil className="h-3 w-3" />
@@ -198,7 +230,7 @@ export default function SummarizePage() {
                 <Button
                   onClick={handleRefreshSuggestions}
                   disabled={isRefreshing}
-                  className="gap-2"
+                  className="gap-2 w-full sm:w-auto"
                 >
                   <RefreshCw className={`h-4 w-4 ${isRefreshing ? 'animate-spin' : ''}`} />
                   Refresh Suggestions
@@ -207,78 +239,110 @@ export default function SummarizePage() {
             </Card>
           )}
 
-          {/* Editable Query Section */}
-          <EditableQuerySection
-            query={summaryQuery.data.userQuery}
-            disabled={isUpdating || isRefreshing}
-            onQueryChange={handleQueryChange}
+          {/* Profile Context Bar */}
+          <ProfileContextBar foundationalContext={foundationalContext} />
+
+          {/* The Answer Card - Hero element */}
+          <AnswerCard
+            userQuery={summaryQuery.data.userQuery}
+            executiveSummary={summaryQuery.data.executiveSummary}
+            isAIPowered={isAIPowered}
           />
 
-          {/* Toggle editors button */}
-          <div className="flex justify-end">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setShowEditors(!showEditors)}
-              className="gap-2"
-            >
-              <Pencil className="h-3 w-3" />
-              {showEditors ? 'Hide Budget Details' : 'Edit Budget Details'}
-            </Button>
-          </div>
+          {/* Main content: 2-column on desktop, stacked on mobile */}
+          <div className="grid gap-6 lg:grid-cols-3">
+            {/* Left column: Suggestions (main content) */}
+            <div className="lg:col-span-2 space-y-6">
+              {/* Editable Query Section */}
+              <EditableQuerySection
+                query={summaryQuery.data.userQuery}
+                disabled={isUpdating || isRefreshing}
+                onQueryChange={handleQueryChange}
+              />
 
-          {/* Editable Budget Section (collapsible) */}
-          {showEditors && budgetModel && (
-            <EditableBudgetSection
-              income={budgetModel.income.map((inc) => ({
-                id: inc.id,
-                name: inc.name,
-                monthlyAmount: inc.monthly_amount,
-                type: inc.type,
-                stability: inc.stability,
-              }))}
-              expenses={budgetModel.expenses.map((exp) => ({
-                id: exp.id,
-                category: exp.category,
-                monthlyAmount: exp.monthly_amount,
-                essential: exp.essential,
-                notes: exp.notes,
-              }))}
-              debts={budgetModel.debts.map((debt) => ({
-                id: debt.id,
-                name: debt.name,
-                balance: debt.balance,
-                interestRate: debt.interest_rate,
-                minPayment: debt.min_payment,
-                priority: debt.priority,
-                approximate: debt.approximate,
-              }))}
-              preferences={{
-                optimizationFocus: budgetModel.preferences.optimization_focus,
-                protectEssentials: budgetModel.preferences.protect_essentials,
-                maxDesiredChangePerCategory: budgetModel.preferences.max_desired_change_per_category,
-              }}
-              disabled={isUpdating || isRefreshing}
-              onIncomeChange={handleIncomeChange}
-              onExpenseChange={handleExpenseChange}
-              onDebtChange={handleDebtChange}
-              onPreferenceChange={handlePreferenceChange}
-            />
-          )}
+              {/* Toggle editors button */}
+              <div className="flex justify-end">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setShowEditors(!showEditors)}
+                  className="gap-2"
+                >
+                  <Pencil className="h-3 w-3" />
+                  {showEditors ? 'Hide Budget Details' : 'Edit Budget Details'}
+                </Button>
+              </div>
 
-          {/* Main content grid */}
-          <div className="grid gap-6 lg:grid-cols-2">
-            <div>
-              <SummaryView
-                summary={summaryQuery.data.summary}
-                categoryShares={summaryQuery.data.categoryShares}
+              {/* Editable Budget Section (collapsible) */}
+              {showEditors && budgetModel && (
+                <EditableBudgetSection
+                  income={budgetModel.income.map((inc) => ({
+                    id: inc.id,
+                    name: inc.name,
+                    monthlyAmount: inc.monthly_amount,
+                    type: inc.type,
+                    stability: inc.stability,
+                  }))}
+                  expenses={budgetModel.expenses.map((exp) => ({
+                    id: exp.id,
+                    category: exp.category,
+                    monthlyAmount: exp.monthly_amount,
+                    essential: exp.essential,
+                    notes: exp.notes,
+                  }))}
+                  debts={budgetModel.debts.map((debt) => ({
+                    id: debt.id,
+                    name: debt.name,
+                    balance: debt.balance,
+                    interestRate: debt.interest_rate,
+                    minPayment: debt.min_payment,
+                    priority: debt.priority,
+                    approximate: debt.approximate,
+                  }))}
+                  preferences={{
+                    optimizationFocus: budgetModel.preferences.optimization_focus,
+                    protectEssentials: budgetModel.preferences.protect_essentials,
+                    maxDesiredChangePerCategory: budgetModel.preferences.max_desired_change_per_category,
+                  }}
+                  disabled={isUpdating || isRefreshing}
+                  onIncomeChange={handleIncomeChange}
+                  onExpenseChange={handleExpenseChange}
+                  onDebtChange={handleDebtChange}
+                  onPreferenceChange={handlePreferenceChange}
+                />
+              )}
+
+              {/* Suggestions Section */}
+              <SuggestionsSection
+                suggestions={summaryQuery.data.suggestions}
+                extendedSuggestions={summaryQuery.data.extendedSuggestions}
+                providerMetadata={summaryQuery.data.providerMetadata}
+                financialPhilosophy={foundationalContext?.financialPhilosophy}
+                assumptions={summaryQuery.data.assumptions}
               />
             </div>
-            <div>
-              <SuggestionsList
+
+            {/* Right column: Supporting info */}
+            <div className="space-y-6">
+              {/* Budget Snapshot (compact) */}
+              <BudgetSnapshotCard
+                summary={summaryQuery.data.summary}
+                categoryShares={summaryQuery.data.categoryShares}
+                compact
+              />
+
+              {/* Projected Impact */}
+              <ProjectedImpactCard
+                summary={summaryQuery.data.summary}
                 suggestions={summaryQuery.data.suggestions}
-                providerMetadata={summaryQuery.data.providerMetadata}
-                userQuery={summaryQuery.data.userQuery}
+                projectedOutcomes={summaryQuery.data.projectedOutcomes}
+              />
+
+              {/* What's Next */}
+              <NextActionsCard
+                suggestions={summaryQuery.data.suggestions}
+                extendedSuggestions={summaryQuery.data.extendedSuggestions}
+                onAskAnotherQuestion={handleAskAnotherQuestion}
               />
             </div>
           </div>

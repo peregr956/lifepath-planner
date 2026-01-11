@@ -823,6 +823,62 @@ Expected behavior should produce:
 
 ---
 
+## Phase 9.5 — Summary Page Redesign (Decision-Support Core) ✓ Complete (January 2026)
+
+**Goal**: Transform the Summary page from a data dashboard into a decision-support interface that directly answers user questions, builds trust through transparency, and guides users toward clear next actions.
+
+**Rationale**: The Summary page is where users receive value from the system. The previous design treated budget data and suggestions with equal visual weight, buried the AI's answer to the user's question, and provided no forward momentum toward action. This redesign prioritizes clarity, trust, and actionability.
+
+**Design Principles**:
+- **Decision-Support First**: The page must answer the user's question, not just display data
+- **Trust Through Transparency**: Show the AI's reasoning, assumptions, and confidence levels
+- **Actionability**: Every section should lead to a clear next step
+- **Progressive Disclosure**: High-level clarity by default, depth on demand
+- **Living Dashboard**: Design for revisits, not just first-time viewing
+- **Future-Proof**: Structure that accommodates goals, scenarios, and account integration
+
+**Features**:
+- **Answer Card**: Executive summary that directly answers the user's question with confidence indicators
+- **Profile Context Bar**: Shows what foundational context informed the analysis
+- **Suggestions Section**: Prioritized recommendations with assumptions and "how we calculated" explanations
+- **Budget Snapshot Card**: Compact view of budget metrics with expandable charts
+- **Projected Impact Card**: Before/after comparison if suggestions are followed
+- **Next Actions Card**: Context-aware links to calculators, profile editing, and follow-up questions
+
+**Implementation Phases**:
+- **9.5.1**: Core Restructure — AnswerCard, SuggestionsSection refactor, BudgetSnapshotCard, API updates ✅
+- **9.5.2**: Trust and Transparency — Confidence indicators, assumptions, ProfileContextBar ✅
+- **9.5.3**: Forward-Looking Elements — ProjectedImpactCard, NextActionsCard ✅
+- **9.5.4**: Polish and Accessibility — Responsive layout, chart table alternatives, ARIA labels ✅
+
+**Files Created**:
+- `services/ui-web/src/components/summary/AnswerCard.tsx`
+- `services/ui-web/src/components/summary/ProfileContextBar.tsx`
+- `services/ui-web/src/components/summary/BudgetSnapshotCard.tsx`
+- `services/ui-web/src/components/summary/ProjectedImpactCard.tsx`
+- `services/ui-web/src/components/summary/NextActionsCard.tsx`
+- `services/ui-web/src/components/summary/SuggestionCard.tsx`
+- `services/ui-web/src/components/summary/SuggestionsSection.tsx`
+- `services/ui-web/src/components/summary/index.ts`
+
+**Files Modified**:
+- `services/ui-web/src/app/(app)/summarize/page.tsx` — New layout with restructured sections
+- `services/ui-web/src/app/api/summary-and-suggestions/route.ts` — Extended response with executive summary
+- `services/ui-web/src/lib/ai.ts` — Updated schema and prompts for executive summary generation
+- `services/ui-web/src/lib/budgetModel.ts` — Extended suggestion result types
+- `services/ui-web/src/types/budget.ts` — New types for executive summary, extended suggestions
+- `services/ui-web/src/utils/apiClient.tsx` — Handle extended response fields
+- `services/ui-web/src/components/charts/*.tsx` — Accessibility improvements with table toggle
+
+**Success Criteria**:
+- User can explain what the AI recommends in one sentence after viewing the page
+- User knows whether recommendations are based on solid data or estimates (confidence indicators)
+- User knows what to do next after viewing results (clear CTAs)
+- Page passes WCAG 2.1 AA automated and manual testing
+- Full functionality on mobile with appropriate layout adaptations
+
+---
+
 ## Phase 10 — Budget History & Trends (Weeks 22–25)
 
 **Goal**: Enable users to track budgets over time, view trends, and compare periods.
@@ -1354,3 +1410,8 @@ New entities to add progressively:
   - ✅ Phase 9.1.3 — UI Flow Optimization
   - ✅ Phase 9.1.4 — AI Prompt Enhancement
   - ✅ Phase 9.1.5 — Profile Settings Expansion
+- ✅ **Phase 9.5** — Summary Page Redesign (January 2026)
+  - ✅ Phase 9.5.1 — Core Restructure (AnswerCard, SuggestionsSection, BudgetSnapshotCard)
+  - ✅ Phase 9.5.2 — Trust and Transparency (Confidence indicators, ProfileContextBar)
+  - ✅ Phase 9.5.3 — Forward-Looking Elements (ProjectedImpactCard, NextActionsCard)
+  - ✅ Phase 9.5.4 — Polish and Accessibility (Responsive, ARIA, chart alternatives)

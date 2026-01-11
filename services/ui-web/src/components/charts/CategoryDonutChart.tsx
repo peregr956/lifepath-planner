@@ -1,7 +1,10 @@
 'use client';
 
+import { useState } from 'react';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from 'recharts';
 import { ChartContainer } from './ChartContainer';
+import { Button } from '@/components/ui';
+import { Table, List } from 'lucide-react';
 
 // Chart color palette based on CSS variables
 const CHART_COLORS = [
@@ -24,9 +27,13 @@ type CategoryData = {
 type CategoryDonutChartProps = {
   data: Record<string, number>;
   loading?: boolean;
+  /** Allow toggling between chart and table view for accessibility */
+  showTableToggle?: boolean;
 };
 
-export function CategoryDonutChart({ data, loading = false }: CategoryDonutChartProps) {
+export function CategoryDonutChart({ data, loading = false, showTableToggle = true }: CategoryDonutChartProps) {
+  const [showTable, setShowTable] = useState(false);
+  
   const chartData: CategoryData[] = Object.entries(data)
     .map(([name, share]) => ({
       name,
@@ -36,6 +43,11 @@ export function CategoryDonutChart({ data, loading = false }: CategoryDonutChart
     .sort((a, b) => b.value - a.value);
 
   const formatPercentage = (value: number) => `${(value * 100).toFixed(1)}%`;
+  
+  // Generate accessible description for screen readers
+  const accessibleDescription = chartData.length > 0
+    ? `Expense breakdown: ${chartData.slice(0, 5).map(d => `${d.name} at ${formatPercentage(d.share)}`).join(', ')}${chartData.length > 5 ? `, and ${chartData.length - 5} more categories` : ''}.`
+    : 'No expense data available.';
 
   // Custom tooltip
   const CustomTooltip = ({ active, payload }: { active?: boolean; payload?: Array<{ payload: CategoryData }> }) => {
@@ -69,18 +81,83 @@ export function CategoryDonutChart({ data, loading = false }: CategoryDonutChart
     );
   };
 
+  // Accessible data table alternative
+  const DataTable = () => (
+    <div className="overflow-x-auto">
+      <table className="min-w-full divide-y divide-border text-sm" role="table">
+        <caption className="sr-only">Expense breakdown by category</caption>
+        <thead>
+          <tr className="text-left text-muted-foreground">
+            <th scope="col" className="px-0 py-2 font-medium">Category</th>
+            <th scope="col" className="px-0 py-2 text-right font-medium">Share</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-border">
+          {chartData.map((item, index) => (
+            <tr key={item.name}>
+              <td className="px-0 py-2 font-medium text-foreground">
+                <span className="flex items-center gap-2">
+                  <span
+                    className="h-3 w-3 rounded-full shrink-0"
+                    style={{ backgroundColor: CHART_COLORS[index % CHART_COLORS.length] }}
+                    aria-hidden="true"
+                  />
+                  {item.name}
+                </span>
+              </td>
+              <td className="px-0 py-2 text-right font-mono tabular-nums text-muted-foreground">
+                {formatPercentage(item.share)}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+
   return (
     <ChartContainer
       title="Where Your Money Goes"
       description="Expense breakdown by category"
       loading={loading}
+      headerAction={
+        showTableToggle && chartData.length > 0 ? (
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setShowTable(!showTable)}
+            className="gap-1.5 text-xs"
+            aria-label={showTable ? 'Show chart view' : 'Show table view'}
+          >
+            {showTable ? (
+              <>
+                <List className="h-3.5 w-3.5" />
+                Chart
+              </>
+            ) : (
+              <>
+                <Table className="h-3.5 w-3.5" />
+                Table
+              </>
+            )}
+          </Button>
+        ) : undefined
+      }
     >
       {chartData.length === 0 ? (
         <div className="flex h-[200px] items-center justify-center text-sm text-muted-foreground">
           No category data available
         </div>
+      ) : showTable ? (
+        <DataTable />
       ) : (
-        <div className="h-[280px]">
+        <div 
+          className="h-[280px]"
+          role="img"
+          aria-label={accessibleDescription}
+        >
+          {/* Hidden accessible description for screen readers */}
+          <div className="sr-only">{accessibleDescription}</div>
           <ResponsiveContainer width="100%" height="100%">
             <PieChart>
               <Pie
@@ -91,6 +168,7 @@ export function CategoryDonutChart({ data, loading = false }: CategoryDonutChart
                 outerRadius={80}
                 paddingAngle={2}
                 dataKey="value"
+                aria-hidden="true"
               >
                 {chartData.map((_, index) => (
                   <Cell

@@ -115,6 +115,56 @@ export interface Suggestion {
   tradeoffs: string;
 }
 
+// Phase 9.5: Extended suggestion with priority and metadata
+export interface ExtendedSuggestion extends Suggestion {
+  priority: number;
+  category: 'debt' | 'savings' | 'spending' | 'income' | 'general';
+  key_insight?: string;
+  assumptions?: string[];
+}
+
+// Phase 9.5: Executive summary answering user's question
+export interface ExecutiveSummaryResult {
+  answer: string;
+  key_metrics?: {
+    label: string;
+    value: string;
+    highlight?: boolean;
+  }[];
+  confidence_level: 'high' | 'medium' | 'low';
+  confidence_explanation: string;
+  methodology?: string;
+}
+
+// Phase 9.5: Assumption made by AI
+export interface SuggestionAssumptionResult {
+  id: string;
+  assumption: string;
+  source: 'explicit' | 'inferred';
+}
+
+// Phase 9.5: Projected outcome if suggestions are followed
+export interface ProjectedOutcomeResult {
+  label: string;
+  current_value: number;
+  projected_value: number;
+  percent_change: number;
+  timeline_change?: {
+    before: string;
+    after: string;
+  };
+}
+
+// Phase 9.5: Extended suggestion generation result
+export interface ExtendedSuggestionResult {
+  suggestions: Suggestion[];
+  extended_suggestions?: ExtendedSuggestion[];
+  executive_summary?: ExecutiveSummaryResult;
+  global_assumptions?: SuggestionAssumptionResult[];
+  projected_outcomes?: ProjectedOutcomeResult[];
+  usedDeterministic: boolean;
+}
+
 /**
  * Create a default preferences object
  * 

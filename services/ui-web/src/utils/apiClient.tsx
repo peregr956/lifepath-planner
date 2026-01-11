@@ -30,6 +30,11 @@ import type {
   UploadBudgetResponse,
   ClarificationQuestionsResponse,
   UserQueryResponse,
+  // Phase 9.5: Extended types
+  ExtendedBudgetSuggestion,
+  ExecutiveSummary,
+  SuggestionAssumption,
+  ProjectedOutcome,
 } from '@/types';
 
 // Default to same-origin API routes (Vercel serverless functions)
@@ -769,6 +774,43 @@ type RawProviderMetadata = {
   used_deterministic?: boolean;
 };
 
+// Phase 9.5: Extended suggestion types
+type RawExtendedSuggestion = RawBudgetSuggestion & {
+  priority?: number;
+  category?: 'debt' | 'savings' | 'spending' | 'income' | 'general';
+  key_insight?: string;
+  assumptions?: string[];
+};
+
+type RawExecutiveSummary = {
+  answer: string;
+  key_metrics?: {
+    label: string;
+    value: string;
+    highlight?: boolean;
+  }[];
+  confidence_level: 'high' | 'medium' | 'low';
+  confidence_explanation: string;
+  methodology?: string;
+};
+
+type RawSuggestionAssumption = {
+  id: string;
+  assumption: string;
+  source: 'explicit' | 'inferred';
+};
+
+type RawProjectedOutcome = {
+  label: string;
+  current_value: number;
+  projected_value: number;
+  percent_change: number;
+  timeline_change?: {
+    before: string;
+    after: string;
+  };
+};
+
 type RawSummaryAndSuggestionsResponse = {
   budget_id: string;
   summary?: RawBudgetSummary | null;
@@ -776,6 +818,11 @@ type RawSummaryAndSuggestionsResponse = {
   suggestions?: RawBudgetSuggestion[] | null;
   provider_metadata?: RawProviderMetadata | null;
   user_query?: string | null;
+  // Phase 9.5: Extended response fields
+  extended_suggestions?: RawExtendedSuggestion[] | null;
+  executive_summary?: RawExecutiveSummary | null;
+  global_assumptions?: RawSuggestionAssumption[] | null;
+  projected_outcomes?: RawProjectedOutcome[] | null;
 };
 
 type RawIncomeEntry = {
@@ -1007,7 +1054,48 @@ function normalizeSummaryAndSuggestionsResponse(
         }
       : undefined,
     userQuery: raw.user_query ?? null,
+    // Phase 9.5: Extended response fields
+    executiveSummary: raw.executive_summary
+      ? {
+          answer: raw.executive_summary.answer,
+          keyMetrics: raw.executive_summary.key_metrics,
+          confidenceLevel: raw.executive_summary.confidence_level,
+          confidenceExplanation: raw.executive_summary.confidence_explanation,
+          methodology: raw.executive_summary.methodology,
+        }
+      : undefined,
+    extendedSuggestions: normalizeExtendedSuggestions(raw.extended_suggestions),
+    assumptions: raw.global_assumptions?.map(a => ({
+      id: a.id,
+      assumption: a.assumption,
+      source: a.source,
+    })),
+    projectedOutcomes: raw.projected_outcomes?.map(o => ({
+      label: o.label,
+      currentValue: o.current_value,
+      projectedValue: o.projected_value,
+      percentChange: o.percent_change,
+      timelineChange: o.timeline_change,
+    })),
   };
+}
+
+function normalizeExtendedSuggestions(
+  rawSuggestions?: RawExtendedSuggestion[] | null
+): ExtendedBudgetSuggestion[] | undefined {
+  if (!rawSuggestions) return undefined;
+  return rawSuggestions.map((suggestion, index) => ({
+    id: suggestion.id,
+    title: suggestion.title,
+    description: suggestion.description,
+    expectedMonthlyImpact: suggestion.expected_monthly_impact,
+    rationale: suggestion.rationale,
+    tradeoffs: suggestion.tradeoffs,
+    priority: suggestion.priority ?? index + 1,
+    category: suggestion.category ?? 'general',
+    keyInsight: suggestion.key_insight,
+    assumptions: suggestion.assumptions,
+  }));
 }
 
 function normalizeSuggestions(rawSuggestions?: RawBudgetSuggestion[] | null): BudgetSuggestion[] {

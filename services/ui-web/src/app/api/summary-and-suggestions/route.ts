@@ -109,7 +109,8 @@ export async function GET(request: NextRequest) {
     const categoryShares = computeCategoryShares(finalModel);
 
     // Generate suggestions (Phase 9.1.4: pass layered context with confidence signals)
-    const { suggestions, usedDeterministic } = await generateSuggestionsWithContext(
+    // Phase 9.5: Now returns extended result with executive summary
+    const suggestionResult = await generateSuggestionsWithContext(
       finalModel,
       userContext.user_query ?? undefined,
       foundationalContext,
@@ -118,8 +119,10 @@ export async function GET(request: NextRequest) {
       accountProfile
     );
 
-    console.log(`[summary-and-suggestions] Generated ${suggestions.length} suggestions for session ${budgetId}`, {
-      usedDeterministic,
+    console.log(`[summary-and-suggestions] Generated ${suggestionResult.suggestions.length} suggestions for session ${budgetId}`, {
+      usedDeterministic: suggestionResult.usedDeterministic,
+      hasExecutiveSummary: !!suggestionResult.executive_summary,
+      hasExtendedSuggestions: !!suggestionResult.extended_suggestions,
     });
 
     return NextResponse.json({
@@ -130,9 +133,14 @@ export async function GET(request: NextRequest) {
         surplus: summary.surplus,
       },
       category_shares: categoryShares,
-      suggestions,
+      suggestions: suggestionResult.suggestions,
+      // Phase 9.5: Include extended response data
+      extended_suggestions: suggestionResult.extended_suggestions,
+      executive_summary: suggestionResult.executive_summary,
+      global_assumptions: suggestionResult.global_assumptions,
+      projected_outcomes: suggestionResult.projected_outcomes,
       provider_metadata: {
-        ...getProviderMetadata(usedDeterministic),
+        ...getProviderMetadata(suggestionResult.usedDeterministic),
         foundational_context_provided: !!foundationalContext,
         // Phase 9.1.4: Include account context info
         has_account_profile: !!accountProfile,

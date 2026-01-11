@@ -19,7 +19,7 @@
  */
 
 import OpenAI from 'openai';
-import type { UnifiedBudgetModel, QuestionSpec, Suggestion, QuestionGroup, ClarificationAnalysis, ClarificationResult } from './budgetModel';
+import type { UnifiedBudgetModel, QuestionSpec, Suggestion, QuestionGroup, ClarificationAnalysis, ClarificationResult, ExtendedSuggestion, ExecutiveSummaryResult, SuggestionAssumptionResult, ProjectedOutcomeResult, ExtendedSuggestionResult } from './budgetModel';
 import type { FoundationalContext, HydratedFoundationalContext } from '@/types/budget';
 import type { UserProfile } from '@/lib/db';
 import { ESSENTIAL_PREFIX, SUPPORTED_SIMPLE_FIELD_IDS, parseDebtFieldId } from './normalization';
@@ -138,10 +138,47 @@ const QUESTION_SPEC_SCHEMA = {
   required: ['analysis', 'question_groups', 'next_steps'],
 };
 
-// Suggestion schema for OpenAI function calling
+// Phase 9.5: Extended suggestion schema with executive summary and priority ordering
 const SUGGESTION_SCHEMA = {
   type: 'object' as const,
   properties: {
+    // Phase 9.5: Executive summary that directly answers the user's question
+    executive_summary: {
+      type: 'object' as const,
+      properties: {
+        answer: {
+          type: 'string' as const,
+          description: 'A direct 2-3 sentence answer to the user question, referencing specific dollar amounts from their budget.',
+        },
+        key_metrics: {
+          type: 'array' as const,
+          items: {
+            type: 'object' as const,
+            properties: {
+              label: { type: 'string' as const },
+              value: { type: 'string' as const },
+              highlight: { type: 'boolean' as const },
+            },
+            required: ['label', 'value'],
+          },
+          description: 'Up to 4 key numbers/metrics that support the answer.',
+        },
+        confidence_level: {
+          type: 'string' as const,
+          enum: ['high', 'medium', 'low'],
+          description: 'high = based on explicit user data, medium = some values estimated, low = limited information.',
+        },
+        confidence_explanation: {
+          type: 'string' as const,
+          description: 'Brief explanation of what data supports or limits confidence.',
+        },
+        methodology: {
+          type: 'string' as const,
+          description: 'How the calculations were performed (shown in expandable section).',
+        },
+      },
+      required: ['answer', 'confidence_level', 'confidence_explanation'],
+    },
     suggestions: {
       type: 'array' as const,
       items: {
@@ -153,12 +190,70 @@ const SUGGESTION_SCHEMA = {
           expected_monthly_impact: { type: 'number' as const },
           rationale: { type: 'string' as const },
           tradeoffs: { type: 'string' as const },
+          // Phase 9.5: Additional fields for enhanced suggestions
+          priority: {
+            type: 'number' as const,
+            description: 'Priority order (1 = highest priority action to take first).',
+          },
+          category: {
+            type: 'string' as const,
+            enum: ['debt', 'savings', 'spending', 'income', 'general'],
+            description: 'Category for grouping suggestions.',
+          },
+          key_insight: {
+            type: 'string' as const,
+            description: 'One sentence key takeaway for this suggestion.',
+          },
+          assumptions: {
+            type: 'array' as const,
+            items: { type: 'string' as const },
+            description: 'Key assumptions made for this suggestion.',
+          },
         },
-        required: ['id', 'title', 'description', 'expected_monthly_impact', 'rationale', 'tradeoffs'],
+        required: ['id', 'title', 'description', 'expected_monthly_impact', 'rationale', 'tradeoffs', 'priority', 'category'],
       },
     },
+    // Phase 9.5: Global assumptions across all suggestions
+    global_assumptions: {
+      type: 'array' as const,
+      items: {
+        type: 'object' as const,
+        properties: {
+          id: { type: 'string' as const },
+          assumption: { type: 'string' as const },
+          source: {
+            type: 'string' as const,
+            enum: ['explicit', 'inferred'],
+          },
+        },
+        required: ['id', 'assumption', 'source'],
+      },
+      description: 'Assumptions that apply across multiple suggestions.',
+    },
+    // Phase 9.5: Projected outcomes if all suggestions are followed
+    projected_outcomes: {
+      type: 'array' as const,
+      items: {
+        type: 'object' as const,
+        properties: {
+          label: { type: 'string' as const },
+          current_value: { type: 'number' as const },
+          projected_value: { type: 'number' as const },
+          percent_change: { type: 'number' as const },
+          timeline_change: {
+            type: 'object' as const,
+            properties: {
+              before: { type: 'string' as const },
+              after: { type: 'string' as const },
+            },
+          },
+        },
+        required: ['label', 'current_value', 'projected_value', 'percent_change'],
+      },
+      description: 'Projected outcomes comparing before/after if suggestions are followed.',
+    },
   },
-  required: ['suggestions'],
+  required: ['executive_summary', 'suggestions'],
 };
 
 /**
@@ -272,18 +367,31 @@ Success: Fewer, more targeted questions are better than comprehensive coverage.`
 /**
  * SUGGESTION_SYSTEM_PROMPT
  * 
- * Refactored to trust AI intelligence rather than prescribe behavior.
- * Removed "do not" rules - AI naturally focuses on relevance.
+ * Phase 9.5: Updated to generate executive summary + prioritized suggestions.
+ * The executive summary directly answers the user's question first.
  */
-const SUGGESTION_SYSTEM_PROMPT = `Objective: Generate actionable budget suggestions that address this user's specific question.
+const SUGGESTION_SYSTEM_PROMPT = `Objective: Answer the user's financial question directly, then provide prioritized actionable suggestions.
 
-Role: You are a personal finance advisor. Your suggestions should be practical, grounded in the user's actual numbers, and relevant to what they asked.
+Role: You are a personal finance advisor. Your response should feel like a direct answer to their question, not just a data dump.
 
-Context: The user's data arrives in delimited sections: <user_query>, <user_profile>, and <budget_data>. Their profile reflects stated preferences—use it to align your suggestions with their goals.
+Context: The user's data arrives in delimited sections: <user_query>, <user_profile>, and <budget_data>. Their profile reflects stated preferences—use it to align your response with their goals.
 
-Output: Return JSON matching the provided function schema. Each suggestion should include expected monthly impact (calculated from their data), your reasoning, and tradeoffs worth considering.
+Output Structure:
+1. **executive_summary**: A direct 2-3 sentence answer to their specific question. Include key metrics that support your answer. State your confidence level honestly.
+2. **suggestions**: Prioritized list (priority 1 = do this first). Each with category, impact calculated from their numbers, rationale, tradeoffs, and assumptions.
+3. **global_assumptions**: Any assumptions that span multiple suggestions.
+4. **projected_outcomes**: What improves if they follow your suggestions (current vs projected values).
 
-Success: Suggestions framed as ideas to consider, with specific dollar amounts from their budget.`;
+Confidence Guidelines:
+- "high": Based on explicit numbers they provided (income, expenses, debt rates)
+- "medium": Some values were estimated or assumed (typical rates, average costs)
+- "low": Limited information, significant uncertainty
+
+Success Criteria:
+- User can state what you recommend in one sentence after reading the executive summary
+- Each suggestion has a specific dollar impact from their budget
+- Priority order reflects urgency and impact
+- Assumptions are transparent`;
 
 /**
  * Build available field IDs section for the prompt
@@ -1006,14 +1114,21 @@ export async function generateSuggestionsWithContext(
   userProfile?: Record<string, unknown>,
   hydratedContext?: HydratedFoundationalContext | null,
   accountProfile?: UserProfile | null
-): Promise<{ suggestions: Suggestion[]; usedDeterministic: boolean }> {
+): Promise<ExtendedSuggestionResult> {
   const client = getOpenAIClient();
 
   if (!client) {
     // Fall back to deterministic suggestions
     console.log('[AI] No AI client available, using deterministic suggestions');
+    const deterministicSuggestions = generateDeterministicSuggestions(model);
     return {
-      suggestions: generateDeterministicSuggestions(model),
+      suggestions: deterministicSuggestions,
+      extended_suggestions: deterministicSuggestions.map((s, i) => ({
+        ...s,
+        priority: i + 1,
+        category: 'general' as const,
+      })),
+      executive_summary: generateDeterministicExecutiveSummary(model, userQuery),
       usedDeterministic: true,
     };
   }
@@ -1045,7 +1160,7 @@ export async function generateSuggestionsWithContext(
           type: 'function',
           function: {
             name: 'generate_optimization_suggestions',
-            description: 'Generate structured budget optimization suggestions.',
+            description: 'Generate structured budget optimization suggestions with executive summary.',
             parameters: SUGGESTION_SCHEMA,
           },
         },
@@ -1061,21 +1176,83 @@ export async function generateSuggestionsWithContext(
     }
 
     const parsed = JSON.parse(toolCalls[0].function.arguments);
-    return (parsed.suggestions || []) as Suggestion[];
+    return parsed;
   });
 
   if (retryResult) {
+    const parsed = retryResult.result;
+    
+    // Extract suggestions (both legacy and extended)
+    const suggestions: Suggestion[] = (parsed.suggestions || []).map((s: ExtendedSuggestion) => ({
+      id: s.id,
+      title: s.title,
+      description: s.description,
+      expected_monthly_impact: s.expected_monthly_impact,
+      rationale: s.rationale,
+      tradeoffs: s.tradeoffs,
+    }));
+    
+    const extendedSuggestions: ExtendedSuggestion[] = (parsed.suggestions || []).map((s: ExtendedSuggestion, i: number) => ({
+      ...s,
+      priority: s.priority || i + 1,
+      category: s.category || 'general',
+    }));
+    
     return {
-      suggestions: retryResult.result,
+      suggestions,
+      extended_suggestions: extendedSuggestions,
+      executive_summary: parsed.executive_summary as ExecutiveSummaryResult | undefined,
+      global_assumptions: parsed.global_assumptions as SuggestionAssumptionResult[] | undefined,
+      projected_outcomes: parsed.projected_outcomes as ProjectedOutcomeResult[] | undefined,
       usedDeterministic: false,
     };
   }
 
   // All retries failed, use deterministic fallback
   console.warn('[AI] All AI attempts failed, using deterministic suggestions');
+  const deterministicSuggestions = generateDeterministicSuggestions(model);
   return {
-    suggestions: generateDeterministicSuggestions(model),
+    suggestions: deterministicSuggestions,
+    extended_suggestions: deterministicSuggestions.map((s, i) => ({
+      ...s,
+      priority: i + 1,
+      category: 'general' as const,
+    })),
+    executive_summary: generateDeterministicExecutiveSummary(model, userQuery),
     usedDeterministic: true,
+  };
+}
+
+/**
+ * Phase 9.5: Generate a deterministic executive summary when AI is unavailable
+ */
+function generateDeterministicExecutiveSummary(
+  model: UnifiedBudgetModel,
+  userQuery?: string
+): ExecutiveSummaryResult {
+  const surplus = model.summary.surplus;
+  const savingsRate = model.summary.total_income > 0 
+    ? (surplus / model.summary.total_income) * 100 
+    : 0;
+  
+  let answer: string;
+  if (!userQuery || userQuery.trim() === '') {
+    answer = `Based on your budget, you have a monthly surplus of $${surplus.toLocaleString()} (${savingsRate.toFixed(1)}% savings rate). The suggestions below highlight opportunities to improve your financial position.`;
+  } else {
+    answer = `Based on your budget data, you have $${surplus.toLocaleString()} in monthly surplus available. Review the prioritized suggestions below for specific actions that address your question.`;
+  }
+
+  return {
+    answer,
+    key_metrics: [
+      { label: 'Monthly Income', value: `$${model.summary.total_income.toLocaleString()}` },
+      { label: 'Monthly Expenses', value: `$${model.summary.total_expenses.toLocaleString()}` },
+      { label: 'Monthly Surplus', value: `$${surplus.toLocaleString()}`, highlight: true },
+      { label: 'Savings Rate', value: `${savingsRate.toFixed(1)}%` },
+    ],
+    confidence_level: 'medium',
+    confidence_explanation: 'Based on basic budget analysis. AI-powered analysis unavailable.',
+    methodology: 'Simple calculation of income minus expenses. For more detailed analysis, ensure AI services are configured.',
   };
 }
 
@@ -1087,7 +1264,7 @@ export async function generateSuggestions(
   model: UnifiedBudgetModel,
   userQuery?: string,
   userProfile?: Record<string, unknown>
-): Promise<{ suggestions: Suggestion[]; usedDeterministic: boolean }> {
+): Promise<ExtendedSuggestionResult> {
   return generateSuggestionsWithContext(model, userQuery, null, userProfile);
 }
 
