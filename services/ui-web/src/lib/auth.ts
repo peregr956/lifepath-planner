@@ -10,7 +10,7 @@
  * database-dependent callbacks for API routes.
  */
 
-import NextAuth from 'next-auth';
+import NextAuth, { type NextAuthConfig } from 'next-auth';
 import Credentials from 'next-auth/providers/credentials';
 import Google from 'next-auth/providers/google';
 import { v4 as uuidv4 } from 'uuid';
@@ -31,7 +31,7 @@ import { authConfig, type ExtendedJWT } from './auth.config';
  * This extends the base config with database-dependent operations
  * for the Credentials provider and OAuth account linking.
  */
-const fullAuthConfig = {
+const fullAuthConfig: NextAuthConfig = {
   ...authConfig,
   // Override providers with full implementations
   providers: [
@@ -155,11 +155,11 @@ const fullAuthConfig = {
   },
   // Events for logging
   events: {
-    async signIn({ user, account }: { user: { email?: string | null }; account?: { provider: string } | null }) {
-      console.log(`[Auth] User signed in: ${user.email} via ${account?.provider}`);
+    async signIn({ user, account }) {
+      console.log(`[Auth] User signed in: ${user?.email} via ${account?.provider}`);
     },
-    async signOut(message: { token?: Record<string, unknown>; session?: unknown }) {
-      const email = 'token' in message ? (message.token as ExtendedJWT)?.email : 'unknown';
+    async signOut(message) {
+      const email = 'token' in message && message.token ? String(message.token.email ?? 'unknown') : 'unknown';
       console.log(`[Auth] User signed out: ${email}`);
     },
   },

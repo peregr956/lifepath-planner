@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import type { Route } from 'next';
@@ -30,6 +30,32 @@ const signupSchema = z.object({
 type SignupFormData = z.infer<typeof signupSchema>;
 
 export default function SignupPage() {
+  return (
+    <Suspense fallback={<SignupPageSkeleton />}>
+      <SignupPageContent />
+    </Suspense>
+  );
+}
+
+function SignupPageSkeleton() {
+  return (
+    <div className="space-y-6">
+      <div className="text-center">
+        <h1 className="text-2xl font-bold tracking-tight text-foreground">Create your account</h1>
+        <p className="mt-2 text-sm text-muted-foreground">
+          Start planning your financial future today
+        </p>
+      </div>
+      <div className="rounded-xl border border-border bg-card p-6 shadow-lg">
+        <div className="flex items-center justify-center py-8">
+          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SignupPageContent() {
   const searchParams = useSearchParams();
   const callbackUrl = searchParams.get('callbackUrl') || '/upload';
   
