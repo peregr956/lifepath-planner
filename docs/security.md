@@ -132,6 +132,91 @@ OAuth tokens are stored in the `accounts` table:
 - `refresh_token`: Encrypted at database level
 - `id_token`: For OIDC verification
 
+### 4.3 Google OAuth Setup Guide
+
+Follow these steps to enable Google sign-in for LifePath Planner:
+
+#### Step 1: Create a Google Cloud Project
+
+1. Go to [Google Cloud Console](https://console.cloud.google.com/)
+2. Create a new project or select an existing one
+3. Note your project name for reference
+
+#### Step 2: Configure OAuth Consent Screen
+
+1. Navigate to **APIs & Services** → **OAuth consent screen**
+2. Choose **External** user type (unless using Google Workspace)
+3. Fill in the required fields:
+   - **App name**: LifePath Planner
+   - **User support email**: Your email
+   - **Developer contact email**: Your email
+4. Add scopes: `email`, `profile`, `openid`
+5. Add test users if in development mode
+6. Save and continue
+
+#### Step 3: Create OAuth Credentials
+
+1. Navigate to **APIs & Services** → **Credentials**
+2. Click **Create Credentials** → **OAuth client ID**
+3. Select **Web application**
+4. Configure:
+   - **Name**: LifePath Planner Web Client
+   - **Authorized JavaScript origins**:
+     - `https://lifepath-planner.vercel.app`
+     - `http://localhost:3000` (for development)
+   - **Authorized redirect URIs**:
+     - `https://lifepath-planner.vercel.app/api/auth/callback/google`
+     - `http://localhost:3000/api/auth/callback/google` (for development)
+5. Click **Create**
+6. Copy the **Client ID** and **Client Secret**
+
+#### Step 4: Add Environment Variables to Vercel
+
+Using the Vercel CLI or Dashboard, add these environment variables:
+
+```bash
+# Using Vercel CLI
+vercel env add GOOGLE_CLIENT_ID
+vercel env add GOOGLE_CLIENT_SECRET
+```
+
+Or via Vercel Dashboard:
+1. Go to your project settings → **Environment Variables**
+2. Add:
+   - `GOOGLE_CLIENT_ID`: Your OAuth client ID
+   - `GOOGLE_CLIENT_SECRET`: Your OAuth client secret
+3. Set target environments: `production`, `preview`, `development`
+
+#### Step 5: Local Development Setup
+
+Create or update `.env.local` in `services/ui-web/`:
+
+```bash
+# Google OAuth
+GOOGLE_CLIENT_ID=your-client-id.apps.googleusercontent.com
+GOOGLE_CLIENT_SECRET=your-client-secret
+
+# NextAuth (use different secret locally)
+NEXTAUTH_SECRET=your-local-development-secret
+NEXTAUTH_URL=http://localhost:3000
+```
+
+#### Step 6: Verify Integration
+
+1. Deploy your changes to Vercel
+2. Visit your app and click "Sign in with Google"
+3. Complete the OAuth flow
+4. Verify user appears in database
+
+#### Troubleshooting
+
+| Issue | Solution |
+|-------|----------|
+| "redirect_uri_mismatch" | Ensure redirect URI exactly matches in Google Console |
+| "access_denied" | Check OAuth consent screen and test users |
+| OAuth not appearing | Verify `GOOGLE_CLIENT_ID` is set |
+| Silent failures | Check browser console and Vercel function logs |
+
 ---
 
 ## 5. Environment Variables
@@ -229,10 +314,10 @@ Audit events are logged for:
 
 ### Pre-Launch
 
-- [ ] Generate secure `NEXTAUTH_SECRET`
-- [ ] Configure Google OAuth with correct redirect URIs
-- [ ] Enable database SSL for production
-- [ ] Set up security headers in Vercel
+- [x] Generate secure `NEXTAUTH_SECRET` ✓ (configured in Vercel)
+- [ ] Configure Google OAuth with correct redirect URIs (see [Section 4.3](#43-google-oauth-setup-guide))
+- [x] Enable database SSL for production ✓ (Vercel Postgres default)
+- [x] Set up security headers in Vercel ✓ (configured in vercel.json)
 - [ ] Review and test authentication flows
 - [ ] Verify password hashing is working
 
