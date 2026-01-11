@@ -4,11 +4,27 @@ import { useEffect, useState } from 'react';
 import { useApiBase } from '@/utils/apiClient';
 import { getActiveApiBase, getApiBaseCandidates } from '@/utils/apiClient';
 
+type AIStatusResponse = {
+  status: 'ok' | 'issues_found';
+  issues: string[];
+  required_variables: Record<string, { key: string; is_set: boolean; value?: string }>;
+  optional_variables: Record<string, { key: string; is_set: boolean; value?: string }>;
+  provider_metadata: {
+    clarification_provider: string;
+    suggestion_provider: string;
+    ai_enabled: boolean;
+    ai_gateway_enabled: boolean;
+    model: string;
+    used_deterministic: boolean;
+  };
+  runtime: string;
+  architecture: string;
+};
+
 type DiagnosticInfo = {
   environment: string;
   apiBase: string;
   candidates: string[];
-  envVars: Record<string, string | undefined>;
   apiHealth: {
     status: 'checking' | 'success' | 'error';
     message?: string;
@@ -18,12 +34,10 @@ type DiagnosticInfo = {
     status: 'checking' | 'success' | 'error';
     message?: string;
   };
-  providerStatus: {
-    status: 'checking' | 'success' | 'error' | 'not_checked';
+  aiStatus: {
+    status: 'checking' | 'success' | 'error';
     message?: string;
-    clarificationProvider?: string;
-    suggestionProvider?: string;
-    aiEnabled?: boolean;
+    data?: AIStatusResponse;
   };
   misconfiguration: {
     detected: boolean;
@@ -38,27 +52,13 @@ export default function DiagnosticsPage() {
     environment: typeof window !== 'undefined' ? window.location.origin : 'unknown',
     apiBase: activeApiBase,
     candidates,
-    envVars: {},
     apiHealth: { status: 'checking' },
     corsTest: { status: 'checking' },
-    providerStatus: { status: 'not_checked' },
+    aiStatus: { status: 'checking' },
     misconfiguration: { detected: false },
   });
 
   useEffect(() => {
-    // Check environment variables (what's actually available in the browser)
-    // IMPORTANT: Next.js only replaces NEXT_PUBLIC_* variables at build time
-    // when using DIRECT property access (e.g., process.env.NEXT_PUBLIC_LIFEPATH_API_BASE_URL).
-    // Dynamic access like process.env[key] does NOT work for NEXT_PUBLIC_* vars.
-    const envVars: Record<string, string | undefined> = {
-      'NEXT_PUBLIC_LIFEPATH_API_BASE_URL': process.env.NEXT_PUBLIC_LIFEPATH_API_BASE_URL,
-      'LIFEPATH_API_BASE_URL': process.env.LIFEPATH_API_BASE_URL,
-      'NEXT_PUBLIC_API_BASE_URL': process.env.NEXT_PUBLIC_API_BASE_URL,
-      'API_BASE_URL': process.env.API_BASE_URL,
-      'NEXT_PUBLIC_GATEWAY_BASE_URL': process.env.NEXT_PUBLIC_GATEWAY_BASE_URL,
-      'GATEWAY_BASE_URL': process.env.GATEWAY_BASE_URL,
-    };
-
     // Detect misconfiguration: external URL being used on Vercel deployment
     const currentApiBase = getActiveApiBase();
     const isVercelDeployment = 
@@ -88,7 +88,6 @@ export default function DiagnosticsPage() {
 
     setDiagnostics((prev) => ({
       ...prev,
-      envVars,
       apiBase: currentApiBase,
       candidates: getApiBaseCandidates(),
       misconfiguration,
@@ -105,7 +104,6 @@ export default function DiagnosticsPage() {
     };
 
     // Test API Gateway health endpoint and infer CORS status
-    // If a cross-origin fetch succeeds, CORS is working (browsers block cross-origin requests without proper CORS)
     const testApiHealthAndCors = async () => {
       const baseUrl = getActiveApiBase();
       const crossOrigin = isCrossOrigin(baseUrl);
@@ -127,7 +125,6 @@ export default function DiagnosticsPage() {
               message: 'API Gateway is reachable and healthy',
               response: data,
             },
-            // If health check succeeds on a cross-origin request, CORS is working
             corsTest: crossOrigin
               ? {
                   status: 'success',
@@ -155,7 +152,6 @@ export default function DiagnosticsPage() {
         const errorMessage =
           error instanceof Error ? error.message : 'Unknown error';
         
-        // Check if this looks like a CORS error
         const isCorsError =
           errorMessage.includes('Failed to fetch') ||
           errorMessage.includes('NetworkError') ||
@@ -180,26 +176,58 @@ export default function DiagnosticsPage() {
       }
     };
 
-    // Test API health and CORS, then check provider status
-    const runDiagnostics = async () => {
-      await testApiHealthAndCors();
+    // Check AI status from the diagnostics endpoint
+    const checkAIStatus = async () => {
+      const baseUrl = getActiveApiBase();
       
-      // Check provider status (note: provider metadata is only available in responses that require a budget_id)
-      setDiagnostics((prev) => ({
-        ...prev,
-        providerStatus: {
-          status: 'success',
-          message:
-            'Provider status is determined by Vercel environment variables. Check Vercel logs or API responses to verify.',
-          clarificationProvider: 'Check Vercel logs',
-          suggestionProvider: 'Check Vercel logs',
-          aiEnabled: undefined,
-        },
-      }));
+      try {
+        const response = await fetch(`${baseUrl}/diagnostics/env`, {
+          method: 'GET',
+          headers: {
+            Accept: 'application/json',
+          },
+        });
+
+        if (response.ok) {
+          const data: AIStatusResponse = await response.json();
+          setDiagnostics((prev) => ({
+            ...prev,
+            aiStatus: {
+              status: 'success',
+              data,
+            },
+          }));
+        } else {
+          setDiagnostics((prev) => ({
+            ...prev,
+            aiStatus: {
+              status: 'error',
+              message: `Failed to fetch AI status: ${response.status} ${response.statusText}`,
+            },
+          }));
+        }
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        setDiagnostics((prev) => ({
+          ...prev,
+          aiStatus: {
+            status: 'error',
+            message: `Failed to check AI status: ${errorMessage}`,
+          },
+        }));
+      }
+    };
+
+    // Run all diagnostics
+    const runDiagnostics = async () => {
+      await Promise.all([testApiHealthAndCors(), checkAIStatus()]);
     };
 
     runDiagnostics();
   }, [activeApiBase, candidates]);
+
+  const aiData = diagnostics.aiStatus.data;
+  const aiEnabled = aiData?.provider_metadata?.ai_enabled ?? false;
 
   return (
     <div className="mx-auto max-w-4xl space-y-6">
@@ -263,6 +291,120 @@ export default function DiagnosticsPage() {
         </div>
       )}
 
+      {/* AI Status - Primary section */}
+      <div className={`card ${aiEnabled ? 'border-emerald-500/50 bg-emerald-500/10' : 'border-amber-500/50 bg-amber-500/10'}`}>
+        <h3 className={`text-xl font-semibold mb-4 ${aiEnabled ? 'text-emerald-300' : 'text-amber-300'}`}>
+          AI Status
+        </h3>
+        <div className="space-y-3">
+          {diagnostics.aiStatus.status === 'checking' && (
+            <div className="text-white/70">Checking AI configuration...</div>
+          )}
+          {diagnostics.aiStatus.status === 'error' && (
+            <div>
+              <div className="text-red-400 mb-2">Unable to check AI status: {diagnostics.aiStatus.message}</div>
+            </div>
+          )}
+          {diagnostics.aiStatus.status === 'success' && aiData && (
+            <div className="space-y-4">
+              {/* Main status indicator */}
+              <div className="flex items-center gap-3">
+                <div className={`w-3 h-3 rounded-full ${aiEnabled ? 'bg-emerald-400' : 'bg-amber-400'}`} />
+                <span className={`font-medium ${aiEnabled ? 'text-emerald-400' : 'text-amber-400'}`}>
+                  {aiEnabled ? 'AI is enabled and working' : 'AI is disabled (using deterministic fallback)'}
+                </span>
+              </div>
+
+              {/* Provider details */}
+              <div className="grid grid-cols-2 gap-4 text-sm">
+                <div>
+                  <div className="text-white/50 mb-1">Clarification Provider:</div>
+                  <div className={`font-mono ${aiData.provider_metadata.clarification_provider === 'openai' ? 'text-emerald-400' : 'text-amber-400'}`}>
+                    {aiData.provider_metadata.clarification_provider}
+                  </div>
+                </div>
+                <div>
+                  <div className="text-white/50 mb-1">Suggestion Provider:</div>
+                  <div className={`font-mono ${aiData.provider_metadata.suggestion_provider === 'openai' ? 'text-emerald-400' : 'text-amber-400'}`}>
+                    {aiData.provider_metadata.suggestion_provider}
+                  </div>
+                </div>
+                <div>
+                  <div className="text-white/50 mb-1">Model:</div>
+                  <div className="font-mono text-white">
+                    {aiData.provider_metadata.model}
+                  </div>
+                </div>
+                <div>
+                  <div className="text-white/50 mb-1">AI Gateway:</div>
+                  <div className={`font-mono ${aiData.provider_metadata.ai_gateway_enabled ? 'text-emerald-400' : 'text-white/60'}`}>
+                    {aiData.provider_metadata.ai_gateway_enabled ? 'Enabled' : 'Not enabled'}
+                  </div>
+                </div>
+              </div>
+
+              {/* Issues */}
+              {aiData.issues && aiData.issues.length > 0 && (
+                <div className="mt-3 p-3 bg-black/30 rounded">
+                  <div className="text-amber-300 font-semibold mb-2">Configuration Notes:</div>
+                  <ul className="space-y-1 text-sm text-white/80">
+                    {aiData.issues.map((issue, idx) => (
+                      <li key={idx} className="flex items-start gap-2">
+                        <span className="text-amber-400">•</span>
+                        {issue}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {/* Key variables status */}
+              <div className="mt-3">
+                <div className="text-white/50 text-sm mb-2">Key Environment Variables:</div>
+                <div className="grid grid-cols-2 gap-2 text-xs font-mono">
+                  <div className="flex items-center gap-2">
+                    <span className={aiData.required_variables?.OPENAI_API_KEY?.is_set ? 'text-emerald-400' : 'text-red-400'}>
+                      {aiData.required_variables?.OPENAI_API_KEY?.is_set ? '✓' : '✗'}
+                    </span>
+                    <span className="text-white/70">OPENAI_API_KEY</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className={aiData.required_variables?.OPENAI_MODEL?.is_set ? 'text-emerald-400' : 'text-white/50'}>
+                      {aiData.required_variables?.OPENAI_MODEL?.is_set ? '✓' : '○'}
+                    </span>
+                    <span className="text-white/70">OPENAI_MODEL</span>
+                    {!aiData.required_variables?.OPENAI_MODEL?.is_set && (
+                      <span className="text-white/40">(defaults to gpt-4o)</span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className={aiData.required_variables?.POSTGRES_URL?.is_set ? 'text-emerald-400' : 'text-white/50'}>
+                      {aiData.required_variables?.POSTGRES_URL?.is_set ? '✓' : '○'}
+                    </span>
+                    <span className="text-white/70">POSTGRES_URL</span>
+                    {!aiData.required_variables?.POSTGRES_URL?.is_set && (
+                      <span className="text-white/40">(using in-memory)</span>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Help for disabled AI */}
+              {!aiEnabled && (
+                <div className="mt-4 p-3 bg-amber-500/10 border border-amber-500/30 rounded">
+                  <div className="text-amber-300 font-semibold mb-2">To enable AI features:</div>
+                  <ol className="list-decimal list-inside space-y-1 text-sm text-white/80">
+                    <li>Go to <strong className="text-white">Vercel Dashboard</strong> → Your Project → <strong className="text-white">Settings</strong> → <strong className="text-white">Environment Variables</strong></li>
+                    <li>Add <code className="bg-black/30 px-1 rounded">OPENAI_API_KEY</code> with your OpenAI API key</li>
+                    <li><strong className="text-white">Redeploy</strong> your application</li>
+                  </ol>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+
       {/* Environment Info */}
       <div className="card">
         <h3 className="text-xl font-semibold text-white mb-4">Environment</h3>
@@ -308,33 +450,6 @@ export default function DiagnosticsPage() {
               ))}
             </ul>
           </div>
-        </div>
-      </div>
-
-      {/* Environment Variables */}
-      <div className="card">
-        <h3 className="text-xl font-semibold text-white mb-4">Environment Variables</h3>
-        <div className="space-y-2">
-          <p className="text-sm text-white/70 mb-3">
-            These are the environment variables accessible in the browser. NEXT_PUBLIC_*
-            variables are embedded at build time.
-          </p>
-          <div className="space-y-2 font-mono text-sm">
-            {Object.entries(diagnostics.envVars).map(([key, value]) => (
-              <div key={key} className="flex gap-4">
-                <span className="text-white/50 min-w-[200px]">{key}:</span>
-                <span className={value ? 'text-emerald-400' : 'text-red-400'}>
-                  {value || '(not set)'}
-                </span>
-              </div>
-            ))}
-          </div>
-          {Object.keys(diagnostics.envVars).length === 0 && (
-            <p className="text-sm text-red-400">
-              No environment variables detected. This may indicate they were not set at build
-              time.
-            </p>
-          )}
         </div>
       </div>
 
@@ -402,67 +517,6 @@ export default function DiagnosticsPage() {
         </div>
       </div>
 
-      {/* Provider Status */}
-      <div className="card">
-        <h3 className="text-xl font-semibold text-white mb-4">Backend Provider Status</h3>
-        <div className="space-y-2">
-          {diagnostics.providerStatus.status === 'not_checked' && (
-            <div className="text-white/70">Provider status check not started</div>
-          )}
-          {diagnostics.providerStatus.status === 'checking' && (
-            <div className="text-white/70">Checking provider configuration...</div>
-          )}
-          {diagnostics.providerStatus.status === 'success' && (
-            <div>
-              <div className="text-sm text-white/70 mb-3">
-                {diagnostics.providerStatus.message}
-              </div>
-              <div className="space-y-2 text-sm">
-                <div>
-                  <span className="text-white/50">To verify OpenAI is enabled:</span>
-                </div>
-                <ol className="list-decimal list-inside space-y-2 text-white/80 ml-2">
-                  <li>
-                    <strong className="text-white">Check Diagnostics Endpoint:</strong> Visit{' '}
-                    <a href="/api/diagnostics/env" className="text-emerald-400 underline" target="_blank">/api/diagnostics/env</a>
-                    {' '}to see the current configuration.
-                  </li>
-                  <li>
-                    <strong className="text-white">Check API Responses:</strong> When you use the
-                    app, the API returns `provider_metadata` in responses. Look for:
-                    <pre className="bg-white/5 p-2 rounded mt-1 text-xs overflow-auto">
-                      {JSON.stringify(
-                        {
-                          provider_metadata: {
-                            clarification_provider: 'openai',
-                            suggestion_provider: 'openai',
-                            ai_enabled: true,
-                          },
-                        },
-                        null,
-                        2,
-                      )}
-                    </pre>
-                  </li>
-                </ol>
-                <div className="mt-3 p-2 bg-amber-500/10 border border-amber-500/30 rounded">
-                  <div className="text-amber-300 font-semibold mb-1">Required Vercel Environment Variables:</div>
-                  <ul className="text-xs text-white/80 space-y-1 font-mono">
-                    <li>OPENAI_API_KEY=sk-...</li>
-                    <li>OPENAI_MODEL=gpt-4o (optional, defaults to gpt-4o)</li>
-                    <li>OPENAI_API_BASE=https://api.openai.com/v1 (optional)</li>
-                    <li>POSTGRES_URL (optional, for persistent storage)</li>
-                  </ul>
-                </div>
-              </div>
-            </div>
-          )}
-          {diagnostics.providerStatus.status === 'error' && (
-            <div className="text-red-400">✗ {diagnostics.providerStatus.message}</div>
-          )}
-        </div>
-      </div>
-
       {/* Architecture Info */}
       <div className="card border-emerald-500/30 bg-emerald-500/10">
         <h3 className="text-xl font-semibold text-emerald-300 mb-4">Vercel Serverless Architecture</h3>
@@ -516,4 +570,3 @@ export default function DiagnosticsPage() {
     </div>
   );
 }
-
