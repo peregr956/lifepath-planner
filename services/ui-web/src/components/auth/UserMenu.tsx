@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useSession, signOut } from 'next-auth/react';
 import Link from 'next/link';
+import Image from 'next/image';
 import type { Route } from 'next';
 import { ChevronDown, LogOut, Settings, User } from 'lucide-react';
 import { Button } from '@/components/ui';
@@ -52,10 +53,13 @@ export function UserMenu({ className }: UserMenuProps) {
       >
         {/* Avatar */}
         {user.image ? (
-          <img
+          <Image
             src={user.image}
             alt={user.name || 'User avatar'}
+            width={32}
+            height={32}
             className="h-8 w-8 rounded-full object-cover"
+            unoptimized
           />
         ) : (
           <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary text-sm font-medium text-primary-foreground">

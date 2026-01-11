@@ -2,6 +2,7 @@
 
 import { useSession } from 'next-auth/react';
 import Link from 'next/link';
+import Image from 'next/image';
 import type { Route } from 'next';
 import { ChevronRight, Settings, User } from 'lucide-react';
 
@@ -37,10 +38,13 @@ export default function SettingsPage() {
         <div className="rounded-lg border border-border bg-card p-4">
           <div className="flex items-center gap-4">
             {session.user.image ? (
-              <img
+              <Image
                 src={session.user.image}
                 alt={session.user.name || 'User'}
+                width={48}
+                height={48}
                 className="h-12 w-12 rounded-full object-cover"
+                unoptimized
               />
             ) : (
               <div className="flex h-12 w-12 items-center justify-center rounded-full bg-primary text-lg font-medium text-primary-foreground">

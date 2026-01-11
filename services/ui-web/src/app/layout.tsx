@@ -1,5 +1,7 @@
 import type { Metadata } from 'next';
 import { Inter, JetBrains_Mono } from 'next/font/google';
+import { Analytics } from '@vercel/analytics/next';
+import { SpeedInsights } from '@vercel/speed-insights/next';
 import './globals.css';
 import { AppProviders } from './providers';
 import { TooltipProvider } from '@/components/ui';
@@ -34,6 +36,8 @@ export default function RootLayout({
         <AppProviders>
           <TooltipProvider delayDuration={300}>{children}</TooltipProvider>
         </AppProviders>
+        <Analytics />
+        <SpeedInsights />
       </body>
     </html>
   );
