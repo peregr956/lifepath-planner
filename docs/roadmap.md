@@ -777,7 +777,53 @@ Expected behavior should produce:
 
 ---
 
-## Phase 10 — Budget History & Trends (Weeks 16–19)
+## Phase 9.1 — AI-Account Context Integration (Weeks 19–21)
+
+**Goal**: Transform the AI from a data collector into an interpreter by integrating account-level user profile data into the AI interaction flow, reducing redundant questions while enabling higher-value inquiry.
+
+**Rationale**: With user accounts now in place (Phase 9), the system asks users the same information multiple times—during onboarding, in profile settings, and again during AI interactions. This creates friction and signals that the system doesn't "know" the user. Phase 9.1 establishes a layered context model where account preferences inform AI behavior automatically.
+
+**Design Principles**:
+- **Layered Context Model**: Account context (durable) → Session context (ephemeral) → AI context (transient with confidence signals)
+- **Continuous Enrichment**: Profile grows smarter over time through corroboration, not time-based refresh prompts
+- **Confidence-Based Inference**: AI acts decisively on high-confidence data, probes appropriately on lower-confidence data
+- **Onboarding vs. Ongoing**: First-time users get intentional onboarding; returning users get streamlined flows
+
+**Features**:
+- Account profile extended to store all foundational context fields with confidence metadata
+- Session context auto-hydrated from account profile for authenticated users
+- Onboarding flow for first-time users; streamlined "confirm or customize" for returning users
+- AI prompts restructured with layered context and confidence signals
+- Profile settings expanded with all foundational fields and enrichment visibility
+
+**Implementation Phases**:
+- **9.1.1**: Context Model Foundation — Extend account profile schema with confidence metadata
+- **9.1.2**: Session Hydration — Auto-populate session context from account profile
+- **9.1.3**: UI Flow Optimization — Differentiate onboarding vs. returning user flows
+- **9.1.4**: AI Prompt Enhancement — Restructure prompts with confidence-tagged context
+- **9.1.5**: Profile Settings Expansion — Full foundational fields with enrichment visibility
+
+**Files Likely Affected**:
+- `services/ui-web/src/lib/db.ts` — Account profile schema extension
+- `services/ui-web/src/app/api/user/profile/route.ts` — Profile API expansion
+- `services/ui-web/src/hooks/useBudgetSession.tsx` — Session hydration logic
+- `services/ui-web/src/components/FoundationalQuestions.tsx` — Onboarding vs. returning flow
+- `services/ui-web/src/app/(app)/clarify/page.tsx` — Streamlined flow for complete profiles
+- `services/ui-web/src/lib/ai.ts` — Layered context prompts with confidence signals
+- `services/ui-web/src/app/(app)/settings/profile/page.tsx` — Extended profile UI
+
+**Success Criteria**:
+- Returning users spend less time on data entry than first sessions
+- AI asks more targeted, higher-value questions (inquiry elevation over question filtering)
+- Users perceive the system "knows" them and respects established preferences
+- AI surfaces tensions when budget data contradicts stated preferences
+- Profile enrichment visible over time through repeated interactions
+
+**Detailed Specification**: See [`docs/architecture/phase_9.1_account_context_integration.md`](architecture/phase_9.1_account_context_integration.md) for complete design principles, AI framing, and implementation details.
+
+---
+
+## Phase 10 — Budget History & Trends (Weeks 22–25)
 
 **Goal**: Enable users to track budgets over time, view trends, and compare periods.
 
@@ -1148,17 +1194,18 @@ These phases consolidate advanced features that build on the core platform.
 | 8.5.3 | Strategic Question Design | 13–14 | 2 weeks | Foundational questions first; optimal AI context |
 | 8.5.4 | AI-First Budget Interpretation | 14–15 | 1–2 weeks | AI reads full budget; meaningful labels |
 | 9 | User Accounts | 16–19 | 4 weeks | User retention capability |
-| 10 | Budget History | 20–23 | 4 weeks | Persistent value |
-| 11 | UI/UX Polish | 24–27 | 4 weeks | Professional experience |
-| 12 | Calculators | 28–32 | 5 weeks | Utility features |
-| 13 | Goal Tracking | 33–38 | 6 weeks | Engagement driver |
-| 14 | Projections | 39–46 | 8 weeks | Long-term planning |
-| 15 | Scenarios | 47–50 | 4 weeks | "What if" analysis |
-| 16 | Workflow Integration | 51–54 | 4 weeks | Connected experience |
-| 17 | Account Integration | 55–60 | 6 weeks | Real-time data |
-| 18 | Advanced Planning | 61–64 | 4 weeks | Premium features |
-| 19 | Production Hardening | 65–68 | 4 weeks | Scale & security |
-| 20 | Marketing | 69–72 | 4 weeks | Growth preparation |
+| 9.1 | AI-Account Context Integration | 19–21 | 2–3 weeks | Layered context model; inquiry elevation |
+| 10 | Budget History | 22–25 | 4 weeks | Persistent value |
+| 11 | UI/UX Polish | 26–29 | 4 weeks | Professional experience |
+| 12 | Calculators | 30–34 | 5 weeks | Utility features |
+| 13 | Goal Tracking | 35–40 | 6 weeks | Engagement driver |
+| 14 | Projections | 41–48 | 8 weeks | Long-term planning |
+| 15 | Scenarios | 49–52 | 4 weeks | "What if" analysis |
+| 16 | Workflow Integration | 53–56 | 4 weeks | Connected experience |
+| 17 | Account Integration | 57–62 | 6 weeks | Real-time data |
+| 18 | Advanced Planning | 63–66 | 4 weeks | Premium features |
+| 19 | Production Hardening | 67–70 | 4 weeks | Scale & security |
+| 20 | Marketing | 71–74 | 4 weeks | Growth preparation |
 
 ---
 
@@ -1172,6 +1219,7 @@ These phases consolidate advanced features that build on the core platform.
 | Phase 8.5.3 (Questions) | Foundational questions surfaced early; improved recommendation personalization |
 | Phase 8.5.4 (Interpretation) | AI reads all budget columns; no duplicate labels; description column used |
 | Phase 9 (Accounts) | User registration rate, return user rate |
+| Phase 9.1 (Context Integration) | Reduced data entry time; AI question quality; profile enrichment over time |
 | Phase 10 (History) | Users saving budgets, history view engagement |
 | Phase 11 (UI/UX) | Accessibility score, mobile usage, error rate reduction |
 | Phase 12 (Calculators) | Calculator usage rate |
@@ -1201,7 +1249,9 @@ Phase 8.5.4 (Interpretation) → AI-first budget parsing; meaningful labels for 
     ↓
 Phase 9 (Accounts) → Required for all persistence features
     ↓
-Phase 10 (History) → Required for goal tracking
+Phase 9.1 (Context Integration) → Connects account data to AI; enhances all AI interactions
+    ↓
+Phase 10 (History) → Required for goal tracking; benefits from 9.1 context enrichment
     ↓
 Phase 11 (UI/UX) → Benefits all subsequent phases
     ↓
@@ -1280,15 +1330,17 @@ New entities to add progressively:
 - [`docs/architecture/goal_tracking.md`](architecture/goal_tracking.md) — Goal system design
 - [`docs/architecture/scenario_planning.md`](architecture/scenario_planning.md) — Scenario planning design
 - [`docs/account_integration.md`](account_integration.md) — Account aggregation strategy
+- [`docs/architecture/phase_9.1_account_context_integration.md`](architecture/phase_9.1_account_context_integration.md) — Phase 9.1 detailed design specification
 
 ---
 
 ## Next Steps
 
-1. **Begin Phase 10** — Budget History & Trends (budget snapshots, trend analysis, history dashboard)
-2. **Create detailed tickets** — Break remaining phases into specific tasks
-3. **Set up project tracking** — Use project management tool for phase tracking
-4. **Regular roadmap reviews** — Update quarterly based on user feedback and market changes
+1. **Begin Phase 9.1** — AI-Account Context Integration (layered context model, session hydration, prompt enhancement)
+2. **Then Phase 10** — Budget History & Trends (budget snapshots, trend analysis, history dashboard)
+3. **Create detailed tickets** — Break remaining phases into specific tasks
+4. **Set up project tracking** — Use project management tool for phase tracking
+5. **Regular roadmap reviews** — Update quarterly based on user feedback and market changes
 
 ### Completed
 

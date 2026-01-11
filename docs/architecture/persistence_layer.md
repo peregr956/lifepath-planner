@@ -4,6 +4,8 @@
 
 This document describes the persistence layer architecture for LifePath Planner, including both implemented features and future extensions for budget history tracking, trend analysis, and user accounts.
 
+> **See Also**: [Phase 9.1: AI-Account Context Integration](phase_9.1_account_context_integration.md) for the layered context model that extends account profiles with confidence metadata and continuous enrichment.
+
 ---
 
 ## Part 1: Implemented Features

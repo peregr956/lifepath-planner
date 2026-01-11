@@ -8,6 +8,8 @@ The AI clarification layer fills in critical information that is not present in 
 
 The clarification layer enables advisor-quality reasoning by ensuring the optimization engine has correct inputs.
 
+> **Note**: This specification describes the MVP clarification behavior. For authenticated users with account profiles, the AI receives additional context that informs question generation. See [Phase 9.1: AI-Account Context Integration](architecture/phase_9.1_account_context_integration.md) for the layered context model, confidence-based inference, and inquiry elevation patterns that extend this base specification.
+
 ---
 
 ## 1. Question Domains
