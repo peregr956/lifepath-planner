@@ -396,8 +396,16 @@ Success Criteria:
 /**
  * Build available field IDs section for the prompt
  * These are the fields that can be used in question components
+ * 
+ * Phase 9.1.10: Now excludes profile/preference fields that are already set
+ * in the user's account profile or session context. The AI should only ask
+ * about fields that still need answers.
  */
-function buildValidFieldIds(model: UnifiedBudgetModel): string {
+function buildValidFieldIds(
+  model: UnifiedBudgetModel,
+  accountProfile?: UserProfile | null,
+  hydratedContext?: HydratedFoundationalContext | null
+): string {
   const lines = ['## Available Field IDs'];
 
   // Expense essentials
@@ -410,17 +418,37 @@ function buildValidFieldIds(model: UnifiedBudgetModel): string {
     }
   }
 
-  // Preferences
-  lines.push('\n### Preferences:');
-  lines.push('  - optimization_focus');
-  lines.push('  - primary_income_type');
-  lines.push('  - primary_income_stability');
+  // Check which preference/profile fields are already set
+  const hasOptimizationFocus = accountProfile?.default_optimization_focus || 
+    hydratedContext?.financialPhilosophy?.value;
+  const hasFinancialPhilosophy = accountProfile?.default_financial_philosophy || 
+    hydratedContext?.financialPhilosophy?.value;
+  const hasRiskTolerance = accountProfile?.default_risk_tolerance || 
+    hydratedContext?.riskTolerance?.value;
+  const hasGoalTimeline = accountProfile?.default_goal_timeline || 
+    hydratedContext?.goalTimeline?.value;
 
-  // Profile fields
-  lines.push('\n### Profile:');
-  lines.push('  - financial_philosophy');
-  lines.push('  - risk_tolerance');
-  lines.push('  - goal_timeline');
+  // Preferences - only include if not already set
+  const preferenceFields: string[] = [];
+  if (!hasOptimizationFocus) preferenceFields.push('  - optimization_focus');
+  preferenceFields.push('  - primary_income_type');
+  preferenceFields.push('  - primary_income_stability');
+  
+  if (preferenceFields.length > 0) {
+    lines.push('\n### Preferences:');
+    lines.push(...preferenceFields);
+  }
+
+  // Profile fields - only include if not already set
+  const profileFields: string[] = [];
+  if (!hasFinancialPhilosophy) profileFields.push('  - financial_philosophy');
+  if (!hasRiskTolerance) profileFields.push('  - risk_tolerance');
+  if (!hasGoalTimeline) profileFields.push('  - goal_timeline');
+  
+  if (profileFields.length > 0) {
+    lines.push('\n### Profile (ask only if critical for answering the user\'s question):');
+    lines.push(...profileFields);
+  }
 
   // Debts
   if (model.debts.length > 0) {
@@ -531,7 +559,8 @@ function buildClarificationPrompt(
       ).join('\n')
     : 'No debts detected.';
 
-  const validFieldIds = buildValidFieldIds(model);
+  // Phase 9.1.10: Pass profile/context to exclude already-answered fields
+  const validFieldIds = buildValidFieldIds(model, accountProfile, hydratedContext);
   
   // Build query analysis section for better context
   const queryAnalysisSection = buildQueryAnalysisSection(userQuery);

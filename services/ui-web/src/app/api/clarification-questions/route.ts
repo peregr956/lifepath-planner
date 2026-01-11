@@ -98,10 +98,20 @@ export async function GET(request: NextRequest) {
           };
           hydratedContext = hydrateFromAccountProfile(apiProfile);
           
-          console.log(`[clarification-questions] Loaded account profile for user ${authSession.user.id}`, {
-            hasMetadata: !!accountProfile.profile_metadata,
-            hydratedFields: Object.keys(hydratedContext).length,
-          });
+        console.log(`[clarification-questions] Loaded account profile for user ${authSession.user.id}`, {
+          hasMetadata: !!accountProfile.profile_metadata,
+          hydratedFields: Object.keys(hydratedContext).length,
+          // Phase 9.1.10: Log which profile fields are set to verify they're excluded from questions
+          profileFieldsSet: {
+            financial_philosophy: accountProfile.default_financial_philosophy,
+            optimization_focus: accountProfile.default_optimization_focus,
+            risk_tolerance: accountProfile.default_risk_tolerance,
+            goal_timeline: accountProfile.default_goal_timeline,
+            life_stage: accountProfile.default_life_stage,
+            emergency_fund: accountProfile.default_emergency_fund_status,
+            primary_goal: accountProfile.default_primary_goal,
+          },
+        });
         }
       }
     } catch (error) {
