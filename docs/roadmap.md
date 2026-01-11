@@ -1330,6 +1330,33 @@ Phase 20 (Marketing) → Requires stable product
 
 ## Technical Considerations
 
+### Future Technical Improvements
+
+#### Prisma ORM Migration (Optional)
+
+**Status**: Planned (Low Priority)
+**Rationale**: The current raw `pg` library setup works well for the application's scale. Prisma migration would provide benefits but is not required.
+
+**Current State**:
+- Database: Vercel Postgres with raw `pg` library
+- Schema: SQL-in-code via `initDatabase()` in `src/lib/db.ts`
+- Types: Manual TypeScript interfaces
+
+**Benefits of Migration**:
+- Auto-generated type-safe queries
+- Migration history with rollback capability
+- Prisma Studio for visual database browsing
+- Better autocomplete and refactoring support
+
+**Tradeoffs**:
+- +200-400ms cold start penalty (significant for serverless)
+- Additional build step (`prisma generate`)
+- Migration effort across all database code
+
+**Recommendation**: Consider migration when schema complexity increases significantly or when team productivity would meaningfully improve from better type safety.
+
+---
+
 ### Architecture
 
 The system uses a **unified Vercel serverless architecture**:

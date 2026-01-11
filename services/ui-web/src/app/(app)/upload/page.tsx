@@ -1,7 +1,7 @@
 'use client';
 
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { useForm } from 'react-hook-form';
 import { useRouter } from 'next/navigation';
 import { useBudgetSession } from '@/hooks/useBudgetSession';
@@ -13,28 +13,6 @@ import { Upload, FileSpreadsheet, CheckCircle2, AlertCircle, X } from 'lucide-re
 type UploadFormValues = {
   file: File | null;
 };
-
-/**
- * Safe navigation wrapper with retry logic
- */
-async function safeNavigate(
-  router: ReturnType<typeof useRouter>,
-  path: string,
-  maxRetries = 2
-): Promise<boolean> {
-  for (let attempt = 0; attempt <= maxRetries; attempt++) {
-    try {
-      router.push(path as Parameters<typeof router.push>[0]);
-      return true;
-    } catch (error) {
-      console.error(`Navigation attempt ${attempt + 1} failed:`, error);
-      if (attempt < maxRetries) {
-        await new Promise((resolve) => setTimeout(resolve, 100));
-      }
-    }
-  }
-  return false;
-}
 
 function getFileIcon(fileName: string) {
   const extension = fileName.split('.').pop()?.toLowerCase();
@@ -60,10 +38,13 @@ function formatFileSize(bytes: number): string {
 export default function UploadPage() {
   const router = useRouter();
   const queryClient = useQueryClient();
-  const { saveSession } = useBudgetSession();
-  const [navigationError, setNavigationError] = useState<string | null>(null);
+  const { saveSession, session, hydrated } = useBudgetSession();
   const [isDragging, setIsDragging] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
+  
+  // Track when we should navigate after successful upload
+  const [pendingNavigation, setPendingNavigation] = useState<string | null>(null);
+  const navigationAttemptedRef = useRef(false);
 
   const {
     handleSubmit,
@@ -76,6 +57,17 @@ export default function UploadPage() {
       file: null,
     },
   });
+
+  // Navigate to clarify once session is hydrated with the new budgetId
+  useEffect(() => {
+    if (!pendingNavigation || !hydrated || navigationAttemptedRef.current) return;
+    
+    // Check if session has the budgetId we're waiting for
+    if (session?.budgetId === pendingNavigation) {
+      navigationAttemptedRef.current = true;
+      router.push('/clarify');
+    }
+  }, [pendingNavigation, session?.budgetId, hydrated, router]);
 
   const mutation = useMutation({
     mutationFn: async (file: File) => {
@@ -97,22 +89,24 @@ export default function UploadPage() {
       }
     },
     onSuccess: async (response) => {
-      setNavigationError(null);
+      // Save session first
       saveSession({
         budgetId: response.budgetId,
         detectedFormat: response.detectedFormat ?? undefined,
         summaryPreview: response.summaryPreview ?? undefined,
         clarified: false,
       });
+      
+      // Invalidate queries for the new budget
       await queryClient.invalidateQueries({ queryKey: ['clarification-questions', response.budgetId] });
       await queryClient.invalidateQueries({ queryKey: ['summary-and-suggestions', response.budgetId] });
 
-      const success = await safeNavigate(router, '/clarify');
-      if (!success) {
-        setNavigationError(
-          'Your budget was uploaded successfully, but navigation failed. Please click the Clarify step above to continue.'
-        );
-      }
+      // Set pending navigation - the useEffect will handle actual navigation
+      // once the session is confirmed to be updated
+      setPendingNavigation(response.budgetId);
+      
+      // Also try immediate navigation as a fallback
+      router.push('/clarify');
     },
     onError: () => {
       setUploadProgress(0);
@@ -313,25 +307,6 @@ export default function UploadPage() {
                       )}
                   </div>
                 </div>
-              </div>
-            )}
-
-            {/* Navigation error */}
-            {navigationError && (
-              <div className="rounded-lg border border-warning/30 bg-warning/10 p-4">
-                <p className="text-sm text-warning">{navigationError}</p>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="mt-2"
-                  onClick={() => {
-                    setNavigationError(null);
-                    router.push('/clarify');
-                  }}
-                >
-                  Try again
-                </Button>
               </div>
             )}
 
