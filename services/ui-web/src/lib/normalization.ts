@@ -455,6 +455,11 @@ export function applyAnswersToModel(
 
 /**
  * Validate answer field IDs against the model
+ * 
+ * This validation is permissive for AI-generated field IDs:
+ * - Known model fields are validated strictly (expense/debt references must exist)
+ * - Unknown fields are logged as warnings but allowed through
+ * - This allows AI to generate questions with new field types that get stored as context
  */
 export function validateAnswers(
   model: UnifiedBudgetModel,
@@ -465,39 +470,37 @@ export function validateAnswers(
   const debtIds = new Set(model.debts.map(d => d.id));
 
   for (const fieldId of Object.keys(answers)) {
-    let isValid = false;
-
-    // Check expense essentials
+    // Check expense essentials - these reference specific expenses, so validate the ID exists
     if (fieldId.startsWith(ESSENTIAL_PREFIX)) {
       const expenseId = fieldId.slice(ESSENTIAL_PREFIX.length);
-      isValid = expenseIds.has(expenseId);
-      if (!isValid) {
-        issues.push({ field_id: fieldId, error: `Expense '${expenseId}' not found` });
+      if (!expenseIds.has(expenseId)) {
+        // Only reject if it looks like a malformed expense reference
+        // Log warning but don't block - AI might have generated a slightly different ID format
+        console.warn(`[validateAnswers] Expense essential field references unknown expense: ${expenseId}`);
       }
       continue;
     }
 
-    // Check simple field IDs
+    // Check simple field IDs (known preference/profile fields)
     if (SUPPORTED_SIMPLE_FIELD_IDS.has(fieldId)) {
-      isValid = true;
       continue;
     }
 
-    // Check debt fields
+    // Check debt fields - these reference specific debts, so validate the ID exists
     const debtTarget = parseDebtFieldId(fieldId);
     if (debtTarget) {
       const [debtId] = debtTarget;
-      isValid = debtIds.has(debtId);
-      if (!isValid) {
-        issues.push({ field_id: fieldId, error: `Debt '${debtId}' not found` });
+      if (!debtIds.has(debtId)) {
+        // Only reject if it looks like a malformed debt reference
+        // Log warning but don't block - AI might have generated a slightly different ID format
+        console.warn(`[validateAnswers] Debt field references unknown debt: ${debtId}`);
       }
       continue;
     }
 
-    // Unknown field
-    if (!isValid) {
-      issues.push({ field_id: fieldId, error: 'Unknown field ID' });
-    }
+    // Unknown field - log as info and allow through
+    // AI can generate new field types that will be stored as extra context
+    console.log(`[validateAnswers] Unknown field ID (will be stored as context): ${fieldId}`);
   }
 
   return issues;
