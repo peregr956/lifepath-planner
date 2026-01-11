@@ -1,6 +1,6 @@
 'use client';
 
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, useRef } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useSession } from 'next-auth/react';
@@ -104,6 +104,8 @@ type BudgetSessionContextValue = {
   isFieldFromAccountProfile: (field: keyof HydratedFoundationalContext) => boolean;
   getProfileCompletionPercent: () => number;
   hasHydratedFields: boolean;
+  // Phase 9.1.7: Force re-fetch profile data
+  refreshProfileHydration: () => void;
 };
 
 const BudgetSessionContext = createContext<BudgetSessionContextValue | undefined>(undefined);
@@ -125,7 +127,6 @@ export function BudgetSessionProvider({ children }: { children: ReactNode }) {
   const { data: authSession, status: authStatus } = useSession();
   const [isProfileHydrating, setIsProfileHydrating] = useState(false);
   const [profileHydrationComplete, setProfileHydrationComplete] = useState(false);
-  const hydrationAttemptedRef = useRef(false);
 
   const persist = useCallback((value: BudgetSession | null) => {
     if (typeof window === 'undefined') return;
@@ -481,17 +482,19 @@ export function BudgetSessionProvider({ children }: { children: ReactNode }) {
 
   // Phase 9.1.2: Auto-hydrate when authenticated and session exists
   // Phase 9.1.6: Always re-fetch profile to ensure fresh data when user completes profile in Settings
+  // Phase 9.1.7: Removed ref-based guard to allow re-hydration after profile updates
   useEffect(() => {
-    // Only attempt hydration once per page load
-    if (hydrationAttemptedRef.current) return;
+    // Prevent concurrent fetches
+    if (isProfileHydrating) return;
+    // Already hydrated in this render cycle and profile context exists
+    if (profileHydrationComplete && session?.hydratedFoundationalContext) return;
     // Wait for both session hydration and auth to be ready
     if (!hydrated || authStatus === 'loading') return;
     // Only hydrate if we have a session and user is authenticated
     if (!session || authStatus !== 'authenticated') return;
 
-    hydrationAttemptedRef.current = true;
     hydrateFromProfile();
-  }, [hydrated, authStatus, session, hydrateFromProfile]);
+  }, [hydrated, authStatus, session, isProfileHydrating, profileHydrationComplete, hydrateFromProfile]);
 
   // Phase 9.1.2: Helper to check if a field is from account profile
   const isFieldFromAccountProfile = useCallback(
@@ -511,6 +514,12 @@ export function BudgetSessionProvider({ children }: { children: ReactNode }) {
     () => hasAccountHydratedFields(session?.hydratedFoundationalContext),
     [session?.hydratedFoundationalContext]
   );
+
+  // Phase 9.1.7: Force re-fetch profile data (useful when navigating to clarify after profile update)
+  const refreshProfileHydration = useCallback(() => {
+    setProfileHydrationComplete(false);
+    // This will trigger the auto-hydration effect to re-run
+  }, []);
 
   const value = useMemo<BudgetSessionContextValue>(
     () => ({
@@ -536,6 +545,7 @@ export function BudgetSessionProvider({ children }: { children: ReactNode }) {
       isFieldFromAccountProfile,
       getProfileCompletionPercent,
       hasHydratedFields,
+      refreshProfileHydration,
     }),
     [
       session,
@@ -558,6 +568,7 @@ export function BudgetSessionProvider({ children }: { children: ReactNode }) {
       isFieldFromAccountProfile,
       getProfileCompletionPercent,
       hasHydratedFields,
+      refreshProfileHydration,
     ],
   );
 

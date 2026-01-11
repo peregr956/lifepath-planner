@@ -58,6 +58,8 @@ export default function ClarifyPage() {
     profileHydrationComplete,
     getProfileCompletionPercent,
     hasHydratedFields,
+    // Phase 9.1.7: Force re-fetch profile
+    refreshProfileHydration,
   } = useBudgetSession();
   const budgetId = session?.budgetId;
   const existingUserQuery = session?.userQuery;
@@ -101,6 +103,14 @@ export default function ClarifyPage() {
       router.replace('/upload');
     }
   }, [budgetId, hydrated, router]);
+
+  // Phase 9.1.7: Refresh profile hydration when entering foundational step
+  // This ensures we have the latest profile data after user updates in Settings
+  useEffect(() => {
+    if (step === 'foundational' && authStatus === 'authenticated') {
+      refreshProfileHydration();
+    }
+  }, [step, authStatus, refreshProfileHydration]);
 
   // Phase 9.1.3: Auto-advance for users with 100% complete profiles
   // Skip foundational step and go directly to questions
