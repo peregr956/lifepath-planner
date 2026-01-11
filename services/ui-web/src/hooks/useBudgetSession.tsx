@@ -480,22 +480,18 @@ export function BudgetSessionProvider({ children }: { children: ReactNode }) {
   }, [authStatus, authSession, persist]);
 
   // Phase 9.1.2: Auto-hydrate when authenticated and session exists
+  // Phase 9.1.6: Always re-fetch profile to ensure fresh data when user completes profile in Settings
   useEffect(() => {
-    // Only attempt hydration once per session
+    // Only attempt hydration once per page load
     if (hydrationAttemptedRef.current) return;
     // Wait for both session hydration and auth to be ready
     if (!hydrated || authStatus === 'loading') return;
     // Only hydrate if we have a session and user is authenticated
     if (!session || authStatus !== 'authenticated') return;
-    // Don't re-hydrate if already done
-    if (session.profileHydrated) {
-      setProfileHydrationComplete(true);
-      return;
-    }
 
     hydrationAttemptedRef.current = true;
     hydrateFromProfile();
-  }, [hydrated, authStatus, session, session?.profileHydrated, hydrateFromProfile]);
+  }, [hydrated, authStatus, session, hydrateFromProfile]);
 
   // Phase 9.1.2: Helper to check if a field is from account profile
   const isFieldFromAccountProfile = useCallback(
