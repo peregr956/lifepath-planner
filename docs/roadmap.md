@@ -679,7 +679,7 @@ Stage 2: AI-Generated Clarification Questions
 
 ---
 
-## Phase 8.5.4 — AI-First Budget Interpretation (Weeks 14–15) ⬅️ CURRENT
+## Phase 8.5.4 — AI-First Budget Interpretation (Weeks 14–15) ✅ Complete
 
 **Goal**: Replace the over-constrained two-stage parsing flow with a single AI-first interpretation step that reads the entire raw budget and returns a complete, machine-readable structured model with meaningful, distinguishable labels.
 
@@ -726,11 +726,11 @@ Expected behavior should produce:
 
 ### Deliverables
 
-- [ ] Create AI budget interpretation function with CORE-compliant prompts
-- [ ] Integrate into upload flow with graceful fallback to deterministic
-- [ ] Remove/simplify redundant normalization constraints
-- [ ] Test with example budget verifying description column is used
-- [ ] Expenses labeled with most descriptive identifier available
+- [x] Create AI budget interpretation function with CORE-compliant prompts
+- [x] Integrate into upload flow with graceful fallback to deterministic
+- [x] Remove/simplify redundant normalization constraints
+- [x] Test with example budget verifying description column is used
+- [x] Expenses labeled with most descriptive identifier available
 
 **Success Criteria**:
 - AI reads all columns including description
@@ -1285,11 +1285,10 @@ New entities to add progressively:
 
 ## Next Steps
 
-1. **Begin Phase 8.5.4** — Implement AI-first budget interpretation to replace over-constrained deterministic parsing
-2. **Select auth provider** — Evaluate Clerk, Auth0, NextAuth.js for Phase 9
-3. **Create detailed tickets** — Break remaining phases into specific tasks
-4. **Set up project tracking** — Use project management tool for phase tracking
-5. **Regular roadmap reviews** — Update quarterly based on user feedback and market changes
+1. **Begin Phase 9** — User Accounts & Authentication (recommended: NextAuth.js for zero cost)
+2. **Create detailed tickets** — Break remaining phases into specific tasks
+3. **Set up project tracking** — Use project management tool for phase tracking
+4. **Regular roadmap reviews** — Update quarterly based on user feedback and market changes
 
 ### Completed
 
@@ -1297,3 +1296,4 @@ New entities to add progressively:
 - ✅ **Phase 8.5.1** — AI Generalizability (January 2026)
 - ✅ **Phase 8.5.2** — Prompt Engineering Best Practices (January 2026)
 - ✅ **Phase 8.5.3** — Strategic Question Design (January 2026)
+- ✅ **Phase 8.5.4** — AI-First Budget Interpretation (January 2026)
