@@ -258,6 +258,7 @@ const SUGGESTION_SCHEMA = {
 
 /**
  * Get OpenAI client configuration
+ * Phase 9.1.12: Added timeout and retry settings to handle transient network errors
  */
 function getOpenAIClient(): OpenAI | null {
   if (providerSettings.providerName !== 'openai' || !providerSettings.openai) {
@@ -267,6 +268,9 @@ function getOpenAIClient(): OpenAI | null {
   return new OpenAI({
     apiKey: providerSettings.openai.apiKey,
     baseURL: providerSettings.openai.apiBase,
+    // Phase 9.1.12: Add timeout and retries to handle transient gateway errors
+    timeout: providerSettings.timeoutSeconds * 1000, // Convert to milliseconds
+    maxRetries: 3, // Retry up to 3 times on transient errors (ECONNRESET, etc.)
   });
 }
 
@@ -1046,9 +1050,9 @@ export async function generateClarificationQuestionsWithContext(
   const client = getOpenAIClient();
   
   if (!client) {
-    // Fall back to deterministic questions
+    // Fall back to deterministic questions (Phase 9.1.12: pass context to skip already-answered questions)
     return {
-      questions: generateDeterministicQuestions(model, maxQuestions),
+      questions: generateDeterministicQuestions(model, maxQuestions, accountProfile, hydratedContext),
     };
   }
 
@@ -1089,7 +1093,7 @@ export async function generateClarificationQuestionsWithContext(
     if (!toolCalls || toolCalls.length === 0) {
       console.warn('[AI] No tool calls in response, falling back to deterministic');
       return {
-        questions: generateDeterministicQuestions(model, maxQuestions),
+        questions: generateDeterministicQuestions(model, maxQuestions, accountProfile, hydratedContext),
       };
     }
 
@@ -1105,7 +1109,7 @@ export async function generateClarificationQuestionsWithContext(
   } catch (error) {
     console.error('[AI] Error generating clarification questions:', error);
     return {
-      questions: generateDeterministicQuestions(model, maxQuestions),
+      questions: generateDeterministicQuestions(model, maxQuestions, accountProfile, hydratedContext),
     };
   }
 }
@@ -1301,8 +1305,27 @@ export async function generateSuggestions(
  * Generate deterministic clarification questions (fallback)
  * Expanded in Phase 8.5 to include financial philosophy, risk tolerance, and goal timeline.
  */
-function generateDeterministicQuestions(model: UnifiedBudgetModel, maxQuestions: number): QuestionSpec[] {
+/**
+ * Phase 9.1.12: Generate deterministic fallback questions
+ * Now accepts profile context to skip questions that are already answered
+ */
+function generateDeterministicQuestions(
+  model: UnifiedBudgetModel,
+  maxQuestions: number,
+  accountProfile?: UserProfile | null,
+  hydratedContext?: HydratedFoundationalContext | null
+): QuestionSpec[] {
   const questions: QuestionSpec[] = [];
+
+  // Check which profile fields are already set
+  const hasOptimizationFocus = accountProfile?.default_optimization_focus || 
+    model.preferences?.optimization_focus !== 'balanced'; // 'balanced' is the default
+  const hasFinancialPhilosophy = accountProfile?.default_financial_philosophy || 
+    hydratedContext?.financialPhilosophy?.value;
+  const hasRiskTolerance = accountProfile?.default_risk_tolerance || 
+    hydratedContext?.riskTolerance?.value;
+  const hasGoalTimeline = accountProfile?.default_goal_timeline || 
+    hydratedContext?.goalTimeline?.value;
 
   // Ask about essential/flexible for expenses with null values
   const unclarifiedExpenses = model.expenses.filter(e => e.essential === null);
@@ -1319,65 +1342,73 @@ function generateDeterministicQuestions(model: UnifiedBudgetModel, maxQuestions:
     });
   }
 
-  // Ask about optimization focus
-  questions.push({
-    question_id: 'optimization_focus',
-    prompt: 'What should we prioritize for your budget optimization?',
-    components: [{
-      component: 'dropdown' as const,
-      field_id: 'optimization_focus',
-      label: 'Optimization Focus',
-      binding: 'preferences.optimization_focus',
-      options: ['debt', 'savings', 'balanced'],
-    }],
-  });
+  // Ask about optimization focus only if not already set
+  if (!hasOptimizationFocus) {
+    questions.push({
+      question_id: 'optimization_focus',
+      prompt: 'What should we prioritize for your budget optimization?',
+      components: [{
+        component: 'dropdown' as const,
+        field_id: 'optimization_focus',
+        label: 'Optimization Focus',
+        binding: 'preferences.optimization_focus',
+        options: ['debt', 'savings', 'balanced'],
+      }],
+    });
+  }
 
-  // Ask about financial philosophy (Phase 8.5: Expanded options)
-  questions.push({
-    question_id: 'financial_philosophy',
-    prompt: 'Which budgeting or financial approach do you follow (if any)?',
-    components: [{
-      component: 'dropdown' as const,
-      field_id: 'financial_philosophy',
-      label: 'Financial Philosophy',
-      binding: 'profile.financial_philosophy',
-      options: [
-        'neutral',           // No specific framework
-        'r_personalfinance', // Reddit r/personalfinance flowchart
-        'money_guy',         // Money Guy Show FOO
-        'dave_ramsey',       // Dave Ramsey Baby Steps
-        'bogleheads',        // Bogleheads
-        'fire',              // FIRE movement
-        'custom',            // I have my own approach
-      ],
-    }],
-  });
+  // Ask about financial philosophy only if not already set (Phase 8.5: Expanded options)
+  if (!hasFinancialPhilosophy) {
+    questions.push({
+      question_id: 'financial_philosophy',
+      prompt: 'Which budgeting or financial approach do you follow (if any)?',
+      components: [{
+        component: 'dropdown' as const,
+        field_id: 'financial_philosophy',
+        label: 'Financial Philosophy',
+        binding: 'profile.financial_philosophy',
+        options: [
+          'neutral',           // No specific framework
+          'r_personalfinance', // Reddit r/personalfinance flowchart
+          'money_guy',         // Money Guy Show FOO
+          'dave_ramsey',       // Dave Ramsey Baby Steps
+          'bogleheads',        // Bogleheads
+          'fire',              // FIRE movement
+          'custom',            // I have my own approach
+        ],
+      }],
+    });
+  }
 
-  // Ask about risk tolerance (Phase 8.5)
-  questions.push({
-    question_id: 'risk_tolerance',
-    prompt: 'How comfortable are you with financial risk?',
-    components: [{
-      component: 'dropdown' as const,
-      field_id: 'risk_tolerance',
-      label: 'Risk Tolerance',
-      binding: 'profile.risk_tolerance',
-      options: ['conservative', 'moderate', 'aggressive'],
-    }],
-  });
+  // Ask about risk tolerance only if not already set (Phase 8.5)
+  if (!hasRiskTolerance) {
+    questions.push({
+      question_id: 'risk_tolerance',
+      prompt: 'How comfortable are you with financial risk?',
+      components: [{
+        component: 'dropdown' as const,
+        field_id: 'risk_tolerance',
+        label: 'Risk Tolerance',
+        binding: 'profile.risk_tolerance',
+        options: ['conservative', 'moderate', 'aggressive'],
+      }],
+    });
+  }
 
-  // Ask about goal timeline (Phase 8.5)
-  questions.push({
-    question_id: 'goal_timeline',
-    prompt: 'What is your primary financial goal timeframe?',
-    components: [{
-      component: 'dropdown' as const,
-      field_id: 'goal_timeline',
-      label: 'Goal Timeline',
-      binding: 'profile.goal_timeline',
-      options: ['immediate', 'short_term', 'medium_term', 'long_term'],
-    }],
-  });
+  // Ask about goal timeline only if not already set (Phase 8.5)
+  if (!hasGoalTimeline) {
+    questions.push({
+      question_id: 'goal_timeline',
+      prompt: 'What is your primary financial goal timeframe?',
+      components: [{
+        component: 'dropdown' as const,
+        field_id: 'goal_timeline',
+        label: 'Goal Timeline',
+        binding: 'profile.goal_timeline',
+        options: ['immediate', 'short_term', 'medium_term', 'long_term'],
+      }],
+    });
+  }
 
   // Ask about debts if any exist with approximate values
   const approximateDebts = model.debts.filter(d => d.approximate);
