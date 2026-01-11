@@ -1,6 +1,6 @@
 # Phase 9.1: AI-Account Context Integration
 
-> **Status**: Planned  
+> **Status**: In Progress (9.1.1, 9.1.2 Complete)  
 > **Prerequisite**: Phase 9 (User Accounts & Authentication) ✅ Complete  
 > **Roadmap**: See [roadmap.md](../roadmap.md) for timeline and context
 
@@ -10,13 +10,54 @@ Transform the AI from a data collector into an interpreter by establishing a lay
 
 ## Implementation Phases
 
-| Phase | Description | Dependencies |
-|-------|-------------|--------------|
-| 9.1.1 | Extend account profile to store all foundational context fields with confidence metadata | — |
-| 9.1.2 | Implement session context hydration from account profile with override support | 9.1.1 |
-| 9.1.3 | Implement onboarding vs returning user flows with streamlined experience | 9.1.2 |
-| 9.1.4 | Restructure AI prompts with layered context and confidence-based inference | 9.1.2 |
-| 9.1.5 | Expand profile settings UI with all foundational fields and enrichment visibility | 9.1.1 |
+| Phase | Description | Dependencies | Status |
+|-------|-------------|--------------|--------|
+| 9.1.1 | Extend account profile to store all foundational context fields with confidence metadata | — | ✅ Complete |
+| 9.1.2 | Implement session context hydration from account profile with override support | 9.1.1 | ✅ Complete |
+| 9.1.3 | Implement onboarding vs returning user flows with streamlined experience | 9.1.2 | Pending |
+| 9.1.4 | Restructure AI prompts with layered context and confidence-based inference | 9.1.2 | Pending |
+| 9.1.5 | Expand profile settings UI with all foundational fields and enrichment visibility | 9.1.1 | Pending |
+
+---
+
+## Phase 9.1.1 Implementation Summary (January 2026)
+
+**Completed:**
+- Extended `UserProfile` in `db.ts` with all foundational fields (`default_primary_goal`, `default_goal_timeline`, `default_life_stage`, `default_emergency_fund_status`)
+- Added `ProfileMetadata` type for per-field confidence tracking (`ConfidenceLevel`, `ContextSource`, `FieldMetadata`)
+- Extended `/api/user/profile` endpoint to support all new fields with validation
+- Database migrations handle adding new columns to existing tables
+
+**Files Modified:**
+- `services/ui-web/src/lib/db.ts`
+- `services/ui-web/src/app/api/user/profile/route.ts`
+- `services/ui-web/src/types/budget.ts`
+
+---
+
+## Phase 9.1.2 Implementation Summary (January 2026)
+
+**Completed:**
+- Added `HydratedValue<T>` and `HydratedFoundationalContext` types for source tracking
+- Created `lib/sessionHydration.ts` with hydration utilities (`hydrateFromAccountProfile`, `mergeSessionExplicit`)
+- Extended `useBudgetSession` hook with auto-hydration on session start for authenticated users
+- Updated `FoundationalQuestions` component to show "Saved" badges for hydrated fields
+- Updated clarify page to pass hydrated context and show loading state during hydration
+
+**Key Features:**
+- **Precedence**: Session-explicit values override account-hydrated values
+- **Source Tracking**: Each field knows if it came from account (`'account'`) or was set this session (`'session_explicit'`)
+- **Visual Feedback**: "Using X saved preferences from your profile" header and per-field "Saved" badges
+- **Backwards Compatibility**: Anonymous users and legacy sessions work unchanged
+
+**Files Created:**
+- `services/ui-web/src/lib/sessionHydration.ts`
+
+**Files Modified:**
+- `services/ui-web/src/types/budget.ts`
+- `services/ui-web/src/hooks/useBudgetSession.tsx`
+- `services/ui-web/src/components/FoundationalQuestions.tsx`
+- `services/ui-web/src/app/(app)/clarify/page.tsx`
 
 ---
 

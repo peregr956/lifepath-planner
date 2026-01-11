@@ -1,8 +1,9 @@
 'use client';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useEffect, useState, useCallback, useRef } from 'react';
+import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
+import { useSession } from 'next-auth/react';
 import type { ClarificationAnswers, FoundationalContext } from '@/types';
 import { ClarificationForm, QueryInput, FoundationalQuestions } from '@/components';
 import { useBudgetSession } from '@/hooks/useBudgetSession';
@@ -12,7 +13,7 @@ import {
   submitUserQuery,
 } from '@/utils/apiClient';
 import { Card, CardContent, Button, Skeleton } from '@/components/ui';
-import { AlertCircle, Loader2, Pencil } from 'lucide-react';
+import { AlertCircle, Loader2, Pencil, UserCircle } from 'lucide-react';
 
 // Phase 8.5.3: Added 'foundational' step between query and questions
 type ClarifyStep = 'query' | 'foundational' | 'questions';
@@ -42,6 +43,7 @@ async function safeNavigate(
 export default function ClarifyPage() {
   const router = useRouter();
   const queryClient = useQueryClient();
+  const { status: authStatus } = useSession();
   const { 
     session, 
     hydrated, 
@@ -50,10 +52,20 @@ export default function ClarifyPage() {
     markReadyForSummary,
     setFoundationalContext,
     markFoundationalCompleted,
+    // Phase 9.1.2: Profile hydration state
+    hydratedContext,
+    isProfileHydrating,
+    profileHydrationComplete,
+    getProfileCompletionPercent,
+    hasHydratedFields,
   } = useBudgetSession();
   const budgetId = session?.budgetId;
   const existingUserQuery = session?.userQuery;
   const foundationalCompleted = session?.foundationalCompleted;
+
+  // Phase 9.1.2: Check if profile is substantially complete (>= 60%)
+  const profileCompletionPercent = useMemo(() => getProfileCompletionPercent(), [getProfileCompletionPercent]);
+  const hasSubstantialProfile = profileCompletionPercent >= 60;
 
   // Phase 8.5.3: Determine initial step based on session state
   const [step, setStep] = useState<ClarifyStep>(() => {
@@ -199,7 +211,11 @@ export default function ClarifyPage() {
   }
 
   // Phase 8.5.3: Render foundational questions step
+  // Phase 9.1.2: Pass hydrated context with source tracking
   if (step === 'foundational') {
+    // Phase 9.1.2: Show loading state while profile is hydrating for authenticated users
+    const showHydrationLoading = authStatus === 'authenticated' && isProfileHydrating && !profileHydrationComplete;
+
     return (
       <div className="flex flex-col gap-4 animate-fade-in">
         {/* Show user's query as context */}
@@ -221,12 +237,28 @@ export default function ClarifyPage() {
           </Card>
         )}
 
-        <FoundationalQuestions
-          initialContext={session?.foundationalContext}
-          onComplete={handleFoundationalComplete}
-          onSkip={handleFoundationalSkip}
-          disabled={!budgetId}
-        />
+        {/* Phase 9.1.2: Show loading while hydrating profile */}
+        {showHydrationLoading ? (
+          <Card>
+            <CardContent className="pt-6">
+              <div className="flex items-center gap-3">
+                <Loader2 className="h-5 w-5 animate-spin text-primary" />
+                <p className="text-sm text-muted-foreground">
+                  Loading your saved preferences…
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+        ) : (
+          <FoundationalQuestions
+            initialContext={session?.foundationalContext}
+            hydratedContext={hydratedContext}
+            onComplete={handleFoundationalComplete}
+            onSkip={handleFoundationalSkip}
+            disabled={!budgetId}
+            showCondensed={hasSubstantialProfile}
+          />
+        )}
       </div>
     );
   }

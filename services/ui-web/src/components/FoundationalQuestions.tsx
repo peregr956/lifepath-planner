@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useCallback } from 'react';
 import { 
   Card, 
   CardContent, 
@@ -19,6 +19,7 @@ import {
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
+  Badge,
 } from '@/components/ui';
 import { 
   Sparkles, 
@@ -32,6 +33,7 @@ import {
   User,
   PiggyBank,
   Compass,
+  UserCircle,
 } from 'lucide-react';
 import type { 
   FoundationalContext, 
@@ -40,8 +42,13 @@ import type {
   GoalTimeline, 
   LifeStage, 
   EmergencyFundStatus,
+  HydratedFoundationalContext,
 } from '@/types/budget';
-import { getFoundationalCompletionPercent } from '@/types/budget';
+import { 
+  getFoundationalCompletionPercent,
+  getPlainFoundationalContext,
+  getHydratedCompletionPercent,
+} from '@/types/budget';
 import {
   FINANCIAL_PHILOSOPHY_OPTIONS,
   RISK_TOLERANCE_OPTIONS,
@@ -53,9 +60,13 @@ import {
 
 type Props = {
   initialContext?: FoundationalContext | null;
+  // Phase 9.1.2: Hydrated context with source tracking
+  hydratedContext?: HydratedFoundationalContext | null;
   onComplete: (context: FoundationalContext) => void;
   onSkip: () => void;
   disabled?: boolean;
+  // Phase 9.1.2: Show condensed view for users with mostly-complete profiles
+  showCondensed?: boolean;
 };
 
 // Icons for each question type
@@ -80,30 +91,67 @@ const WHY_WE_ASK = {
 
 export function FoundationalQuestions({ 
   initialContext, 
+  hydratedContext,
   onComplete, 
   onSkip,
   disabled = false,
+  showCondensed = false,
 }: Props) {
+  // Phase 9.1.2: Derive initial values from hydrated context if available
+  const derivedInitialContext = useMemo(() => {
+    if (hydratedContext) {
+      return getPlainFoundationalContext(hydratedContext);
+    }
+    return initialContext ?? {};
+  }, [hydratedContext, initialContext]);
+
   // Local state for form values
   const [context, setContext] = useState<FoundationalContext>(() => ({
-    financialPhilosophy: initialContext?.financialPhilosophy ?? null,
-    riskTolerance: initialContext?.riskTolerance ?? null,
-    primaryGoal: initialContext?.primaryGoal ?? null,
-    goalTimeline: initialContext?.goalTimeline ?? null,
-    lifeStage: initialContext?.lifeStage ?? null,
-    hasEmergencyFund: initialContext?.hasEmergencyFund ?? null,
+    financialPhilosophy: derivedInitialContext?.financialPhilosophy ?? null,
+    riskTolerance: derivedInitialContext?.riskTolerance ?? null,
+    primaryGoal: derivedInitialContext?.primaryGoal ?? null,
+    goalTimeline: derivedInitialContext?.goalTimeline ?? null,
+    lifeStage: derivedInitialContext?.lifeStage ?? null,
+    hasEmergencyFund: derivedInitialContext?.hasEmergencyFund ?? null,
   }));
 
+  // Phase 9.1.2: Track which fields have been modified this session
+  const [modifiedFields, setModifiedFields] = useState<Set<keyof FoundationalContext>>(new Set());
+
   const [customGoal, setCustomGoal] = useState(
-    initialContext?.primaryGoal && !COMMON_GOALS.includes(initialContext.primaryGoal)
-      ? initialContext.primaryGoal
+    derivedInitialContext?.primaryGoal && !COMMON_GOALS.includes(derivedInitialContext.primaryGoal)
+      ? derivedInitialContext.primaryGoal
       : ''
   );
   const [showCustomGoal, setShowCustomGoal] = useState(
-    initialContext?.primaryGoal && !COMMON_GOALS.includes(initialContext.primaryGoal)
+    derivedInitialContext?.primaryGoal && !COMMON_GOALS.includes(derivedInitialContext.primaryGoal ?? '')
   );
 
-  const completionPercent = useMemo(() => getFoundationalCompletionPercent(context), [context]);
+  // Phase 9.1.2: Use hydrated completion if available, otherwise plain
+  const completionPercent = useMemo(() => {
+    if (hydratedContext) {
+      return getHydratedCompletionPercent(hydratedContext);
+    }
+    return getFoundationalCompletionPercent(context);
+  }, [hydratedContext, context]);
+
+  // Phase 9.1.2: Check if a field is from account profile (not modified this session)
+  const isFromAccount = useCallback((field: keyof FoundationalContext): boolean => {
+    if (modifiedFields.has(field)) return false;
+    if (!hydratedContext) return false;
+    const hydratedField = hydratedContext[field];
+    return hydratedField?.source === 'account' && hydratedField?.value !== null;
+  }, [hydratedContext, modifiedFields]);
+
+  // Count how many fields are using saved preferences
+  const savedPreferencesCount = useMemo(() => {
+    if (!hydratedContext) return 0;
+    const fields: (keyof FoundationalContext)[] = [
+      'financialPhilosophy', 'riskTolerance', 'primaryGoal', 
+      'goalTimeline', 'lifeStage', 'hasEmergencyFund'
+    ];
+    return fields.filter(f => isFromAccount(f)).length;
+  }, [hydratedContext, isFromAccount]);
 
   const handleContinue = () => {
     const finalContext = {
@@ -113,11 +161,14 @@ export function FoundationalQuestions({
     onComplete(finalContext);
   };
 
+  // Phase 9.1.2: Track field modifications
   const updateField = <K extends keyof FoundationalContext>(
     field: K,
     value: FoundationalContext[K]
   ) => {
     setContext(prev => ({ ...prev, [field]: value }));
+    // Mark as modified to remove "using saved preference" indicator
+    setModifiedFields(prev => new Set(prev).add(field));
   };
 
   const handleGoalChange = (value: string) => {
@@ -129,6 +180,11 @@ export function FoundationalQuestions({
       setCustomGoal('');
       updateField('primaryGoal', value);
     }
+  };
+
+  const handleCustomGoalChange = (value: string) => {
+    setCustomGoal(value);
+    setModifiedFields(prev => new Set(prev).add('primaryGoal'));
   };
 
   return (
@@ -166,6 +222,16 @@ export function FoundationalQuestions({
               </div>
               <Progress value={completionPercent} className="h-2" />
             </div>
+
+            {/* Phase 9.1.2: Show when using saved preferences */}
+            {savedPreferencesCount > 0 && (
+              <div className="mt-3 flex items-center gap-2 rounded-md bg-primary/5 border border-primary/10 px-3 py-2">
+                <UserCircle className="h-4 w-4 text-primary" />
+                <span className="text-xs text-primary">
+                  Using {savedPreferencesCount} saved preference{savedPreferencesCount !== 1 ? 's' : ''} from your profile
+                </span>
+              </div>
+            )}
           </CardHeader>
 
           <CardContent className="space-y-6">
@@ -175,6 +241,7 @@ export function FoundationalQuestions({
               title="What's your primary financial goal right now?"
               whyWeAsk={WHY_WE_ASK.primaryGoal}
               answered={!!context.primaryGoal || (showCustomGoal === true && !!customGoal)}
+              isFromAccount={isFromAccount('primaryGoal')}
             >
               <div className="space-y-2">
                 <Select
@@ -196,7 +263,7 @@ export function FoundationalQuestions({
                   <Input
                     placeholder="Describe your goal..."
                     value={customGoal}
-                    onChange={e => setCustomGoal(e.target.value)}
+                    onChange={e => handleCustomGoalChange(e.target.value)}
                     disabled={disabled}
                     className="animate-fade-in"
                   />
@@ -210,6 +277,7 @@ export function FoundationalQuestions({
               title="What's your timeline for this goal?"
               whyWeAsk={WHY_WE_ASK.goalTimeline}
               answered={!!context.goalTimeline}
+              isFromAccount={isFromAccount('goalTimeline')}
             >
               <Select
                 value={context.goalTimeline || ''}
@@ -240,6 +308,7 @@ export function FoundationalQuestions({
               title="Do you follow a particular budgeting approach?"
               whyWeAsk={WHY_WE_ASK.financialPhilosophy}
               answered={!!context.financialPhilosophy}
+              isFromAccount={isFromAccount('financialPhilosophy')}
               learnMore="For example, Dave Ramsey prioritizes paying off all debt before investing, while r/personalfinance suggests balancing debt payoff with retirement savings."
             >
               <Select
@@ -271,6 +340,7 @@ export function FoundationalQuestions({
               title="How comfortable are you with financial risk?"
               whyWeAsk={WHY_WE_ASK.riskTolerance}
               answered={!!context.riskTolerance}
+              isFromAccount={isFromAccount('riskTolerance')}
             >
               <Select
                 value={context.riskTolerance || ''}
@@ -301,6 +371,7 @@ export function FoundationalQuestions({
               title="Which best describes your current life stage?"
               whyWeAsk={WHY_WE_ASK.lifeStage}
               answered={!!context.lifeStage}
+              isFromAccount={isFromAccount('lifeStage')}
             >
               <Select
                 value={context.lifeStage || ''}
@@ -331,6 +402,7 @@ export function FoundationalQuestions({
               title="Do you have an emergency fund?"
               whyWeAsk={WHY_WE_ASK.hasEmergencyFund}
               answered={!!context.hasEmergencyFund}
+              isFromAccount={isFromAccount('hasEmergencyFund')}
             >
               <Select
                 value={context.hasEmergencyFund || ''}
@@ -393,6 +465,8 @@ type QuestionRowProps = {
   whyWeAsk: string;
   learnMore?: string;
   answered: boolean;
+  // Phase 9.1.2: Show "using saved preference" indicator
+  isFromAccount?: boolean;
   children: React.ReactNode;
 };
 
@@ -401,7 +475,8 @@ function QuestionRow({
   title, 
   whyWeAsk, 
   learnMore,
-  answered, 
+  answered,
+  isFromAccount = false,
   children 
 }: QuestionRowProps) {
   return (
@@ -415,8 +490,14 @@ function QuestionRow({
           {answered ? <CheckCircle2 className="h-4 w-4" /> : <Icon className="h-4 w-4" />}
         </div>
         <div className="flex-1 space-y-1.5">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <label className="text-sm font-medium leading-tight">{title}</label>
+            {/* Phase 9.1.2: Show badge when using saved preference */}
+            {isFromAccount && (
+              <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-4 font-normal bg-primary/10 text-primary border-primary/20">
+                Saved
+              </Badge>
+            )}
             <Tooltip>
               <TooltipTrigger asChild>
                 <HelpCircle className="h-3.5 w-3.5 text-muted-foreground cursor-help shrink-0" />
@@ -426,6 +507,11 @@ function QuestionRow({
                 <p>{whyWeAsk}</p>
                 {learnMore && (
                   <p className="mt-2 text-muted-foreground">{learnMore}</p>
+                )}
+                {isFromAccount && (
+                  <p className="mt-2 text-primary text-xs">
+                    This value is from your saved profile. You can change it here for this session.
+                  </p>
                 )}
               </TooltipContent>
             </Tooltip>

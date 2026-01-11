@@ -264,6 +264,92 @@ export function getFoundationalCompletionPercent(context: FoundationalContext | 
 }
 
 // ============================================================================
+// Phase 9.1.2: Session Hydration Types
+// ============================================================================
+
+/**
+ * Source of a session context value
+ * Used to track whether a value came from account profile or was set explicitly this session
+ */
+export type SessionValueSource = 'account' | 'session_explicit';
+
+/**
+ * A value with its source tracked for hydration
+ * Enables precedence: session_explicit > account
+ */
+export type HydratedValue<T> = {
+  value: T;
+  source: SessionValueSource;
+};
+
+/**
+ * Foundational context with source tracking for each field
+ * Used to show "using your saved preference" indicators and enable easy override
+ */
+export type HydratedFoundationalContext = {
+  financialPhilosophy?: HydratedValue<FinancialPhilosophy | null>;
+  riskTolerance?: HydratedValue<RiskTolerance | null>;
+  primaryGoal?: HydratedValue<string | null>;
+  goalTimeline?: HydratedValue<GoalTimeline | null>;
+  lifeStage?: HydratedValue<LifeStage | null>;
+  hasEmergencyFund?: HydratedValue<EmergencyFundStatus | null>;
+};
+
+/**
+ * The fields that make up foundational context
+ */
+export const FOUNDATIONAL_CONTEXT_FIELDS: (keyof FoundationalContext)[] = [
+  'financialPhilosophy',
+  'riskTolerance',
+  'primaryGoal',
+  'goalTimeline',
+  'lifeStage',
+  'hasEmergencyFund',
+];
+
+/**
+ * Extract plain values from hydrated context (strips source metadata)
+ */
+export function getPlainFoundationalContext(
+  hydrated: HydratedFoundationalContext | null | undefined
+): FoundationalContext {
+  if (!hydrated) return {};
+  return {
+    financialPhilosophy: hydrated.financialPhilosophy?.value ?? null,
+    riskTolerance: hydrated.riskTolerance?.value ?? null,
+    primaryGoal: hydrated.primaryGoal?.value ?? null,
+    goalTimeline: hydrated.goalTimeline?.value ?? null,
+    lifeStage: hydrated.lifeStage?.value ?? null,
+    hasEmergencyFund: hydrated.hasEmergencyFund?.value ?? null,
+  };
+}
+
+/**
+ * Check if a field value came from account profile (hydrated)
+ */
+export function isFieldFromAccount<K extends keyof HydratedFoundationalContext>(
+  hydrated: HydratedFoundationalContext | null | undefined,
+  field: K
+): boolean {
+  if (!hydrated || !hydrated[field]) return false;
+  return hydrated[field]?.source === 'account';
+}
+
+/**
+ * Calculate completion percentage for hydrated foundational context
+ */
+export function getHydratedCompletionPercent(
+  hydrated: HydratedFoundationalContext | null | undefined
+): number {
+  if (!hydrated) return 0;
+  const answered = FOUNDATIONAL_CONTEXT_FIELDS.filter(f => {
+    const field = hydrated[f];
+    return field?.value !== null && field?.value !== undefined;
+  }).length;
+  return Math.round((answered / FOUNDATIONAL_CONTEXT_FIELDS.length) * 100);
+}
+
+// ============================================================================
 // Phase 9.1.1: Account Profile Metadata Types
 // ============================================================================
 

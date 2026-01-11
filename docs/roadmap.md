@@ -797,8 +797,8 @@ Expected behavior should produce:
 - Profile settings expanded with all foundational fields and enrichment visibility
 
 **Implementation Phases**:
-- **9.1.1**: Context Model Foundation — Extend account profile schema with confidence metadata
-- **9.1.2**: Session Hydration — Auto-populate session context from account profile
+- **9.1.1**: Context Model Foundation — Extend account profile schema with confidence metadata ✅ Complete
+- **9.1.2**: Session Hydration — Auto-populate session context from account profile ✅ Complete
 - **9.1.3**: UI Flow Optimization — Differentiate onboarding vs. returning user flows
 - **9.1.4**: AI Prompt Enhancement — Restructure prompts with confidence-tagged context
 - **9.1.5**: Profile Settings Expansion — Full foundational fields with enrichment visibility
@@ -1336,10 +1336,10 @@ New entities to add progressively:
 
 ## Next Steps
 
-1. **Begin Phase 9.1** — AI-Account Context Integration (layered context model, session hydration, prompt enhancement)
-2. **Then Phase 10** — Budget History & Trends (budget snapshots, trend analysis, history dashboard)
-3. **Create detailed tickets** — Break remaining phases into specific tasks
-4. **Set up project tracking** — Use project management tool for phase tracking
+1. **Continue Phase 9.1.3** — UI Flow Optimization (differentiate onboarding vs. returning user flows)
+2. **Complete Phase 9.1** — Finish 9.1.4 (AI Prompt Enhancement) and 9.1.5 (Profile Settings Expansion)
+3. **Then Phase 10** — Budget History & Trends (budget snapshots, trend analysis, history dashboard)
+4. **Create detailed tickets** — Break remaining phases into specific tasks
 5. **Regular roadmap reviews** — Update quarterly based on user feedback and market changes
 
 ### Completed
@@ -1350,3 +1350,5 @@ New entities to add progressively:
 - ✅ **Phase 8.5.3** — Strategic Question Design (January 2026)
 - ✅ **Phase 8.5.4** — AI-First Budget Interpretation (January 2026)
 - ✅ **Phase 9** — User Accounts & Authentication (January 2026)
+- ✅ **Phase 9.1.1** — Context Model Foundation (January 2026)
+- ✅ **Phase 9.1.2** — Session Hydration (January 2026)

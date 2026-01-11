@@ -1,9 +1,28 @@
 'use client';
 
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useState, useRef } from 'react';
 import type { ReactNode } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
-import type { UploadSummaryPreview, UnifiedBudgetModel, BudgetPreferences, FoundationalContext } from '@/types';
+import { useSession } from 'next-auth/react';
+import type { 
+  UploadSummaryPreview, 
+  UnifiedBudgetModel, 
+  BudgetPreferences, 
+  FoundationalContext,
+  HydratedFoundationalContext,
+} from '@/types';
+import { 
+  getPlainFoundationalContext, 
+  isFieldFromAccount,
+  getHydratedCompletionPercent,
+} from '@/types/budget';
+import {
+  hydrateFromAccountProfile,
+  mergeSessionExplicit,
+  fromPlainFoundationalContext,
+  hasAccountHydratedFields,
+  type ApiUserProfile,
+} from '@/lib/sessionHydration';
 
 const STORAGE_KEY = 'lifepath-budget-session';
 
@@ -15,8 +34,13 @@ export type BudgetSession = {
   clarified?: boolean;
   readyForSummary?: boolean;
   // Phase 8.5.3: Foundational context from pre-clarification questions
+  // Legacy: plain context without source tracking
   foundationalContext?: FoundationalContext | null;
   foundationalCompleted?: boolean;
+  // Phase 9.1.2: Hydrated context with source tracking (account vs session_explicit)
+  hydratedFoundationalContext?: HydratedFoundationalContext | null;
+  // Phase 9.1.2: Track if profile hydration has been attempted
+  profileHydrated?: boolean;
 };
 
 // Types for budget updates
@@ -72,6 +96,14 @@ type BudgetSessionContextValue = {
   // Phase 8.5.3: Foundational context management
   setFoundationalContext: (context: FoundationalContext) => void;
   markFoundationalCompleted: () => void;
+  // Phase 9.1.2: Session hydration from account profile
+  hydratedContext: HydratedFoundationalContext | null;
+  isProfileHydrating: boolean;
+  profileHydrationComplete: boolean;
+  hydrateFromProfile: () => Promise<void>;
+  isFieldFromAccountProfile: (field: keyof HydratedFoundationalContext) => boolean;
+  getProfileCompletionPercent: () => number;
+  hasHydratedFields: boolean;
 };
 
 const BudgetSessionContext = createContext<BudgetSessionContextValue | undefined>(undefined);
@@ -88,6 +120,12 @@ export function BudgetSessionProvider({ children }: { children: ReactNode }) {
   // Phase 4.6: Track dirty state and update status
   const [isDirty, setIsDirty] = useState(false);
   const [isUpdating, setIsUpdating] = useState(false);
+  
+  // Phase 9.1.2: Profile hydration state
+  const { data: authSession, status: authStatus } = useSession();
+  const [isProfileHydrating, setIsProfileHydrating] = useState(false);
+  const [profileHydrationComplete, setProfileHydrationComplete] = useState(false);
+  const hydrationAttemptedRef = useRef(false);
 
   const persist = useCallback((value: BudgetSession | null) => {
     if (typeof window === 'undefined') return;
@@ -277,16 +315,28 @@ export function BudgetSessionProvider({ children }: { children: ReactNode }) {
   }, []);
 
   // Phase 8.5.3: Set foundational context
+  // Phase 9.1.2: Updated to also track source as session_explicit
   const setFoundationalContext = useCallback(
     (context: FoundationalContext) => {
       setSession((prev) => {
         if (!prev) return prev;
+        
+        // Update plain foundational context for backwards compatibility
+        const mergedPlain = {
+          ...prev.foundationalContext,
+          ...context,
+        };
+
+        // Phase 9.1.2: Also update hydrated context, marking new values as session_explicit
+        const updatedHydrated = mergeSessionExplicit(
+          prev.hydratedFoundationalContext ?? {},
+          context
+        );
+
         const nextSession = { 
           ...prev, 
-          foundationalContext: {
-            ...prev.foundationalContext,
-            ...context,
-          },
+          foundationalContext: mergedPlain,
+          hydratedFoundationalContext: updatedHydrated,
         };
         persist(nextSession);
         return nextSession;
@@ -305,6 +355,122 @@ export function BudgetSessionProvider({ children }: { children: ReactNode }) {
     });
   }, [persist]);
 
+  // Phase 9.1.2: Fetch user profile and hydrate session
+  const hydrateFromProfile = useCallback(async (): Promise<void> => {
+    // Only hydrate if authenticated
+    if (authStatus !== 'authenticated' || !authSession?.user) {
+      return;
+    }
+
+    setIsProfileHydrating(true);
+    try {
+      const response = await fetch('/api/user/profile');
+      if (!response.ok) {
+        console.warn('[useBudgetSession] Failed to fetch profile for hydration');
+        return;
+      }
+
+      const data = await response.json();
+      const profile: ApiUserProfile | null = data.profile;
+
+      if (!profile) {
+        return;
+      }
+
+      // Hydrate foundational context from account profile
+      const hydratedFromProfile = hydrateFromAccountProfile(profile);
+
+      setSession((prev) => {
+        if (!prev) return prev;
+
+        // If session already has hydrated context, merge with profile defaults
+        // Session-explicit values take precedence
+        let finalHydrated: HydratedFoundationalContext;
+
+        if (prev.hydratedFoundationalContext) {
+          // Merge: keep session-explicit values, fill gaps with account values
+          finalHydrated = { ...hydratedFromProfile };
+          const existingFields = Object.keys(prev.hydratedFoundationalContext) as (keyof HydratedFoundationalContext)[];
+          for (const field of existingFields) {
+            const existing = prev.hydratedFoundationalContext[field];
+            if (existing && existing.source === 'session_explicit') {
+              // Session-explicit takes precedence
+              finalHydrated[field] = existing as any;
+            }
+          }
+        } else if (prev.foundationalContext) {
+          // Migrate legacy foundational context to hydrated format
+          // These are session-explicit since user set them before hydration existed
+          const legacyHydrated = fromPlainFoundationalContext(prev.foundationalContext, 'session_explicit');
+          // Merge: session-explicit takes precedence over account
+          finalHydrated = { ...hydratedFromProfile };
+          const existingFields = Object.keys(legacyHydrated) as (keyof HydratedFoundationalContext)[];
+          for (const field of existingFields) {
+            const existing = legacyHydrated[field];
+            if (existing?.value !== null && existing?.value !== undefined) {
+              finalHydrated[field] = existing as any;
+            }
+          }
+        } else {
+          // No existing context, use hydrated from profile
+          finalHydrated = hydratedFromProfile;
+        }
+
+        const nextSession = {
+          ...prev,
+          hydratedFoundationalContext: finalHydrated,
+          profileHydrated: true,
+          // Also update plain foundational context for backwards compatibility
+          foundationalContext: getPlainFoundationalContext(finalHydrated),
+        };
+        persist(nextSession);
+        return nextSession;
+      });
+    } catch (error) {
+      console.error('[useBudgetSession] Error hydrating from profile:', error);
+    } finally {
+      setIsProfileHydrating(false);
+      setProfileHydrationComplete(true);
+    }
+  }, [authStatus, authSession, persist]);
+
+  // Phase 9.1.2: Auto-hydrate when authenticated and session exists
+  useEffect(() => {
+    // Only attempt hydration once per session
+    if (hydrationAttemptedRef.current) return;
+    // Wait for both session hydration and auth to be ready
+    if (!hydrated || authStatus === 'loading') return;
+    // Only hydrate if we have a session and user is authenticated
+    if (!session || authStatus !== 'authenticated') return;
+    // Don't re-hydrate if already done
+    if (session.profileHydrated) {
+      setProfileHydrationComplete(true);
+      return;
+    }
+
+    hydrationAttemptedRef.current = true;
+    hydrateFromProfile();
+  }, [hydrated, authStatus, session, session?.profileHydrated, hydrateFromProfile]);
+
+  // Phase 9.1.2: Helper to check if a field is from account profile
+  const isFieldFromAccountProfile = useCallback(
+    (field: keyof HydratedFoundationalContext): boolean => {
+      return isFieldFromAccount(session?.hydratedFoundationalContext, field);
+    },
+    [session?.hydratedFoundationalContext]
+  );
+
+  // Phase 9.1.2: Get profile completion percent
+  const getProfileCompletionPercent = useCallback((): number => {
+    return getHydratedCompletionPercent(session?.hydratedFoundationalContext);
+  }, [session?.hydratedFoundationalContext]);
+
+  // Phase 9.1.2: Check if any fields are hydrated from account
+  const hasHydratedFields = useMemo(
+    () => hasAccountHydratedFields(session?.hydratedFoundationalContext),
+    [session?.hydratedFoundationalContext]
+  );
+
   const value = useMemo<BudgetSessionContextValue>(
     () => ({
       session,
@@ -321,6 +487,14 @@ export function BudgetSessionProvider({ children }: { children: ReactNode }) {
       clearDirty,
       setFoundationalContext,
       markFoundationalCompleted,
+      // Phase 9.1.2: Session hydration from account profile
+      hydratedContext: session?.hydratedFoundationalContext ?? null,
+      isProfileHydrating,
+      profileHydrationComplete,
+      hydrateFromProfile,
+      isFieldFromAccountProfile,
+      getProfileCompletionPercent,
+      hasHydratedFields,
     }),
     [
       session,
@@ -337,6 +511,12 @@ export function BudgetSessionProvider({ children }: { children: ReactNode }) {
       clearDirty,
       setFoundationalContext,
       markFoundationalCompleted,
+      isProfileHydrating,
+      profileHydrationComplete,
+      hydrateFromProfile,
+      isFieldFromAccountProfile,
+      getProfileCompletionPercent,
+      hasHydratedFields,
     ],
   );
 
