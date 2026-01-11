@@ -29,7 +29,7 @@ export interface OpenAIConfig {
  * Check if Vercel AI Gateway is enabled
  */
 export function isAIGatewayEnabled(): boolean {
-  return process.env.VERCEL_AI_GATEWAY_ENABLED === 'true';
+  return process.env.VERCEL_AI_GATEWAY_ENABLED?.trim() === 'true';
 }
 
 /**
