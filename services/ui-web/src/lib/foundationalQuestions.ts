@@ -286,6 +286,24 @@ export function getPhilosophyLabel(value: FinancialPhilosophy | null | undefined
 }
 
 /**
+ * Get a human-readable label for a risk tolerance value
+ */
+export function getRiskToleranceLabel(value: RiskTolerance | null | undefined): string {
+  if (!value) return 'Not specified';
+  const option = RISK_TOLERANCE_OPTIONS.find(o => o.value === value);
+  return option?.label || value;
+}
+
+/**
+ * Get a human-readable label for a goal timeline value
+ */
+export function getGoalTimelineLabel(value: GoalTimeline | null | undefined): string {
+  if (!value) return 'Not specified';
+  const option = GOAL_TIMELINE_OPTIONS.find(o => o.value === value);
+  return option?.label || value;
+}
+
+/**
  * Get a human-readable label for a life stage value
  */
 export function getLifeStageLabel(value: LifeStage | null | undefined): string {
@@ -301,4 +319,12 @@ export function getEmergencyFundLabel(value: EmergencyFundStatus | null | undefi
   if (!value) return 'Not specified';
   const option = EMERGENCY_FUND_OPTIONS.find(o => o.value === value);
   return option?.label || value;
+}
+
+/**
+ * Get a human-readable label for a primary goal value
+ */
+export function getPrimaryGoalLabel(value: string | null | undefined): string {
+  if (!value) return 'Not specified';
+  return value;
 }

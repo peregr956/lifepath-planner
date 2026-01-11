@@ -1,6 +1,6 @@
 # Phase 9.1: AI-Account Context Integration
 
-> **Status**: In Progress (9.1.1, 9.1.2 Complete)  
+> **Status**: In Progress (9.1.1, 9.1.2, 9.1.3 Complete)  
 > **Prerequisite**: Phase 9 (User Accounts & Authentication) ✅ Complete  
 > **Roadmap**: See [roadmap.md](../roadmap.md) for timeline and context
 
@@ -14,7 +14,7 @@ Transform the AI from a data collector into an interpreter by establishing a lay
 |-------|-------------|--------------|--------|
 | 9.1.1 | Extend account profile to store all foundational context fields with confidence metadata | — | ✅ Complete |
 | 9.1.2 | Implement session context hydration from account profile with override support | 9.1.1 | ✅ Complete |
-| 9.1.3 | Implement onboarding vs returning user flows with streamlined experience | 9.1.2 | Pending |
+| 9.1.3 | Implement onboarding vs returning user flows with streamlined experience | 9.1.2 | ✅ Complete |
 | 9.1.4 | Restructure AI prompts with layered context and confidence-based inference | 9.1.2 | Pending |
 | 9.1.5 | Expand profile settings UI with all foundational fields and enrichment visibility | 9.1.1 | Pending |
 
@@ -58,6 +58,44 @@ Transform the AI from a data collector into an interpreter by establishing a lay
 - `services/ui-web/src/hooks/useBudgetSession.tsx`
 - `services/ui-web/src/components/FoundationalQuestions.tsx`
 - `services/ui-web/src/app/(app)/clarify/page.tsx`
+
+---
+
+## Phase 9.1.3 Implementation Summary (January 2026)
+
+**Completed:**
+- Implemented condensed preferences view for returning users with substantial profiles (≥60% complete)
+- Added toggle between condensed and expanded views with "Customize" action
+- Implemented auto-advance logic for users with 100% complete profiles
+- Polished first-time user onboarding with encouraging language and value proposition
+- Added escape hatches in all flows (skip, customize, edit preferences)
+
+**Key Features:**
+- **Condensed View**: Compact 2-column grid showing 6 preferences with "Saved" badges and quick "Continue with these" action
+- **Auto-Advance**: Users with fully complete profiles skip foundational step; can still access via "Edit preferences" link
+- **Onboarding Mode**: First-time users see value proposition ("Better answers start with better context") and encouraging language
+- **Escape Hatches**: All flows have clear skip/customize options; changes remain session-explicit
+
+**Flow Differentiation:**
+
+```
+First-Time User (no profile):
+  Query → Full Onboarding Form → Clarification Questions
+
+Returning User (partial profile, <60%):
+  Query → Full Onboarding Form (pre-filled) → Clarification Questions
+
+Returning User (substantial profile, ≥60%):
+  Query → Condensed "Confirm or Customize" View → Clarification Questions
+
+Returning User (complete profile, 100%):
+  Query → Auto-advance with "Edit preferences" escape hatch → Clarification Questions
+```
+
+**Files Modified:**
+- `services/ui-web/src/components/FoundationalQuestions.tsx` — Condensed view, toggle logic, onboarding polish
+- `services/ui-web/src/app/(app)/clarify/page.tsx` — Auto-advance logic, edit preferences link
+- `services/ui-web/src/lib/foundationalQuestions.ts` — Added label helper functions
 
 ---
 

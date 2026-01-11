@@ -1336,8 +1336,8 @@ New entities to add progressively:
 
 ## Next Steps
 
-1. **Continue Phase 9.1.3** — UI Flow Optimization (differentiate onboarding vs. returning user flows)
-2. **Complete Phase 9.1** — Finish 9.1.4 (AI Prompt Enhancement) and 9.1.5 (Profile Settings Expansion)
+1. **Continue Phase 9.1.4** — AI Prompt Enhancement (restructure prompts with layered context and confidence-based inference)
+2. **Complete Phase 9.1** — Finish 9.1.5 (Profile Settings Expansion)
 3. **Then Phase 10** — Budget History & Trends (budget snapshots, trend analysis, history dashboard)
 4. **Create detailed tickets** — Break remaining phases into specific tasks
 5. **Regular roadmap reviews** — Update quarterly based on user feedback and market changes
@@ -1352,3 +1352,4 @@ New entities to add progressively:
 - ✅ **Phase 9** — User Accounts & Authentication (January 2026)
 - ✅ **Phase 9.1.1** — Context Model Foundation (January 2026)
 - ✅ **Phase 9.1.2** — Session Hydration (January 2026)
+- ✅ **Phase 9.1.3** — UI Flow Optimization (January 2026)

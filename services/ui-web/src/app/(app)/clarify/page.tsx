@@ -12,8 +12,8 @@ import {
   submitClarificationAnswers,
   submitUserQuery,
 } from '@/utils/apiClient';
-import { Card, CardContent, Button, Skeleton } from '@/components/ui';
-import { AlertCircle, Loader2, Pencil, UserCircle } from 'lucide-react';
+import { Card, CardContent, Button, Skeleton, Badge } from '@/components/ui';
+import { AlertCircle, Loader2, Pencil, UserCircle, CheckCheck, Settings2 } from 'lucide-react';
 
 // Phase 8.5.3: Added 'foundational' step between query and questions
 type ClarifyStep = 'query' | 'foundational' | 'questions';
@@ -66,6 +66,8 @@ export default function ClarifyPage() {
   // Phase 9.1.2: Check if profile is substantially complete (>= 60%)
   const profileCompletionPercent = useMemo(() => getProfileCompletionPercent(), [getProfileCompletionPercent]);
   const hasSubstantialProfile = profileCompletionPercent >= 60;
+  // Phase 9.1.3: Check if profile is fully complete (100%)
+  const hasCompleteProfile = profileCompletionPercent === 100;
 
   // Phase 8.5.3: Determine initial step based on session state
   const [step, setStep] = useState<ClarifyStep>(() => {
@@ -76,6 +78,10 @@ export default function ClarifyPage() {
   const [localUserQuery, setLocalUserQuery] = useState(existingUserQuery || '');
   const [navigationError, setNavigationError] = useState<string | null>(null);
   const isNavigatingRef = useRef(false);
+  // Phase 9.1.3: Track if user explicitly chose to edit preferences
+  const [userChoseToEdit, setUserChoseToEdit] = useState(false);
+  // Phase 9.1.3: Track auto-advance state for complete profiles
+  const autoAdvanceAttemptedRef = useRef(false);
 
   // Sync step with session state changes
   useEffect(() => {
@@ -95,6 +101,51 @@ export default function ClarifyPage() {
       router.replace('/upload');
     }
   }, [budgetId, hydrated, router]);
+
+  // Phase 9.1.3: Auto-advance for users with 100% complete profiles
+  // Skip foundational step and go directly to questions
+  useEffect(() => {
+    // Only attempt auto-advance once
+    if (autoAdvanceAttemptedRef.current) return;
+    // Only for authenticated users with complete profiles
+    if (authStatus !== 'authenticated') return;
+    // Wait for hydration to complete
+    if (!profileHydrationComplete) return;
+    // Only when we're on the foundational step
+    if (step !== 'foundational') return;
+    // Don't auto-advance if user explicitly chose to edit
+    if (userChoseToEdit) return;
+    // Only if profile is fully complete
+    if (!hasCompleteProfile) return;
+
+    autoAdvanceAttemptedRef.current = true;
+    
+    // Apply current context (from hydrated profile) and advance
+    const hydratedPlainContext = hydratedContext 
+      ? {
+          financialPhilosophy: hydratedContext.financialPhilosophy?.value ?? null,
+          riskTolerance: hydratedContext.riskTolerance?.value ?? null,
+          primaryGoal: hydratedContext.primaryGoal?.value ?? null,
+          goalTimeline: hydratedContext.goalTimeline?.value ?? null,
+          lifeStage: hydratedContext.lifeStage?.value ?? null,
+          hasEmergencyFund: hydratedContext.hasEmergencyFund?.value ?? null,
+        }
+      : session?.foundationalContext ?? {};
+    
+    setFoundationalContext(hydratedPlainContext);
+    markFoundationalCompleted();
+    setStep('questions');
+  }, [
+    authStatus,
+    profileHydrationComplete,
+    step,
+    userChoseToEdit,
+    hasCompleteProfile,
+    hydratedContext,
+    session?.foundationalContext,
+    setFoundationalContext,
+    markFoundationalCompleted,
+  ]);
 
   const queryMutation = useMutation({
     mutationFn: async (query: string) => {
@@ -215,6 +266,8 @@ export default function ClarifyPage() {
   if (step === 'foundational') {
     // Phase 9.1.2: Show loading state while profile is hydrating for authenticated users
     const showHydrationLoading = authStatus === 'authenticated' && isProfileHydrating && !profileHydrationComplete;
+    // Phase 9.1.3: Show condensed view only if user has substantial profile AND hasn't explicitly chosen to edit
+    const shouldShowCondensed = hasSubstantialProfile && !userChoseToEdit;
 
     return (
       <div className="flex flex-col gap-4 animate-fade-in">
@@ -256,12 +309,18 @@ export default function ClarifyPage() {
             onComplete={handleFoundationalComplete}
             onSkip={handleFoundationalSkip}
             disabled={!budgetId}
-            showCondensed={hasSubstantialProfile}
+            showCondensed={shouldShowCondensed}
           />
         )}
       </div>
     );
   }
+
+  // Phase 9.1.3: Handle user choosing to edit preferences from questions step
+  const handleEditPreferences = useCallback(() => {
+    setUserChoseToEdit(true);
+    setStep('foundational');
+  }, []);
 
   // Render clarification questions step
   return (
@@ -270,17 +329,39 @@ export default function ClarifyPage() {
       {localUserQuery && (
         <Card className="border-primary/20 bg-gradient-to-r from-primary/10 to-accent/10">
           <CardContent className="pt-6">
-            <p className="text-xs font-medium uppercase tracking-wide text-primary">Your Question</p>
-            <p className="mt-1 text-sm text-foreground">&ldquo;{localUserQuery}&rdquo;</p>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setStep('query')}
-              className="mt-2 h-auto p-0 text-xs text-primary hover:text-primary/80"
-            >
-              <Pencil className="mr-1 h-3 w-3" />
-              Edit question
-            </Button>
+            <div className="flex items-start justify-between gap-4">
+              <div className="flex-1">
+                <p className="text-xs font-medium uppercase tracking-wide text-primary">Your Question</p>
+                <p className="mt-1 text-sm text-foreground">&ldquo;{localUserQuery}&rdquo;</p>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setStep('query')}
+                  className="mt-2 h-auto p-0 text-xs text-primary hover:text-primary/80"
+                >
+                  <Pencil className="mr-1 h-3 w-3" />
+                  Edit question
+                </Button>
+              </div>
+              {/* Phase 9.1.3: Show preferences indicator for users with profiles */}
+              {hasHydratedFields && (
+                <div className="flex flex-col items-end gap-1">
+                  <Badge variant="secondary" className="bg-success/10 text-success border-success/20 text-[10px]">
+                    <CheckCheck className="mr-1 h-3 w-3" />
+                    Using saved preferences
+                  </Badge>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={handleEditPreferences}
+                    className="h-auto p-0 text-xs text-muted-foreground hover:text-primary"
+                  >
+                    <Settings2 className="mr-1 h-3 w-3" />
+                    Edit preferences
+                  </Button>
+                </div>
+              )}
+            </div>
           </CardContent>
         </Card>
       )}
