@@ -152,7 +152,48 @@ export async function PATCH(
       );
     }
 
-    // Require final model for inline editing (user has completed clarification)
+    const body = await request.json() as PatchBudgetRequest;
+    const sourceIp = request.headers.get('x-forwarded-for') || request.headers.get('x-real-ip') || null;
+
+    // Phase 9.1.8: Handle context updates BEFORE requiring final model
+    // These can be set at any stage of the budget workflow (e.g., before clarification)
+    let contextUpdated = false;
+
+    if (body.userQuery !== undefined) {
+      await storeUserQuery(budgetId, body.userQuery, sourceIp);
+      contextUpdated = true;
+    }
+
+    if (body.userProfile !== undefined) {
+      await storeUserProfile(budgetId, body.userProfile, sourceIp);
+      contextUpdated = true;
+    }
+
+    if (body.foundationalContext !== undefined) {
+      await storeFoundationalContext(budgetId, body.foundationalContext, sourceIp);
+      contextUpdated = true;
+    }
+
+    // Check if any model edits are requested
+    const hasModelEdits = body.income || body.expenses || body.debts || body.preferences;
+
+    // If no model edits, return early with context update confirmation
+    if (!hasModelEdits) {
+      console.log(`[budget/[budgetId]] Context-only update for session ${budgetId}`, {
+        contextUpdated,
+        queryChanged: body.userQuery !== undefined,
+        profileChanged: body.userProfile !== undefined,
+        foundationalContextChanged: body.foundationalContext !== undefined,
+      });
+
+      return NextResponse.json({
+        budget_id: budgetId,
+        status: contextUpdated ? 'context_updated' : 'no_changes',
+        user_query: body.userQuery !== undefined ? body.userQuery : session.user_query,
+      });
+    }
+
+    // Require final model only for model edits (income, expenses, debts, preferences)
     if (!session.final) {
       return NextResponse.json(
         { error: 'model_not_ready', details: 'Budget model is not ready for editing. Complete clarification first.' },
@@ -160,7 +201,6 @@ export async function PATCH(
       );
     }
 
-    const body = await request.json() as PatchBudgetRequest;
     const finalModel = session.final as Record<string, unknown>;
     let modelChanged = false;
 
@@ -246,7 +286,6 @@ export async function PATCH(
 
     // Update the session in database
     const now = new Date();
-    const sourceIp = request.headers.get('x-forwarded-for') || request.headers.get('x-real-ip') || null;
 
     if (hasPostgres()) {
       const pool = getPool();
@@ -264,26 +303,12 @@ export async function PATCH(
       memoryStore.set(budgetId, { ...session, final: finalModel, updated_at: now });
     }
 
-    // Handle user query update
-    if (body.userQuery !== undefined) {
-      await storeUserQuery(budgetId, body.userQuery, sourceIp);
-    }
-
-    // Handle user profile update
-    if (body.userProfile !== undefined) {
-      await storeUserProfile(budgetId, body.userProfile, sourceIp);
-    }
-
-    // Phase 9.1.5: Handle foundational context update
-    if (body.foundationalContext !== undefined) {
-      await storeFoundationalContext(budgetId, body.foundationalContext, sourceIp);
-    }
+    // Note: userQuery, userProfile, and foundationalContext are now handled
+    // at the beginning of the function (Phase 9.1.8)
 
     console.log(`[budget/[budgetId]] Updated session ${budgetId}`, {
       modelChanged,
-      queryChanged: body.userQuery !== undefined,
-      profileChanged: body.userProfile !== undefined,
-      foundationalContextChanged: body.foundationalContext !== undefined,
+      contextUpdated,
     });
 
     return NextResponse.json({
