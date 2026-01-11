@@ -144,6 +144,46 @@ Returning User (complete profile, 100%):
 
 ---
 
+## Phase 9.1.5 Bugfix: Profile Data Flow Regression (January 2026)
+
+**Issue:** Despite user accounts being fully populated, the Summary page and downstream flows were still prompting users to fill out their profile and re-answer foundational questions.
+
+**Root Causes Identified:**
+
+1. **Foundational context never synced to database:** The `storeFoundationalContext()` function existed in `db.ts` but was never called from any API route. The client-side `setFoundationalContext()` only updated localStorage, not the database. When API routes read `session.foundational_context`, it was always null.
+
+2. **ProfileContextBar only checked session context:** The component checked `foundationalContext` (from session) but not `hydratedContext` (from account profile). When session had no context, it showed "Complete your profile" even when account profile was complete.
+
+3. **URL session parsing dropped context data:** When a session was restored from URL params (`budget_id`), it replaced the localStorage session instead of merging. This lost `foundationalContext`, `hydratedFoundationalContext`, and `profileHydrated`.
+
+**Fixes Applied:**
+
+1. **Session URL merge logic:** Updated `useBudgetSession.tsx` to merge URL params with stored session when budget IDs match, preserving context fields.
+
+2. **ProfileContextBar fallback:** Updated to derive `effectiveContext` from `hydratedContext` when `foundationalContext` is empty, ensuring account profile data is displayed.
+
+3. **Hydrated context prop:** Updated summarize page to pass `hydratedContext` to `ProfileContextBar`.
+
+4. **API foundational context sync:** Extended budget PATCH API to accept and persist `foundationalContext` via existing `storeFoundationalContext()`.
+
+5. **Client-server sync:** Updated `setFoundationalContext` in `useBudgetSession` to fire-and-forget sync to the server API.
+
+**Files Modified:**
+- `services/ui-web/src/hooks/useBudgetSession.tsx` — Session merge logic, server sync
+- `services/ui-web/src/components/summary/ProfileContextBar.tsx` — Effective context derivation
+- `services/ui-web/src/app/(app)/summarize/page.tsx` — Pass hydratedContext prop
+- `services/ui-web/src/app/api/budget/[budgetId]/route.ts` — Accept foundationalContext in PATCH
+
+**Why This Slipped Through:**
+- Phase 9.1 correctly implemented hydration FROM account profile TO session
+- But it never implemented syncing session context TO database for API routes
+- The UI-only localStorage path masked the issue in manual testing
+- ProfileContextBar had a fallback path not connected to the hydration system
+
+**Recommended Guardrail:** Add integration test verifying authenticated users with complete profiles see their profile data on Summary page without "Complete your profile" prompts.
+
+---
+
 ## Vision
 
 Transform the AI from a data collector into an interpreter. When a user has established preferences and context in their account, the AI should leverage that foundation to ask smarter, more targeted questions—advancing the user toward their goals rather than gathering information we already have. The account profile becomes a continuously enriched understanding of the user that grows smarter over time.

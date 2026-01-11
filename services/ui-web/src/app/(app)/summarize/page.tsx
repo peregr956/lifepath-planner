@@ -57,7 +57,7 @@ type RawBudgetModel = {
 export default function SummarizePage() {
   const router = useRouter();
   const queryClient = useQueryClient();
-  const { session, hydrated, isDirty, isUpdating, updateBudget, clearDirty } = useBudgetSession();
+  const { session, hydrated, isDirty, isUpdating, updateBudget, clearDirty, hydratedContext } = useBudgetSession();
   const budgetId = session?.budgetId;
   const readyForSummary = session?.readyForSummary ?? false;
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -240,7 +240,7 @@ export default function SummarizePage() {
           )}
 
           {/* Profile Context Bar */}
-          <ProfileContextBar foundationalContext={foundationalContext} />
+          <ProfileContextBar foundationalContext={foundationalContext} hydratedContext={hydratedContext} />
 
           {/* The Answer Card - Hero element */}
           <AnswerCard

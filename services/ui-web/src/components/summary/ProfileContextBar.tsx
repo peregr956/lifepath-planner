@@ -6,9 +6,9 @@ import type {
   RiskTolerance,
   FoundationalContext,
   HydratedFoundationalContext,
-  getHydratedCompletionPercent,
 } from '@/types';
-import { Badge, Button, Progress, Tooltip } from '@/components/ui';
+import { getPlainFoundationalContext } from '@/types/budget';
+import { Badge, Button, Progress } from '@/components/ui';
 import { cn } from '@/lib/utils';
 import {
   Target,
@@ -81,13 +81,18 @@ export function ProfileContextBar({
   hydratedContext,
   completionPercent = 0,
 }: Props) {
-  // Check what context is available
-  const hasPhilosophy = foundationalContext?.financialPhilosophy && foundationalContext.financialPhilosophy !== 'neutral';
-  const hasRiskTolerance = !!foundationalContext?.riskTolerance;
-  const hasPrimaryGoal = !!foundationalContext?.primaryGoal;
-  const hasTimeline = !!foundationalContext?.goalTimeline;
-  const hasLifeStage = !!foundationalContext?.lifeStage;
-  const hasEmergencyFund = !!foundationalContext?.hasEmergencyFund;
+  // Phase 9.1.5: Derive effective context from hydrated context if foundational is empty
+  // This ensures we use account profile data even if session foundational context is null
+  const effectiveContext: FoundationalContext | null = foundationalContext ?? 
+    (hydratedContext ? getPlainFoundationalContext(hydratedContext) : null);
+
+  // Check what context is available from the effective context
+  const hasPhilosophy = effectiveContext?.financialPhilosophy && effectiveContext.financialPhilosophy !== 'neutral';
+  const hasRiskTolerance = !!effectiveContext?.riskTolerance;
+  const hasPrimaryGoal = !!effectiveContext?.primaryGoal;
+  const hasTimeline = !!effectiveContext?.goalTimeline;
+  const hasLifeStage = !!effectiveContext?.lifeStage;
+  const hasEmergencyFund = !!effectiveContext?.hasEmergencyFund;
 
   const hasAnyContext = hasPhilosophy || hasRiskTolerance || hasPrimaryGoal || hasTimeline || hasLifeStage || hasEmergencyFund;
 
@@ -95,6 +100,9 @@ export function ProfileContextBar({
   const philosophyFromAccount = hydratedContext?.financialPhilosophy?.source === 'account';
   const riskFromAccount = hydratedContext?.riskTolerance?.source === 'account';
   const goalFromAccount = hydratedContext?.primaryGoal?.source === 'account';
+  const timelineFromAccount = hydratedContext?.goalTimeline?.source === 'account';
+  const lifeStageFromAccount = hydratedContext?.lifeStage?.source === 'account';
+  const emergencyFundFromAccount = hydratedContext?.hasEmergencyFund?.source === 'account';
 
   // If no context at all, show prompt to complete profile
   if (!hasAnyContext) {
@@ -140,54 +148,57 @@ export function ProfileContextBar({
             Your Profile
           </span>
           
-          {hasPhilosophy && foundationalContext?.financialPhilosophy && (
+          {hasPhilosophy && effectiveContext?.financialPhilosophy && (
             <ContextBadge
               icon={Compass}
               label="Approach"
-              value={philosophyLabels[foundationalContext.financialPhilosophy]}
+              value={philosophyLabels[effectiveContext.financialPhilosophy]}
               fromAccount={philosophyFromAccount}
             />
           )}
           
-          {hasRiskTolerance && foundationalContext?.riskTolerance && (
+          {hasRiskTolerance && effectiveContext?.riskTolerance && (
             <ContextBadge
               icon={Shield}
               label="Risk"
-              value={riskLabels[foundationalContext.riskTolerance]}
+              value={riskLabels[effectiveContext.riskTolerance]}
               fromAccount={riskFromAccount}
             />
           )}
           
-          {hasPrimaryGoal && foundationalContext?.primaryGoal && (
+          {hasPrimaryGoal && effectiveContext?.primaryGoal && (
             <ContextBadge
               icon={Target}
               label="Goal"
-              value={foundationalContext.primaryGoal}
+              value={effectiveContext.primaryGoal}
               fromAccount={goalFromAccount}
             />
           )}
           
-          {hasTimeline && foundationalContext?.goalTimeline && (
+          {hasTimeline && effectiveContext?.goalTimeline && (
             <ContextBadge
               icon={Clock}
               label="Timeline"
-              value={foundationalContext.goalTimeline.replace('_', ' ')}
+              value={effectiveContext.goalTimeline.replace('_', ' ')}
+              fromAccount={timelineFromAccount}
             />
           )}
           
-          {hasLifeStage && foundationalContext?.lifeStage && (
+          {hasLifeStage && effectiveContext?.lifeStage && (
             <ContextBadge
               icon={User}
               label="Stage"
-              value={foundationalContext.lifeStage.replace('_', ' ')}
+              value={effectiveContext.lifeStage.replace('_', ' ')}
+              fromAccount={lifeStageFromAccount}
             />
           )}
           
-          {hasEmergencyFund && foundationalContext?.hasEmergencyFund && (
+          {hasEmergencyFund && effectiveContext?.hasEmergencyFund && (
             <ContextBadge
               icon={PiggyBank}
               label="Emergency Fund"
-              value={foundationalContext.hasEmergencyFund.replace('_', ' ')}
+              value={effectiveContext.hasEmergencyFund.replace('_', ' ')}
+              fromAccount={emergencyFundFromAccount}
             />
           )}
         </div>

@@ -175,7 +175,30 @@ export function BudgetSessionProvider({ children }: { children: ReactNode }) {
     const storedValue = window.localStorage.getItem(STORAGE_KEY);
     const storedSession = storedValue ? safeParseSession(storedValue) : null;
     const fromUrl = parseSessionFromString(searchParamsString);
-    const nextSession = fromUrl ?? storedSession;
+    
+    // Phase 9.1.5: Merge URL params with stored session instead of replacing
+    // This preserves foundationalContext, hydratedFoundationalContext, and profileHydrated
+    // which are not represented in URL params
+    let nextSession: BudgetSession | null = null;
+    if (fromUrl && storedSession && fromUrl.budgetId === storedSession.budgetId) {
+      // Same budget: merge URL params over stored session, preserving context fields
+      nextSession = {
+        ...storedSession,
+        ...fromUrl,
+        // Explicitly preserve context fields that URL doesn't have
+        foundationalContext: storedSession.foundationalContext,
+        hydratedFoundationalContext: storedSession.hydratedFoundationalContext,
+        foundationalCompleted: storedSession.foundationalCompleted,
+        profileHydrated: storedSession.profileHydrated,
+      };
+    } else if (fromUrl) {
+      // Different budget or no stored session: use URL session
+      nextSession = fromUrl;
+    } else {
+      // No URL session: use stored session
+      nextSession = storedSession;
+    }
+    
     if (nextSession) {
       setSession(nextSession);
       persist(nextSession);
@@ -316,6 +339,7 @@ export function BudgetSessionProvider({ children }: { children: ReactNode }) {
 
   // Phase 8.5.3: Set foundational context
   // Phase 9.1.2: Updated to also track source as session_explicit
+  // Phase 9.1.5: Also sync to server so API routes have the context
   const setFoundationalContext = useCallback(
     (context: FoundationalContext) => {
       setSession((prev) => {
@@ -339,6 +363,27 @@ export function BudgetSessionProvider({ children }: { children: ReactNode }) {
           hydratedFoundationalContext: updatedHydrated,
         };
         persist(nextSession);
+        
+        // Phase 9.1.5: Sync to server in the background
+        // Convert to snake_case for API
+        const apiContext: Record<string, unknown> = {};
+        if (context.financialPhilosophy !== undefined) apiContext.financial_philosophy = context.financialPhilosophy;
+        if (context.riskTolerance !== undefined) apiContext.risk_tolerance = context.riskTolerance;
+        if (context.primaryGoal !== undefined) apiContext.primary_goal = context.primaryGoal;
+        if (context.goalTimeline !== undefined) apiContext.goal_timeline = context.goalTimeline;
+        if (context.lifeStage !== undefined) apiContext.life_stage = context.lifeStage;
+        if (context.hasEmergencyFund !== undefined) apiContext.has_emergency_fund = context.hasEmergencyFund;
+        
+        if (Object.keys(apiContext).length > 0) {
+          fetch(`/api/budget/${prev.budgetId}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ foundationalContext: apiContext }),
+          }).catch((err) => {
+            console.warn('[useBudgetSession] Failed to sync foundational context to server:', err);
+          });
+        }
+        
         return nextSession;
       });
     },

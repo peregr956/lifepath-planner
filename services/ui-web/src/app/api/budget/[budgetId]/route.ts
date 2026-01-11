@@ -8,7 +8,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { getSession, storeUserQuery, storeUserProfile, initDatabase } from '@/lib/db';
+import { getSession, storeUserQuery, storeUserProfile, storeFoundationalContext, initDatabase } from '@/lib/db';
 import { Pool } from 'pg';
 
 // Initialize database on first request
@@ -61,6 +61,8 @@ type PatchBudgetRequest = {
   preferences?: PatchPreferences;
   userQuery?: string;
   userProfile?: Record<string, unknown>;
+  // Phase 9.1.5: Foundational context syncing
+  foundationalContext?: Record<string, unknown>;
 };
 
 // Get database pool
@@ -272,10 +274,16 @@ export async function PATCH(
       await storeUserProfile(budgetId, body.userProfile, sourceIp);
     }
 
+    // Phase 9.1.5: Handle foundational context update
+    if (body.foundationalContext !== undefined) {
+      await storeFoundationalContext(budgetId, body.foundationalContext, sourceIp);
+    }
+
     console.log(`[budget/[budgetId]] Updated session ${budgetId}`, {
       modelChanged,
       queryChanged: body.userQuery !== undefined,
       profileChanged: body.userProfile !== undefined,
+      foundationalContextChanged: body.foundationalContext !== undefined,
     });
 
     return NextResponse.json({
