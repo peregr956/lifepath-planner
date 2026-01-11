@@ -23,6 +23,7 @@ import { auth } from '@/lib/auth';
 import type { DraftBudgetModel } from '@/lib/parsers';
 import type { UnifiedBudgetModel } from '@/lib/budgetModel';
 import type { FoundationalContext, HydratedFoundationalContext } from '@/types/budget';
+import { getPlainFoundationalContext } from '@/types/budget';
 import { hydrateFromAccountProfile, type ApiUserProfile } from '@/lib/sessionHydration';
 
 // Initialize database on first request
@@ -166,11 +167,32 @@ export async function GET(request: NextRequest) {
       usedPreInterpretation: hasInterpretedModel,
     });
 
+    // Phase 9.1.11: Build effective foundational context from stored session or hydrated profile
+    const hydratedPlainContext = hydratedContext ? getPlainFoundationalContext(hydratedContext) : null;
+    const hasContextValues = (ctx: FoundationalContext | null | undefined) =>
+      !!ctx && Object.values(ctx).some((v) => v !== null && v !== undefined);
+
+    const effectiveFoundationalContext: FoundationalContext | null =
+      hasContextValues(foundationalContext)
+        ? foundationalContext
+        : hasContextValues(hydratedPlainContext)
+          ? hydratedPlainContext
+          : null;
+
+    if (process.env.NODE_ENV === 'development') {
+      console.log('[clarification-questions] Context selection', {
+        sessionContextKeys: foundationalContext ? Object.keys(foundationalContext) : [],
+        hydratedContextKeys: hydratedContext ? Object.keys(hydratedContext) : [],
+        hydratedPlainKeys: hydratedPlainContext ? Object.keys(hydratedPlainContext) : [],
+        effectiveHasValues: hasContextValues(effectiveFoundationalContext),
+      });
+    }
+
     // Generate clarification questions (Phase 9.1.4: pass layered context with confidence signals)
     const clarificationResult = await generateClarificationQuestionsWithContext(
       unifiedModel,
       effectiveUserQuery,
-      foundationalContext,
+      effectiveFoundationalContext,
       5, // max questions
       hydratedContext,
       accountProfile
@@ -208,7 +230,7 @@ export async function GET(request: NextRequest) {
         // Phase 8.5.4: Include interpretation metadata
         used_pre_interpretation: hasInterpretedModel,
         interpretation_used_ai: interpretationUsedAI,
-        foundational_context_provided: !!foundationalContext,
+        foundational_context_provided: !!(effectiveFoundationalContext || hydratedContext || accountProfile),
         // Phase 9.1.4: Include account context info
         has_account_profile: !!accountProfile,
         has_profile_metadata: !!accountProfile?.profile_metadata,
