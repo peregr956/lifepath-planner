@@ -100,6 +100,8 @@ function SignupPageContent() {
         // Parse common error messages
         if (result.error.includes('already exists')) {
           setAuthError('An account with this email already exists. Try signing in instead.');
+        } else if (result.error === 'Configuration') {
+          setAuthError('Account creation is currently unavailable. Please contact support or try again later.');
         } else {
           setAuthError(result.error);
         }

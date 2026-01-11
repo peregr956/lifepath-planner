@@ -79,9 +79,13 @@ function LoginPageContent() {
       });
 
       if (result?.error) {
-        setAuthError(result.error === 'CredentialsSignin' 
-          ? 'Invalid email or password' 
-          : result.error);
+        if (result.error === 'CredentialsSignin') {
+          setAuthError('Invalid email or password');
+        } else if (result.error === 'Configuration') {
+          setAuthError('Sign in is currently unavailable. Please contact support or try again later.');
+        } else {
+          setAuthError(result.error);
+        }
       } else if (result?.url) {
         window.location.href = result.url;
       }
