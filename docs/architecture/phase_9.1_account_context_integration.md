@@ -1,6 +1,6 @@
 # Phase 9.1: AI-Account Context Integration
 
-> **Status**: In Progress (9.1.1, 9.1.2, 9.1.3 Complete)  
+> **Status**: In Progress (9.1.1, 9.1.2, 9.1.3, 9.1.5 Complete; 9.1.4 Pending)  
 > **Prerequisite**: Phase 9 (User Accounts & Authentication) ✅ Complete  
 > **Roadmap**: See [roadmap.md](../roadmap.md) for timeline and context
 
@@ -16,7 +16,7 @@ Transform the AI from a data collector into an interpreter by establishing a lay
 | 9.1.2 | Implement session context hydration from account profile with override support | 9.1.1 | ✅ Complete |
 | 9.1.3 | Implement onboarding vs returning user flows with streamlined experience | 9.1.2 | ✅ Complete |
 | 9.1.4 | Restructure AI prompts with layered context and confidence-based inference | 9.1.2 | Pending |
-| 9.1.5 | Expand profile settings UI with all foundational fields and enrichment visibility | 9.1.1 | Pending |
+| 9.1.5 | Expand profile settings UI with all foundational fields and enrichment visibility | 9.1.1 | ✅ Complete |
 
 ---
 
@@ -96,6 +96,28 @@ Returning User (complete profile, 100%):
 - `services/ui-web/src/components/FoundationalQuestions.tsx` — Condensed view, toggle logic, onboarding polish
 - `services/ui-web/src/app/(app)/clarify/page.tsx` — Auto-advance logic, edit preferences link
 - `services/ui-web/src/lib/foundationalQuestions.ts` — Added label helper functions
+
+---
+
+## Phase 9.1.5 Implementation Summary (January 2026)
+
+**Completed:**
+- Expanded profile settings UI (`/settings/profile`) to include all 7 foundational fields
+- Added profile completeness indicator with progress bar (0-100%)
+- Added "Why we ask" tooltips for each field explaining its impact on recommendations
+- Auto-update `profile_metadata` when fields are saved (source: 'explicit', confidence: 'high', last_confirmed timestamp)
+- Display source badges and last-confirmed timestamps for each field
+
+**Key Features:**
+- **Field Organization**: Grouped into logical sections (Goals & Planning, Financial Style, Life Situation)
+- **Shared Definitions**: Reuses option definitions from `foundationalQuestions.ts` for consistency with session flow
+- **Metadata Visibility**: Shows when and how each preference was set (explicit, onboarding, inferred)
+- **Completion Tracking**: Visual progress indicator encouraging profile completion
+
+**Files Created/Modified:**
+- `services/ui-web/src/app/(app)/settings/profile/page.tsx` — Complete rewrite with all fields and metadata display
+- `services/ui-web/src/app/api/user/profile/route.ts` — Auto-update profile_metadata on field saves
+- `services/ui-web/src/lib/foundationalQuestions.ts` — Exported `WHY_WE_ASK`, added `OPTIMIZATION_FOCUS_OPTIONS`
 
 ---
 

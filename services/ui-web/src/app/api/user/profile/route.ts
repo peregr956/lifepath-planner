@@ -73,9 +73,34 @@ export async function GET() {
 }
 
 /**
+ * Phase 9.1.5: Map profile field names to metadata field names
+ */
+const FIELD_TO_METADATA_KEY: Record<string, keyof ProfileMetadata> = {
+  default_financial_philosophy: 'financial_philosophy',
+  default_optimization_focus: 'optimization_focus',
+  default_risk_tolerance: 'risk_tolerance',
+  default_primary_goal: 'primary_goal',
+  default_goal_timeline: 'goal_timeline',
+  default_life_stage: 'life_stage',
+  default_emergency_fund_status: 'emergency_fund_status',
+};
+
+/**
+ * Phase 9.1.5: Create a field metadata entry for explicit profile saves
+ */
+function createExplicitFieldMetadata(): ProfileMetadata[keyof ProfileMetadata] {
+  return {
+    source: 'explicit',
+    last_confirmed: new Date().toISOString(),
+    confidence: 'high',
+  };
+}
+
+/**
  * PATCH /api/user/profile
  * Update user profile preferences
  * Phase 9.1.1: Extended to support all foundational fields and metadata
+ * Phase 9.1.5: Auto-updates profile_metadata when fields are saved
  */
 export async function PATCH(request: NextRequest) {
   try {
@@ -173,7 +198,7 @@ export async function PATCH(request: NextRequest) {
       );
     }
 
-    // Validate profile_metadata structure if provided
+    // Validate profile_metadata structure if provided directly
     if (updates.profile_metadata !== undefined && updates.profile_metadata !== null) {
       if (typeof updates.profile_metadata !== 'object') {
         return NextResponse.json(
@@ -184,6 +209,28 @@ export async function PATCH(request: NextRequest) {
     }
 
     // primary_goal is free text (VARCHAR(200)), no enum validation needed
+
+    // Phase 9.1.5: Auto-update profile_metadata for fields being saved
+    // Get existing profile to merge metadata
+    const existingProfile = await getUserProfile(session.user.id);
+    const existingMetadata: ProfileMetadata = existingProfile?.profile_metadata ?? {};
+    const updatedMetadata: ProfileMetadata = { ...existingMetadata };
+
+    // For each field being updated (except profile_metadata itself), update its metadata
+    for (const [fieldName, metadataKey] of Object.entries(FIELD_TO_METADATA_KEY)) {
+      if (updates[fieldName] !== undefined) {
+        // Field is being updated - update its metadata with explicit source and timestamp
+        updatedMetadata[metadataKey] = createExplicitFieldMetadata();
+      }
+    }
+
+    // Merge the auto-generated metadata with any explicitly provided metadata
+    if (updates.profile_metadata && typeof updates.profile_metadata === 'object') {
+      Object.assign(updatedMetadata, updates.profile_metadata);
+    }
+
+    // Set the merged metadata
+    updates.profile_metadata = Object.keys(updatedMetadata).length > 0 ? updatedMetadata : null;
 
     const profile = await upsertUserProfile(session.user.id, updates as {
       default_financial_philosophy?: string | null;

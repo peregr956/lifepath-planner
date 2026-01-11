@@ -328,3 +328,47 @@ export function getPrimaryGoalLabel(value: string | null | undefined): string {
   if (!value) return 'Not specified';
   return value;
 }
+
+// =============================================================================
+// Why We Ask Explanations (for reuse in profile settings)
+// =============================================================================
+
+export const WHY_WE_ASK = {
+  primaryGoal: 'We tailor all suggestions to help you achieve what matters most to you.',
+  goalTimeline: 'Urgency changes the strategy. Short-term goals need safer money, while long-term goals can weather more volatility.',
+  financialPhilosophy: 'Different frameworks prioritize things differently. Knowing your approach helps us give advice that aligns with your values.',
+  riskTolerance: 'Your risk comfort affects whether we suggest aggressive debt payoff vs. investing, or high-yield savings vs. market investments.',
+  lifeStage: 'Life stage affects everything from risk tolerance to tax strategies. Early career advice differs significantly from pre-retirement planning.',
+  hasEmergencyFund: 'If you already have adequate savings, we can focus on other goals. If not, we may suggest building one depending on your situation.',
+  optimizationFocus: 'This determines whether we prioritize debt payoff, building savings, or a balanced approach in our recommendations.',
+} as const;
+
+// =============================================================================
+// Optimization Focus Options (for profile settings)
+// =============================================================================
+
+export type OptimizationFocus = 'debt_payoff' | 'savings' | 'balanced';
+
+export const OPTIMIZATION_FOCUS_OPTIONS: FoundationalOption<OptimizationFocus>[] = [
+  {
+    value: 'debt_payoff',
+    label: 'Debt Payoff',
+    description: 'Prioritize eliminating debt as quickly as possible',
+  },
+  {
+    value: 'savings',
+    label: 'Savings & Investment',
+    description: 'Focus on building savings and investment accounts',
+  },
+  {
+    value: 'balanced',
+    label: 'Balanced Approach',
+    description: 'Balance debt payoff with saving for the future',
+  },
+];
+
+export function getOptimizationFocusLabel(value: string | null | undefined): string {
+  if (!value) return 'Not specified';
+  const option = OPTIMIZATION_FOCUS_OPTIONS.find(o => o.value === value);
+  return option?.label || value;
+}
