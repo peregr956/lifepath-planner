@@ -402,29 +402,53 @@ export function BudgetSessionProvider({ children }: { children: ReactNode }) {
   }, [persist]);
 
   // Phase 9.1.2: Fetch user profile and hydrate session
+  // Phase 9.1.9: Added debug logging to trace hydration flow
   const hydrateFromProfile = useCallback(async (): Promise<void> => {
     // Only hydrate if authenticated
     if (authStatus !== 'authenticated' || !authSession?.user) {
+      if (process.env.NODE_ENV === 'development') {
+        console.log('[useBudgetSession] hydrateFromProfile skipped - not authenticated', { authStatus });
+      }
       return;
     }
 
+    if (process.env.NODE_ENV === 'development') {
+      console.log('[useBudgetSession] hydrateFromProfile starting...');
+    }
     setIsProfileHydrating(true);
     try {
       const response = await fetch('/api/user/profile');
       if (!response.ok) {
-        console.warn('[useBudgetSession] Failed to fetch profile for hydration');
+        console.warn('[useBudgetSession] Failed to fetch profile for hydration', response.status);
         return;
       }
 
       const data = await response.json();
       const profile: ApiUserProfile | null = data.profile;
 
+      if (process.env.NODE_ENV === 'development') {
+        console.log('[useBudgetSession] Profile fetched from API:', {
+          hasProfile: !!profile,
+          profileFields: profile ? Object.keys(profile).filter(k => profile[k as keyof ApiUserProfile] != null) : [],
+        });
+      }
+
       if (!profile) {
+        if (process.env.NODE_ENV === 'development') {
+          console.log('[useBudgetSession] No profile returned from API');
+        }
         return;
       }
 
       // Hydrate foundational context from account profile
       const hydratedFromProfile = hydrateFromAccountProfile(profile);
+
+      if (process.env.NODE_ENV === 'development') {
+        console.log('[useBudgetSession] Hydrated from profile:', {
+          hydratedFields: Object.keys(hydratedFromProfile),
+          values: Object.entries(hydratedFromProfile).map(([k, v]) => ({ field: k, value: v?.value, source: v?.source })),
+        });
+      }
 
       setSession((prev) => {
         if (!prev) return prev;
@@ -462,6 +486,13 @@ export function BudgetSessionProvider({ children }: { children: ReactNode }) {
           finalHydrated = hydratedFromProfile;
         }
 
+        if (process.env.NODE_ENV === 'development') {
+          console.log('[useBudgetSession] Final hydrated context:', {
+            fieldCount: Object.keys(finalHydrated).length,
+            fields: Object.entries(finalHydrated).map(([k, v]) => ({ field: k, value: v?.value })),
+          });
+        }
+
         const nextSession = {
           ...prev,
           hydratedFoundationalContext: finalHydrated,
@@ -477,22 +508,37 @@ export function BudgetSessionProvider({ children }: { children: ReactNode }) {
     } finally {
       setIsProfileHydrating(false);
       setProfileHydrationComplete(true);
+      if (process.env.NODE_ENV === 'development') {
+        console.log('[useBudgetSession] Hydration complete');
+      }
     }
   }, [authStatus, authSession, persist]);
 
   // Phase 9.1.2: Auto-hydrate when authenticated and session exists
   // Phase 9.1.6: Always re-fetch profile to ensure fresh data when user completes profile in Settings
   // Phase 9.1.7: Removed ref-based guard to allow re-hydration after profile updates
+  // Phase 9.1.9: Fixed guard to check for actual values, not just object existence
   useEffect(() => {
     // Prevent concurrent fetches
     if (isProfileHydrating) return;
-    // Already hydrated in this render cycle and profile context exists
-    if (profileHydrationComplete && session?.hydratedFoundationalContext) return;
+    // Check if we actually have hydrated values (not just an empty object)
+    const hasExistingHydratedValues = session?.hydratedFoundationalContext && 
+      Object.keys(session.hydratedFoundationalContext).length > 0 &&
+      Object.values(session.hydratedFoundationalContext).some(v => v?.value != null);
+    // Already hydrated in this render cycle AND we have actual values
+    if (profileHydrationComplete && hasExistingHydratedValues) return;
     // Wait for both session hydration and auth to be ready
     if (!hydrated || authStatus === 'loading') return;
     // Only hydrate if we have a session and user is authenticated
     if (!session || authStatus !== 'authenticated') return;
 
+    if (process.env.NODE_ENV === 'development') {
+      console.log('[useBudgetSession] Auto-hydration triggered', {
+        profileHydrationComplete,
+        hasExistingHydratedValues,
+        hydratedContextKeys: session?.hydratedFoundationalContext ? Object.keys(session.hydratedFoundationalContext) : [],
+      });
+    }
     hydrateFromProfile();
   }, [hydrated, authStatus, session, isProfileHydrating, profileHydrationComplete, hydrateFromProfile]);
 
@@ -516,10 +562,15 @@ export function BudgetSessionProvider({ children }: { children: ReactNode }) {
   );
 
   // Phase 9.1.7: Force re-fetch profile data (useful when navigating to clarify after profile update)
+  // Phase 9.1.9: Directly call hydrateFromProfile instead of relying on effect re-triggering
   const refreshProfileHydration = useCallback(() => {
+    if (process.env.NODE_ENV === 'development') {
+      console.log('[useBudgetSession] refreshProfileHydration called - fetching fresh profile');
+    }
     setProfileHydrationComplete(false);
-    // This will trigger the auto-hydration effect to re-run
-  }, []);
+    // Directly invoke hydration instead of waiting for effect
+    hydrateFromProfile();
+  }, [hydrateFromProfile]);
 
   const value = useMemo<BudgetSessionContextValue>(
     () => ({
