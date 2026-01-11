@@ -1,16 +1,18 @@
 /**
- * NextAuth.js (Auth.js v5) Configuration
+ * NextAuth.js (Auth.js v5) Full Configuration
  * 
  * This module configures authentication for LifePath Planner using:
  * - Google OAuth (primary OAuth provider)
  * - Credentials (email/password authentication)
  * - JWT session strategy (serverless-compatible)
+ * 
+ * This extends the Edge-compatible base config (auth.config.ts) with
+ * database-dependent callbacks for API routes.
  */
 
 import NextAuth from 'next-auth';
-import type { NextAuthConfig } from 'next-auth';
-import Google from 'next-auth/providers/google';
 import Credentials from 'next-auth/providers/credentials';
+import Google from 'next-auth/providers/google';
 import { v4 as uuidv4 } from 'uuid';
 import {
   getUserByEmail,
@@ -21,66 +23,31 @@ import {
   getUserByAccount,
 } from './authDb';
 import { getPool, hasPostgres } from './db';
-
-// Extend the built-in session types
-declare module 'next-auth' {
-  interface Session {
-    user: {
-      id: string;
-      email: string;
-      name?: string | null;
-      image?: string | null;
-    };
-  }
-
-  interface User {
-    id: string;
-    email: string;
-    name?: string | null;
-    image?: string | null;
-  }
-}
-
-// Extend JWT type inline (avoid module augmentation issues)
-interface ExtendedJWT {
-  id?: string;
-  email?: string;
-}
+import { authConfig, type ExtendedJWT } from './auth.config';
 
 /**
- * NextAuth.js configuration
+ * Full NextAuth.js configuration with database callbacks
+ * 
+ * This extends the base config with database-dependent operations
+ * for the Credentials provider and OAuth account linking.
  */
-export const authConfig: NextAuthConfig = {
-  // Use JWT for sessions (serverless-compatible)
-  session: {
-    strategy: 'jwt',
-    maxAge: 30 * 24 * 60 * 60, // 30 days
-  },
-
-  // Authentication pages
-  pages: {
-    signIn: '/login',
-    signOut: '/login',
-    error: '/login',
-    newUser: '/upload', // Redirect new users to upload after signup
-  },
-
-  // Providers
+const fullAuthConfig = {
+  ...authConfig,
+  // Override providers with full implementations
   providers: [
     // Google OAuth
     Google({
       clientId: process.env.GOOGLE_CLIENT_ID ?? '',
       clientSecret: process.env.GOOGLE_CLIENT_SECRET ?? '',
-      allowDangerousEmailAccountLinking: true, // Allow linking existing accounts
+      allowDangerousEmailAccountLinking: true,
     }),
-
-    // Email/Password credentials
+    // Email/Password credentials with full authorize logic
     Credentials({
       name: 'credentials',
       credentials: {
         email: { label: 'Email', type: 'email' },
         password: { label: 'Password', type: 'password' },
-        action: { label: 'Action', type: 'text' }, // 'login' or 'signup'
+        action: { label: 'Action', type: 'text' },
         name: { label: 'Name', type: 'text' },
       },
       async authorize(credentials) {
@@ -125,11 +92,11 @@ export const authConfig: NextAuthConfig = {
       },
     }),
   ],
-
-  // Callbacks
+  // Extend callbacks with database operations
   callbacks: {
-    // Add user ID to JWT
-    async jwt({ token, user, account }) {
+    ...authConfig.callbacks,
+    // Add user ID to JWT with OAuth account linking
+    async jwt({ token, user, account }: { token: Record<string, unknown>; user?: { id: string; email?: string | null; name?: string | null; image?: string | null }; account?: { provider: string; providerAccountId: string; type: string; refresh_token?: string | null; access_token?: string | null; expires_at?: number | null; token_type?: string | null; scope?: string | null; id_token?: string | null } | null }) {
       if (user) {
         token.id = user.id;
         token.email = user.email!;
@@ -137,7 +104,6 @@ export const authConfig: NextAuthConfig = {
       
       // Handle OAuth account linking
       if (account && user) {
-        // Check if this is an OAuth sign-in that needs account linking
         if (account.provider !== 'credentials') {
           try {
             // Check if user already exists by email
@@ -186,66 +152,23 @@ export const authConfig: NextAuthConfig = {
 
       return token;
     },
-
-    // Add user ID to session
-    async session({ session, token }) {
-      const extToken = token as ExtendedJWT;
-      if (extToken && session.user) {
-        session.user.id = extToken.id ?? '';
-        session.user.email = extToken.email ?? '';
-      }
-      return session;
-    },
-
-    // Custom sign-in handler for OAuth
-    async signIn({ user, account }) {
-      // Allow credentials sign-in
-      if (account?.provider === 'credentials') {
-        return true;
-      }
-
-      // For OAuth, check if email is available
-      if (!user.email) {
-        return false;
-      }
-
-      return true;
-    },
-
-    // Redirect after sign in
-    async redirect({ url, baseUrl }) {
-      // Redirect to upload page after sign in
-      if (url.startsWith(baseUrl)) {
-        return url;
-      }
-      if (url.startsWith('/')) {
-        return `${baseUrl}${url}`;
-      }
-      return `${baseUrl}/upload`;
-    },
   },
-
   // Events for logging
   events: {
-    async signIn({ user, account }) {
+    async signIn({ user, account }: { user: { email?: string | null }; account?: { provider: string } | null }) {
       console.log(`[Auth] User signed in: ${user.email} via ${account?.provider}`);
     },
-    async signOut(message) {
-      // signOut receives either { session } or { token } depending on strategy
+    async signOut(message: { token?: Record<string, unknown>; session?: unknown }) {
       const email = 'token' in message ? (message.token as ExtendedJWT)?.email : 'unknown';
       console.log(`[Auth] User signed out: ${email}`);
     },
   },
-
   // Debug mode in development
   debug: process.env.NODE_ENV === 'development',
-
-  // Trust host for Vercel deployment
-  trustHost: true,
 };
 
 // Export handlers and auth utilities
-export const { handlers, auth, signIn, signOut } = NextAuth(authConfig);
+export const { handlers, auth, signIn, signOut } = NextAuth(fullAuthConfig);
 
 /**
  * Helper to get current user from server components

@@ -318,8 +318,8 @@ Audit events are logged for:
 - [ ] Configure Google OAuth with correct redirect URIs (see [Section 4.3](#43-google-oauth-setup-guide))
 - [x] Enable database SSL for production ✓ (Vercel Postgres default)
 - [x] Set up security headers in Vercel ✓ (configured in vercel.json)
-- [ ] Review and test authentication flows
-- [ ] Verify password hashing is working
+- [x] Review and test authentication flows ✓ (verified January 2026)
+- [x] Verify password hashing is working ✓ (bcrypt tests passing)
 
 ### Ongoing
 

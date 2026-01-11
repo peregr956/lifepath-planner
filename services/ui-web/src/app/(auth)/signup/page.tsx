@@ -45,6 +45,7 @@ export default function SignupPage() {
     formState: { errors },
   } = useForm<SignupFormData>({
     resolver: zodResolver(signupSchema),
+    mode: 'onChange',
   });
 
   const password = watch('password', '');
