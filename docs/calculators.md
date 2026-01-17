@@ -1,20 +1,33 @@
 # Financial Calculators Specification
 
-This document specifies the financial calculators to be implemented in Phase 9 of the LifePath Planner platform expansion. Each calculator is designed to be both standalone (accessible via the calculator library) and integratable into planning workflows.
+This document specifies the financial calculators for LifePath Planner. Calculators are implemented in Phase 12 (Calculator expansion) building on the foundation established in Phase 9.6 (Budget Builder).
+
+The calculator architecture follows the **Goldleaf spreadsheet model**: deterministic calculations with AI interpretation of results.
 
 ---
 
 ## Overview
 
-### Calculator Categories
+### Foundation (Phase 9.6 Complete)
+
+The following calculators were implemented as part of the Budget Builder:
+
+| Calculator | File | Description |
+|------------|------|-------------|
+| Budget Calculator | `budgetCalculator.ts` | Totals, category shares, savings rate, debt metrics |
+| Tax Calculator | `taxCalculator.ts` | Federal/DC brackets, FICA, effective rate |
+
+### Calculator Categories (Phase 12)
 
 | Category | Calculators | Primary Use Case |
 |----------|-------------|------------------|
 | Debt Management | Debt Payoff, Mortgage | Eliminating debt, home buying |
 | Savings & Growth | Savings Growth, Investment Return | Building wealth, compound growth |
-| Retirement | Retirement Readiness | Long-term planning |
+| Retirement | FIRE/SMILE Retirement | Long-term planning, early retirement |
 | Net Worth | Net Worth Tracker | Overall financial health |
 | Tax | Tax Estimator | Tax planning and optimization |
+| Real Estate | Rental Property | Cash flow, cap rate, reserves |
+| Composite | Financial Health Score | Overall wellness metric |
 
 ### Design Principles
 
@@ -23,6 +36,7 @@ This document specifies the financial calculators to be implemented in Phase 9 o
 3. **Transparent**: Show calculation steps and assumptions to users
 4. **Integratable**: Each calculator exposes API endpoints and can be embedded in workflows
 5. **Accessible**: All calculators meet WCAG 2.1 AA accessibility standards
+6. **Goldleaf-aligned**: Formulas and methodology align with the Goldleaf spreadsheet for consistency
 
 ---
 
@@ -214,28 +228,50 @@ Content-Type: application/json
 
 ---
 
-## 3. Retirement Calculator
+## 3. Retirement Calculator (FIRE/SMILE)
 
 ### Purpose
 
-Determine retirement readiness, required savings, and sustainable withdrawal rates.
+Determine retirement readiness, required savings, and sustainable withdrawal rates. Supports FIRE (Financial Independence, Retire Early) planning and the SMILE withdrawal strategy from Goldleaf.
+
+### FIRE Planning
+
+The calculator supports multiple FIRE targets:
+- **Lean FIRE**: 25x minimal annual expenses
+- **Regular FIRE**: 25x comfortable annual expenses
+- **Fat FIRE**: 25x generous annual expenses
+
+### SMILE Withdrawal Strategy
+
+The SMILE strategy (from Goldleaf) recognizes that retirement spending is not constant:
+
+| Phase | Ages | Spending Multiplier | Description |
+|-------|------|---------------------|-------------|
+| Go-Go | 62-75 | 1.2x | Active retirement, travel, hobbies |
+| Slow-Go | 75-85 | 1.0x | Reduced activity, stable spending |
+| No-Go | 85+ | 1.2x | Increased healthcare costs |
 
 ### Inputs
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `current_age` | number | Yes | User's current age |
-| `retirement_age` | number | Yes | Planned retirement age (default 65) |
-| `life_expectancy` | number | No | Expected lifespan (default 90) |
+| `retirement_age` | number | Yes | Planned retirement age (default 65, FIRE users often 45-55) |
+| `life_expectancy` | number | No | Expected lifespan (default 95, from Goldleaf) |
 | `current_retirement_savings` | number | Yes | Current retirement account balance |
 | `current_monthly_contribution` | number | Yes | Monthly retirement contributions |
-| `pre_retirement_return` | number | No | Expected return before retirement (default 0.07) |
+| `pre_retirement_return` | number | No | Expected return before retirement (default 0.075 from Goldleaf) |
 | `post_retirement_return` | number | No | Expected return during retirement (default 0.04) |
-| `inflation_rate` | number | No | Expected inflation (default 0.03) |
+| `inflation_rate` | number | No | Expected inflation (default 0.025 from Goldleaf) |
 | `desired_annual_income` | number | Yes | Desired annual income in retirement (today's dollars) |
 | `social_security_annual` | number | No | Expected Social Security income (default 0) |
+| `ss_claiming_age` | number | No | SS claiming age (62, 67, or 70) |
 | `pension_annual` | number | No | Expected pension income (default 0) |
-| `annual_contribution_increase` | number | No | Annual increase in contributions (default 0.02) |
+| `annual_contribution_increase` | number | No | Annual increase in contributions (default 0.03 from Goldleaf) |
+| `withdrawal_strategy` | enum | No | `constant`, `smile`, or `variable` (default: smile) |
+| `smile_multipliers` | object | No | SMILE phase multipliers (go_go, slow_go, no_go) |
+| `healthcare_pre_medicare` | number | No | Annual healthcare before 65 (default 15000 from Goldleaf) |
+| `healthcare_post_medicare` | number | No | Annual healthcare after 65 (default 6000 from Goldleaf) |
 
 ### Outputs
 
@@ -250,6 +286,10 @@ Determine retirement readiness, required savings, and sustainable withdrawal rat
 | `delayed_retirement_age` | number | Alternative retirement age if underfunded |
 | `reduced_lifestyle_amount` | number | Sustainable income at current savings rate |
 | `yearly_projections` | array | Year-by-year projection through retirement |
+| `fire_date` | date | Projected FIRE achievement date |
+| `fire_number` | number | Required portfolio for FIRE |
+| `smile_projections` | object | SMILE-adjusted spending by phase |
+| `ss_optimization` | object | Comparison of SS claiming ages (62 vs 67 vs 70) |
 
 ### Formulas
 
@@ -266,16 +306,43 @@ Otherwise:
     withdrawal = portfolio_value × withdrawal_rate
 ```
 
-#### Required Nest Egg
+#### FIRE Number
 
 ```
-real_return = (1 + annual_return) / (1 + inflation_rate) - 1
+fire_number = desired_annual_expenses × 25
+// or more precisely:
+fire_number = desired_annual_expenses / safe_withdrawal_rate
+```
 
-If real_return <= 0:
-    required = desired_annual_income × years_in_retirement
+#### SMILE Spending Calculation
 
-Otherwise:
-    required = desired_annual_income × (1 - (1 + real_return)^(-years_in_retirement)) / real_return
+```
+For each year in retirement:
+    if age < 75:
+        spending = base_spending × go_go_multiplier
+    else if age < 85:
+        spending = base_spending × slow_go_multiplier
+    else:
+        spending = base_spending × no_go_multiplier
+    
+    // Adjust for healthcare
+    if age < 65:
+        spending += healthcare_pre_medicare
+    else:
+        spending += healthcare_post_medicare
+```
+
+#### Social Security Optimization
+
+```
+// Compare claiming at different ages
+ss_62 = estimated_benefit × 0.70  // 30% reduction for early claiming
+ss_67 = estimated_benefit × 1.00  // Full benefit at FRA
+ss_70 = estimated_benefit × 1.24  // 8% increase per year delayed
+
+// Break-even analysis
+break_even_67_vs_62 = (sum of 62-66 benefits) / (ss_67 - ss_62) per year
+break_even_70_vs_67 = (sum of 67-69 foregone) / (ss_70 - ss_67) per year
 ```
 
 #### Years to Retirement
@@ -293,11 +360,21 @@ Content-Type: application/json
 
 {
   "current_age": 30,
-  "retirement_age": 65,
+  "retirement_age": 62,
+  "life_expectancy": 95,
   "current_retirement_savings": 50000,
   "current_monthly_contribution": 500,
   "desired_annual_income": 60000,
-  "social_security_annual": 18000
+  "social_security_annual": 45300,
+  "ss_claiming_age": 67,
+  "withdrawal_strategy": "smile",
+  "smile_multipliers": {
+    "go_go": 1.2,
+    "slow_go": 1.0,
+    "no_go": 1.2
+  },
+  "healthcare_pre_medicare": 15000,
+  "healthcare_post_medicare": 6000
 }
 ```
 
@@ -307,9 +384,12 @@ Content-Type: application/json
 - Current savings and contribution inputs
 - Desired retirement lifestyle inputs
 - Retirement readiness gauge/meter
+- **FIRE progress bar** (current savings / FIRE number)
 - Projected savings growth chart
+- **SMILE spending visualization** (Go-Go/Slow-Go/No-Go phases)
 - Income sources breakdown (withdrawals, SS, pension)
 - Gap analysis with recommendations
+- **SS claiming age comparison** (62 vs 67 vs 70)
 - "What if" scenarios (delay retirement, increase savings)
 
 ---
@@ -501,11 +581,24 @@ Content-Type: application/json
 
 ---
 
-## 6. Investment Return Calculator
+## 6. Investment Return Calculator (with Glide Path)
 
 ### Purpose
 
-Calculate investment returns, compare strategies, and analyze portfolio performance.
+Calculate investment returns, compare strategies, and analyze portfolio performance. Includes **glide path** support from Goldleaf for retirement planning.
+
+### Glide Path (Goldleaf Feature)
+
+The glide path gradually shifts asset allocation from aggressive to conservative as retirement approaches:
+
+```
+Current allocation: 98% stocks / 2% bonds (age 30)
+Retirement allocation: 40% stocks / 60% bonds (age 62)
+
+Shift per year = (current_stock - retirement_stock) / years_to_retirement
+```
+
+This provides higher growth potential early and reduced volatility near retirement.
 
 ### Inputs
 
@@ -513,13 +606,18 @@ Calculate investment returns, compare strategies, and analyze portfolio performa
 |-------|------|----------|-------------|
 | `initial_investment` | number | Yes | Starting investment amount |
 | `monthly_contribution` | number | No | Monthly additions (default 0) |
-| `annual_return` | number | Yes | Expected annual return |
+| `annual_return` | number | Yes | Expected annual return (or use glide path) |
 | `investment_years` | number | Yes | Investment time horizon |
 | `expense_ratio` | number | No | Fund expense ratio (default 0) |
 | `dividend_yield` | number | No | Annual dividend yield (default 0) |
 | `dividend_reinvest` | boolean | No | Reinvest dividends (default true) |
 | `tax_rate` | number | No | Capital gains tax rate (default 0) |
-| `inflation_rate` | number | No | For real-return calculation (default 0.03) |
+| `inflation_rate` | number | No | For real-return calculation (default 0.025 from Goldleaf) |
+| `use_glide_path` | boolean | No | Enable glide path allocation (default false) |
+| `current_stock_allocation` | number | No | Current stock allocation (default 0.98 from Goldleaf) |
+| `retirement_stock_allocation` | number | No | Target retirement allocation (default 0.40 from Goldleaf) |
+| `expected_stock_return` | number | No | Expected stock return (default 0.075 from Goldleaf) |
+| `expected_bond_return` | number | No | Expected bond return (default 0.045 from Goldleaf) |
 
 ### Outputs
 
@@ -535,6 +633,8 @@ Calculate investment returns, compare strategies, and analyze portfolio performa
 | `total_dividends` | number | Cumulative dividends |
 | `total_fees` | number | Cumulative expense ratio fees |
 | `yearly_breakdown` | array | Year-by-year performance |
+| `glide_path_schedule` | array | Year-by-year stock/bond allocation |
+| `blended_return_by_year` | array | Weighted return based on allocation |
 
 ### Formulas
 
@@ -542,6 +642,18 @@ Calculate investment returns, compare strategies, and analyze portfolio performa
 
 ```
 CAGR = (final_value / initial_investment)^(1/years) - 1
+```
+
+#### Glide Path Allocation
+
+```
+years_to_retirement = retirement_age - current_age
+stock_reduction_per_year = (current_stock - retirement_stock) / years_to_retirement
+
+For each year:
+    stock_allocation = current_stock - (year × stock_reduction_per_year)
+    bond_allocation = 1 - stock_allocation
+    blended_return = (stock_allocation × stock_return) + (bond_allocation × bond_return)
 ```
 
 #### Net Return (After Fees)
@@ -558,14 +670,6 @@ tax_owed = capital_gains × tax_rate
 after_tax_value = final_value - tax_owed
 ```
 
-#### Dividend Growth
-
-```
-annual_dividends = portfolio_value × dividend_yield
-If reinvest:
-    portfolio_value += annual_dividends
-```
-
 ### API Endpoint
 
 ```
@@ -575,10 +679,13 @@ Content-Type: application/json
 {
   "initial_investment": 10000,
   "monthly_contribution": 500,
-  "annual_return": 0.08,
-  "investment_years": 20,
+  "investment_years": 32,
+  "use_glide_path": true,
+  "current_stock_allocation": 0.98,
+  "retirement_stock_allocation": 0.40,
+  "expected_stock_return": 0.075,
+  "expected_bond_return": 0.045,
   "expense_ratio": 0.001,
-  "dividend_yield": 0.02,
   "dividend_reinvest": true
 }
 ```
@@ -587,6 +694,8 @@ Content-Type: application/json
 
 - Investment inputs form
 - Return rate selector with presets (conservative, moderate, aggressive)
+- **Glide path toggle and visualization**
+- **Stock/bond allocation over time chart**
 - Growth chart with contribution overlay
 - Return breakdown (contributions vs growth vs dividends)
 - Fee impact visualization
@@ -729,6 +838,258 @@ Content-Type: application/json
 
 ---
 
+---
+
+## 8. Real Estate Calculator (Rental Property)
+
+### Purpose
+
+Analyze rental property cash flow, returns, and reserves. Based on Goldleaf's rental property modeling.
+
+### Inputs
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `purchase_price` | number | Yes | Property purchase price |
+| `land_value` | number | No | Land value (for depreciation) |
+| `down_payment` | number | Yes | Down payment amount |
+| `mortgage_rate` | number | Yes | Mortgage interest rate |
+| `mortgage_term_years` | number | No | Loan term (default 30) |
+| `monthly_gross_rent` | number | Yes | Monthly rental income |
+| `property_mgmt_percent` | number | No | Property management fee (default 0.08) |
+| `monthly_property_tax` | number | Yes | Monthly property taxes |
+| `monthly_insurance` | number | Yes | Monthly insurance |
+| `monthly_repairs_reserve` | number | No | Monthly repairs reserve (default 150) |
+| `monthly_utilities_owner` | number | No | Owner-paid utilities (default 0) |
+| `vacancy_reserve_percent` | number | No | Vacancy reserve (default 0.05) |
+| `closing_costs` | number | No | Closing costs |
+| `rehab_costs` | number | No | Renovation/rehab costs |
+
+### Outputs
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `monthly_pi_payment` | number | Monthly principal & interest |
+| `monthly_expenses` | number | Total monthly expenses |
+| `net_operating_income` | number | NOI (rent - expenses, before mortgage) |
+| `monthly_cash_flow` | number | Net cash flow after mortgage |
+| `annual_cash_flow` | number | Yearly cash flow |
+| `cap_rate` | number | Capitalization rate |
+| `cash_on_cash_return` | number | Cash-on-cash return |
+| `total_roi` | number | Total ROI including appreciation and principal |
+| `break_even_rent` | number | Rent needed to break even |
+| `vacancy_adjusted_income` | number | Rent after vacancy reserve |
+| `depreciation_annual` | number | Annual depreciation deduction |
+
+### Formulas
+
+#### Net Operating Income (NOI)
+
+```
+vacancy_adjustment = monthly_gross_rent × vacancy_reserve_percent
+effective_rent = monthly_gross_rent - vacancy_adjustment
+
+operating_expenses = property_tax + insurance + repairs + utilities + (rent × mgmt_percent)
+
+NOI_monthly = effective_rent - operating_expenses
+NOI_annual = NOI_monthly × 12
+```
+
+#### Cap Rate
+
+```
+cap_rate = NOI_annual / purchase_price
+```
+
+#### Cash-on-Cash Return
+
+```
+total_cash_invested = down_payment + closing_costs + rehab_costs
+annual_cash_flow = (NOI_monthly - mortgage_payment) × 12
+cash_on_cash = annual_cash_flow / total_cash_invested
+```
+
+#### Depreciation (Straight-Line)
+
+```
+depreciable_basis = purchase_price - land_value
+annual_depreciation = depreciable_basis / 27.5  // Residential rental
+```
+
+### API Endpoint
+
+```
+POST /calculators/real-estate
+Content-Type: application/json
+
+{
+  "purchase_price": 215000,
+  "land_value": 60000,
+  "down_payment": 43000,
+  "mortgage_rate": 0.065,
+  "monthly_gross_rent": 1650,
+  "property_mgmt_percent": 0.08,
+  "monthly_property_tax": 300,
+  "monthly_insurance": 118,
+  "monthly_repairs_reserve": 150,
+  "vacancy_reserve_percent": 0.05
+}
+```
+
+### UI Components
+
+- Property details form
+- Cash flow breakdown (income vs expenses)
+- Cap rate and ROI metrics
+- Mortgage amortization chart
+- Break-even analysis
+- "What if" scenarios (rent increase, vacancy, rate change)
+- Compare multiple properties
+
+---
+
+## 9. Financial Health Score Calculator
+
+### Purpose
+
+Calculate a composite financial health score based on key metrics. Inspired by Goldleaf's Financial Command Center.
+
+### Score Components
+
+| Component | Weight | Description | Optimal Range |
+|-----------|--------|-------------|---------------|
+| Emergency Fund Ratio | 20% | Months of expenses covered | 3-6 months |
+| Debt-to-Income Ratio | 20% | Total debt payments / income | < 36% |
+| Savings Rate | 20% | Savings / gross income | > 20% |
+| Net Worth Trajectory | 15% | Year-over-year growth | Positive |
+| Retirement Progress | 15% | Current savings / target | On track |
+| Expense Ratio | 10% | Essential expenses / income | < 50% |
+
+### Inputs
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `monthly_income` | number | Yes | Total monthly income |
+| `monthly_expenses` | number | Yes | Total monthly expenses |
+| `monthly_essential_expenses` | number | Yes | Essential expenses only |
+| `emergency_fund_balance` | number | Yes | Emergency fund balance |
+| `total_debt_payments` | number | Yes | Monthly debt payments |
+| `monthly_savings` | number | Yes | Monthly savings/investments |
+| `current_net_worth` | number | Yes | Current net worth |
+| `prior_year_net_worth` | number | No | Net worth one year ago |
+| `current_retirement_savings` | number | Yes | Current retirement balance |
+| `target_retirement_savings` | number | No | Target retirement balance |
+| `age` | number | Yes | Current age |
+| `retirement_age` | number | No | Target retirement age |
+
+### Outputs
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `overall_score` | number | Composite score (0-100) |
+| `grade` | string | Letter grade (A+, A, B, C, D, F) |
+| `component_scores` | object | Individual component scores |
+| `strengths` | array | Areas performing well |
+| `improvement_areas` | array | Areas needing attention |
+| `recommended_actions` | array | Prioritized recommendations |
+
+### Formulas
+
+#### Emergency Fund Score
+
+```
+months_covered = emergency_fund / monthly_essential_expenses
+
+If months_covered >= 6:
+    score = 100
+Else if months_covered >= 3:
+    score = 50 + (months_covered - 3) × 16.67
+Else:
+    score = months_covered × 16.67
+```
+
+#### Debt-to-Income Score
+
+```
+dti_ratio = total_debt_payments / monthly_income
+
+If dti_ratio <= 0.20:
+    score = 100
+Else if dti_ratio <= 0.36:
+    score = 100 - (dti_ratio - 0.20) × 312.5
+Else if dti_ratio <= 0.50:
+    score = 50 - (dti_ratio - 0.36) × 357.14
+Else:
+    score = 0
+```
+
+#### Savings Rate Score
+
+```
+savings_rate = monthly_savings / monthly_income
+
+If savings_rate >= 0.30:
+    score = 100
+Else if savings_rate >= 0.20:
+    score = 80 + (savings_rate - 0.20) × 200
+Else if savings_rate >= 0.10:
+    score = 50 + (savings_rate - 0.10) × 300
+Else:
+    score = savings_rate × 500
+```
+
+#### Overall Score
+
+```
+overall = (emergency × 0.20) + (dti × 0.20) + (savings × 0.20) +
+          (net_worth × 0.15) + (retirement × 0.15) + (expense × 0.10)
+
+Grade:
+    90-100: A+
+    85-89:  A
+    80-84:  A-
+    75-79:  B+
+    70-74:  B
+    65-69:  B-
+    60-64:  C+
+    55-59:  C
+    50-54:  C-
+    40-49:  D
+    0-39:   F
+```
+
+### API Endpoint
+
+```
+POST /calculators/financial-health
+Content-Type: application/json
+
+{
+  "monthly_income": 10833,
+  "monthly_expenses": 7500,
+  "monthly_essential_expenses": 4500,
+  "emergency_fund_balance": 4000,
+  "total_debt_payments": 1050,
+  "monthly_savings": 1500,
+  "current_net_worth": 50000,
+  "prior_year_net_worth": 35000,
+  "current_retirement_savings": 109500,
+  "age": 30,
+  "retirement_age": 62
+}
+```
+
+### UI Components
+
+- Overall score gauge/meter with grade
+- Component score breakdown bars
+- Strengths and improvement areas cards
+- Historical score trend chart
+- Recommended actions checklist
+- Comparison to benchmarks (by age, income)
+
+---
+
 ## Service Architecture
 
 ### Calculator Service Structure
@@ -858,20 +1219,37 @@ Compare calculator outputs against:
 
 ## Future Enhancements
 
-### Phase 9 (Initial Release)
-- Basic calculators with core functionality
-- Standalone calculator library page
-- Simple API endpoints
+### Phase 9.6 (Complete)
+- Budget Calculator (totals, category shares, savings rate)
+- Tax Calculator (federal/DC brackets, FICA)
 
-### Post-Phase 9 Enhancements
+### Phase 12 (Calculator Expansion)
+- Debt Payoff Calculator (avalanche, snowball)
+- Savings Growth Calculator
+- Retirement Calculator (FIRE, SMILE)
+- Mortgage Calculator
+- Net Worth Calculator
+- Investment Return Calculator (with glide path)
+- Real Estate Calculator
+- Financial Health Score
+
+### Post-Phase 12 Enhancements
 - Monte Carlo simulations for investment projections
 - Tax-loss harvesting calculator
-- Social Security optimization
+- Social Security optimization with break-even analysis
 - College savings (529) calculator
 - Life insurance needs calculator
 - Lease vs buy calculator
-- FIRE calculator (financial independence)
 - Roth conversion optimizer
+- 401k contribution optimizer (employer match maximization)
+- HSA optimization calculator
+- Backdoor Roth calculator
+- Required Minimum Distribution (RMD) calculator
+
+### Goldleaf Feature Parity Goals
+- Annual budget sheets (year-by-year)
+- Financial Command Center dashboard
+- "Steps" progress tracking (from Goldleaf's Steps sheet)
 
 
 

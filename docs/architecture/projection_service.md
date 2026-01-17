@@ -1,11 +1,21 @@
 # Multi-Year Projection Service Architecture
 
-> **Status: Future Planning** — This service has NOT been implemented.
-> This document describes a proposed feature for future development.
+> **Status: Phase 14 Planning** — This service has NOT been implemented.
+> This document describes a proposed feature aligned with the Goldleaf spreadsheet model.
+> See `docs/roadmap.md` Phase 14 for implementation timeline.
 
 ## Overview
 
 The Projection Service provides deterministic financial modeling capabilities that differentiate LifePath Planner from ChatGPT. It computes reliable multi-year projections for net worth, debt payoff, savings growth, and retirement readiness using mathematical formulas rather than LLM inference.
+
+### Goldleaf Alignment
+
+This service implements features from the Goldleaf spreadsheet:
+- **Annual Budgets**: Year-by-year budget projections (like Goldleaf's 2021-2026 sheets)
+- **FIRE Planning**: Financial Independence, Retire Early calculations
+- **SMILE Withdrawal**: Variable spending strategy for retirement phases
+- **Glide Path**: Gradual asset allocation shift over time
+- **Financial Command Center**: Dashboard aggregating all projections
 
 ---
 
@@ -298,34 +308,67 @@ class NetWorthResult:
     savings_rate_trajectory: List[float]
 ```
 
-### 3.4 Retirement Readiness Engine
+### 3.4 Retirement Readiness Engine (FIRE/SMILE)
 
-Calculates if user is on track for retirement.
+Calculates if user is on track for retirement, including FIRE planning and SMILE withdrawal strategy from Goldleaf.
+
+#### FIRE Planning
+
+Financial Independence, Retire Early calculations:
+- **Lean FIRE**: 25x minimal annual expenses
+- **Regular FIRE**: 25x comfortable annual expenses
+- **Fat FIRE**: 25x generous annual expenses
+- **Coast FIRE**: Savings that will grow to target without additional contributions
+
+#### SMILE Withdrawal Strategy
+
+Variable spending in retirement phases (from Goldleaf):
+- **Go-Go Phase** (62-75): Higher spending for travel/activities (1.2x base)
+- **Slow-Go Phase** (75-85): Standard spending (1.0x base)
+- **No-Go Phase** (85+): Increased healthcare costs (1.2x base)
 
 ```python
 @dataclass
 class RetirementRequest:
     """Input for retirement projection."""
     current_age: int
-    retirement_age: int = 65
-    life_expectancy: int = 90
+    retirement_age: int = 62  # FIRE-oriented default from Goldleaf
+    life_expectancy: int = 95  # From Goldleaf
     
     # Current state
     current_retirement_savings: float
     current_monthly_contribution: float
     
-    # Assumptions
-    pre_retirement_return: float = 0.07
+    # Assumptions (Goldleaf defaults)
+    pre_retirement_return: float = 0.075  # From Goldleaf
     post_retirement_return: float = 0.04
-    inflation_rate: float = 0.03
+    inflation_rate: float = 0.025  # From Goldleaf
     
     # Desired retirement
     desired_annual_income: float  # In today's dollars
     social_security_annual: float = 0.0
+    ss_claiming_age: int = 67  # 62, 67, or 70
     pension_annual: float = 0.0
     
     # Contribution changes
-    annual_contribution_increase: float = 0.02
+    annual_contribution_increase: float = 0.03  # From Goldleaf
+    
+    # SMILE Strategy (from Goldleaf)
+    withdrawal_strategy: str = "smile"  # "constant", "smile", "variable"
+    smile_go_go_multiplier: float = 1.2
+    smile_slow_go_multiplier: float = 1.0
+    smile_no_go_multiplier: float = 1.2
+    
+    # Healthcare (from Goldleaf)
+    healthcare_pre_medicare: float = 15000  # Annual, before age 65
+    healthcare_post_medicare: float = 6000  # Annual, after age 65
+    
+    # Glide Path (from Goldleaf)
+    use_glide_path: bool = True
+    current_stock_allocation: float = 0.98
+    retirement_stock_allocation: float = 0.40
+    expected_stock_return: float = 0.075
+    expected_bond_return: float = 0.045
 
 @dataclass
 class RetirementResult:
@@ -346,8 +389,38 @@ class RetirementResult:
     delayed_retirement_age: Optional[int]  # Age if they need to wait
     reduced_lifestyle_amount: Optional[float]  # Income they can sustain
     
+    # FIRE metrics
+    fire_number: float  # 25x annual expenses
+    fire_date: Optional[date]  # When FIRE is achievable
+    coast_fire_number: float  # Amount needed now to coast
+    
+    # SMILE projections
+    smile_phases: SmileProjection
+    
+    # Social Security optimization
+    ss_comparison: SocialSecurityComparison  # 62 vs 67 vs 70
+    
     # Trajectory
     yearly_projections: List[RetirementYearSnapshot]
+    glide_path_schedule: List[AllocationSnapshot]
+
+@dataclass
+class SmileProjection:
+    """SMILE withdrawal projections by phase."""
+    go_go_annual_spending: float  # Ages 62-75
+    slow_go_annual_spending: float  # Ages 75-85
+    no_go_annual_spending: float  # Ages 85+
+    total_retirement_spending: float
+    
+@dataclass
+class SocialSecurityComparison:
+    """Compare SS claiming at different ages."""
+    benefit_at_62: float
+    benefit_at_67: float
+    benefit_at_70: float
+    break_even_62_vs_67: int  # Age when 67 catches up
+    break_even_67_vs_70: int  # Age when 70 catches up
+    optimal_claiming_age: int
 ```
 
 **Key Formulas:**
@@ -357,7 +430,7 @@ def calculate_sustainable_withdrawal(
     portfolio_value: float,
     years_in_retirement: int,
     annual_return: float = 0.04,
-    inflation_rate: float = 0.03,
+    inflation_rate: float = 0.025,  # Goldleaf default
 ) -> float:
     """
     Calculate sustainable annual withdrawal using modified 4% rule.
@@ -371,19 +444,201 @@ def calculate_sustainable_withdrawal(
     withdrawal_rate = real_return / (1 - (1 + real_return) ** -years_in_retirement)
     return portfolio_value * withdrawal_rate
 
-def calculate_required_savings(
-    desired_annual_income: float,
-    years_in_retirement: int,
-    annual_return: float = 0.04,
-    inflation_rate: float = 0.03,
+def calculate_fire_number(
+    annual_expenses: float,
+    safe_withdrawal_rate: float = 0.04,
 ) -> float:
-    """Calculate nest egg needed to sustain desired income."""
-    real_return = (1 + annual_return) / (1 + inflation_rate) - 1
-    if real_return <= 0:
-        return desired_annual_income * years_in_retirement
+    """Calculate FIRE number (25x rule)."""
+    return annual_expenses / safe_withdrawal_rate
+
+def calculate_smile_spending(
+    base_annual_spending: float,
+    age: int,
+    go_go_mult: float = 1.2,
+    slow_go_mult: float = 1.0,
+    no_go_mult: float = 1.2,
+    healthcare_pre_65: float = 15000,
+    healthcare_post_65: float = 6000,
+) -> float:
+    """Calculate SMILE-adjusted spending for a given age."""
+    if age < 75:
+        spending = base_annual_spending * go_go_mult
+    elif age < 85:
+        spending = base_annual_spending * slow_go_mult
+    else:
+        spending = base_annual_spending * no_go_mult
     
-    # Future value of annuity formula
-    return desired_annual_income * (1 - (1 + real_return) ** -years_in_retirement) / real_return
+    # Add healthcare costs
+    if age < 65:
+        spending += healthcare_pre_65
+    else:
+        spending += healthcare_post_65
+    
+    return spending
+
+def calculate_glide_path_return(
+    current_age: int,
+    retirement_age: int,
+    current_stock_alloc: float,
+    retirement_stock_alloc: float,
+    stock_return: float,
+    bond_return: float,
+) -> float:
+    """Calculate blended return based on glide path allocation."""
+    years_to_retirement = max(0, retirement_age - current_age)
+    if years_to_retirement == 0:
+        stock_alloc = retirement_stock_alloc
+    else:
+        # Linear glide path
+        reduction_per_year = (current_stock_alloc - retirement_stock_alloc) / years_to_retirement
+        stock_alloc = current_stock_alloc - (reduction_per_year * (current_age - 30))
+        stock_alloc = max(retirement_stock_alloc, min(current_stock_alloc, stock_alloc))
+    
+    bond_alloc = 1 - stock_alloc
+    return (stock_alloc * stock_return) + (bond_alloc * bond_return)
+
+def calculate_ss_comparison(
+    estimated_benefit_at_fra: float,
+    fra: int = 67,
+) -> SocialSecurityComparison:
+    """Compare Social Security benefits at different claiming ages."""
+    # Early claiming reduction: 6.67% per year before FRA (up to 3 years), 5% per year beyond
+    # Delayed credits: 8% per year after FRA (up to age 70)
+    
+    benefit_62 = estimated_benefit_at_fra * 0.70  # 30% reduction
+    benefit_67 = estimated_benefit_at_fra * 1.00  # Full benefit
+    benefit_70 = estimated_benefit_at_fra * 1.24  # 24% increase
+    
+    # Break-even calculation
+    cumulative_62 = sum([benefit_62 for _ in range(62, 67)])  # 5 years
+    break_even_67 = 67 + int(cumulative_62 / (benefit_67 - benefit_62))
+    
+    cumulative_67 = sum([benefit_67 for _ in range(67, 70)])  # 3 years
+    break_even_70 = 70 + int(cumulative_67 / (benefit_70 - benefit_67))
+    
+    return SocialSecurityComparison(
+        benefit_at_62=benefit_62,
+        benefit_at_67=benefit_67,
+        benefit_at_70=benefit_70,
+        break_even_62_vs_67=break_even_67,
+        break_even_67_vs_70=break_even_70,
+        optimal_claiming_age=70 if life_expectancy > break_even_70 else 67,
+    )
+```
+
+### 3.5 Annual Budget Projection Engine
+
+Projects year-by-year budgets like Goldleaf's annual sheets (2021, 2022, etc.).
+
+```python
+@dataclass
+class AnnualBudgetRequest:
+    """Input for annual budget projection."""
+    # Starting point
+    base_budget: UnifiedBudgetModel
+    goldleaf_inputs: GoldleafInputs
+    
+    # Projection parameters
+    projection_years: int = 10  # From Goldleaf ReservesGoals
+    start_year: int = 2026
+    
+    # Growth assumptions (from GoldleafInputs.investmentAssumptions)
+    income_growth_rate: float = 0.03  # annualWageGrowth
+    expense_growth_rate: float = 0.025  # inflationRate
+    
+    # Life events
+    planned_events: List[LifeEvent] = None
+
+@dataclass
+class AnnualBudgetResult:
+    """Output of annual budget projection."""
+    yearly_budgets: List[YearlyBudget]
+    summary: ProjectionSummary
+    
+@dataclass
+class YearlyBudget:
+    """Single year budget projection."""
+    year: int
+    monthly_income: float
+    monthly_expenses: float
+    monthly_surplus: float
+    annual_income: float
+    annual_expenses: float
+    annual_surplus: float
+    
+    # Account projections
+    retirement_balance_eoy: float  # End of year
+    brokerage_balance_eoy: float
+    emergency_fund_eoy: float
+    total_debt_eoy: float
+    net_worth_eoy: float
+    
+    # Key metrics
+    savings_rate: float
+    debt_to_income: float
+    months_expenses_covered: float  # Emergency fund
+
+@dataclass
+class ProjectionSummary:
+    """Summary across all projected years."""
+    final_net_worth: float
+    total_income: float  # Sum across years
+    total_expenses: float
+    total_savings: float
+    debt_free_year: Optional[int]
+    fire_achieved_year: Optional[int]
+    millionaire_year: Optional[int]
+```
+
+### 3.6 Financial Command Center Engine
+
+Aggregates all projections into a unified dashboard (from Goldleaf's Financial Command Center).
+
+```python
+@dataclass
+class CommandCenterRequest:
+    """Input for command center aggregation."""
+    goldleaf_inputs: GoldleafInputs
+    current_budget: UnifiedBudgetModel
+    
+@dataclass
+class CommandCenterResult:
+    """Aggregated financial dashboard."""
+    # Overall health
+    financial_health_score: float  # 0-100
+    health_grade: str  # A+, A, B, etc.
+    
+    # Key metrics
+    current_net_worth: float
+    monthly_cash_flow: float
+    savings_rate: float
+    debt_to_income: float
+    
+    # Milestones
+    fire_date: Optional[date]
+    debt_free_date: Optional[date]
+    millionaire_date: Optional[date]
+    retirement_ready_date: Optional[date]
+    
+    # Projections (summary)
+    net_worth_1_year: float
+    net_worth_5_year: float
+    net_worth_10_year: float
+    retirement_savings_at_retirement: float
+    
+    # FIRE progress
+    fire_number: float
+    current_fire_percentage: float  # current_savings / fire_number
+    
+    # Recommendations
+    top_priorities: List[str]  # Top 3 actions
+    improvement_areas: List[str]
+    
+    # Component snapshots
+    budget_snapshot: BudgetSummary
+    debt_snapshot: DebtSummary
+    retirement_snapshot: RetirementSummary
+    investment_snapshot: InvestmentSummary
 ```
 
 ---
@@ -679,6 +934,20 @@ def cached_debt_payoff(request_hash: str) -> DebtPayoffResult:
 
 ## 10. Future Enhancements
 
+### Goldleaf Feature Parity
+
+The following features from the Goldleaf spreadsheet are planned:
+
+| Feature | Status | Description |
+|---------|--------|-------------|
+| Annual Budget Sheets | Planned (3.5) | Year-by-year budget projections |
+| Financial Command Center | Planned (3.6) | Aggregated dashboard |
+| SMILE Retirement | Planned (3.4) | Variable spending in retirement |
+| Glide Path | Planned (3.4) | Asset allocation shift over time |
+| FIRE Calculations | Planned (3.4) | Lean/Regular/Fat/Coast FIRE |
+| SS Optimization | Planned (3.4) | 62 vs 67 vs 70 comparison |
+| Financial Health Score | Planned (Calculators) | Composite wellness metric |
+
 ### Monte Carlo Simulations
 
 Add probabilistic projections for investment returns:
@@ -705,6 +974,10 @@ class TaxAwareRequest:
     marginal_tax_rate: float
     capital_gains_rate: float
     account_types: Dict[str, AccountType]  # traditional, roth, taxable
+    
+    # Goldleaf tax inputs
+    standard_deduction: float
+    ss_wage_cap: float
 ```
 
 ### Inflation Scenarios
@@ -716,5 +989,17 @@ def project_with_inflation_scenarios(
 ) -> Dict[str, ProjectionResult]:
     """Run projection under different inflation assumptions."""
     ...
+```
+
+### Rental Property Projections
+
+```python
+@dataclass
+class RentalProjectionRequest:
+    """Project rental property performance over time."""
+    rental_property: RentalProperty  # From GoldleafInputs
+    appreciation_rate: float = 0.03
+    rent_increase_rate: float = 0.02
+    projection_years: int = 10
 ```
 

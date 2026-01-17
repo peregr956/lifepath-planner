@@ -10,6 +10,7 @@ import type {
   BudgetPreferences, 
   FoundationalContext,
   HydratedFoundationalContext,
+  GoldleafInputs,
 } from '@/types';
 import { 
   getPlainFoundationalContext, 
@@ -41,6 +42,8 @@ export type BudgetSession = {
   hydratedFoundationalContext?: HydratedFoundationalContext | null;
   // Phase 9.1.2: Track if profile hydration has been attempted
   profileHydrated?: boolean;
+  // Phase 10: Goldleaf planner inputs (when using build from scratch)
+  plannerInputs?: GoldleafInputs | null;
 };
 
 // Types for budget updates

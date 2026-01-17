@@ -879,6 +879,72 @@ Expected behavior should produce:
 
 ---
 
+## Phase 9.6 — Budget Builder (Goldleaf Integration) ✅ Complete (January 2026)
+
+**Goal**: Provide users with two entry points to the financial planner: upload an existing budget OR build one from scratch using a guided wizard inspired by the Goldleaf spreadsheet structure.
+
+**Rationale**: Many users don't have existing budgets to upload. The Budget Builder allows users to create comprehensive financial profiles from scratch, capturing all the inputs needed for advanced planning (retirement, taxes, real estate, debt payoff). This phase implements a hybrid architecture: deterministic calculations for core financial math, with AI interpretation for personalized recommendations.
+
+**Design Principles (from Goldleaf Analysis)**:
+- **Single Source of Truth**: All financial inputs flow through a unified `GoldleafInputs` type (equivalent to Goldleaf's "Inputs" sheet)
+- **Deterministic Calculations**: Core formulas (compound interest, amortization, tax brackets) are computed by code, not AI
+- **AI Interpretation Layer**: AI reads deterministic outputs to provide personalized recommendations
+- **Goldleaf Input Categories**: Personal Profile, Employment Income, Account Balances, Debts, Investment Assumptions, Tax Inputs, Rental Property, Reserves/Goals, Retirement Expenses/SS
+
+**Features**:
+- Two-path entry: Upload existing budget OR Build from scratch
+- Multi-step Budget Builder wizard (Income → Expenses → Debts → Savings → Review)
+- Goldleaf-style comprehensive inputs covering:
+  - Personal profile (DOB, retirement age, life expectancy, withdrawal strategy)
+  - Employment & income (salary, 401k contributions, employer match)
+  - Account balances (401k, Roth IRA, TSP, brokerage, HSA, emergency fund)
+  - Debts with interest rates and minimum payments
+  - Investment assumptions (expected returns, inflation, asset allocation)
+  - Tax inputs (standard deduction, SS wage cap)
+  - Rental property details (for real estate investors)
+  - Reserves and savings goals
+- Deterministic calculators for budget totals, tax estimation, debt metrics
+- Normalization to `UnifiedBudgetModel` for compatibility with AI layer
+
+**Implementation**:
+- New types in `src/types/planner.ts` (GoldleafInputs, FinancialAnalysis, etc.)
+- Deterministic calculators in `src/lib/calculators/` (budgetCalculator, taxCalculator)
+- State management hook `usePlannerState` for wizard state
+- Multi-step wizard components in `src/components/planner/`
+- Normalization function `normalizePlannerInputsToUnifiedBudgetModel`
+- New `/build` route for Budget Builder entry point
+- Updated `/upload` page with choice between Upload and Build
+
+**Files Created**:
+- `services/ui-web/src/types/planner.ts`
+- `services/ui-web/src/lib/calculators/budgetCalculator.ts`
+- `services/ui-web/src/lib/calculators/taxCalculator.ts`
+- `services/ui-web/src/lib/calculators/index.ts`
+- `services/ui-web/src/lib/plannerNormalization.ts`
+- `services/ui-web/src/hooks/usePlannerState.ts`
+- `services/ui-web/src/components/planner/BudgetBuilder.tsx`
+- `services/ui-web/src/components/planner/IncomeStep.tsx`
+- `services/ui-web/src/components/planner/ExpensesStep.tsx`
+- `services/ui-web/src/components/planner/DebtsStep.tsx`
+- `services/ui-web/src/components/planner/SavingsStep.tsx`
+- `services/ui-web/src/components/planner/ReviewStep.tsx`
+- `services/ui-web/src/components/planner/index.ts`
+- `services/ui-web/src/app/(app)/build/page.tsx`
+
+**Files Modified**:
+- `services/ui-web/src/app/(app)/upload/page.tsx` — Added Build from Scratch option
+- `services/ui-web/src/types/index.ts` — Export planner types
+- `services/ui-web/src/hooks/useBudgetSession.tsx` — Added plannerInputs to session
+
+**Success Criteria**:
+- Users can choose between Upload and Build from Scratch
+- Budget Builder captures comprehensive Goldleaf-style inputs
+- Wizard completes and normalizes to UnifiedBudgetModel
+- Deterministic calculators compute accurate totals
+- Both paths lead to AI-powered recommendations
+
+---
+
 ## Phase 10 — Budget History & Trends (Weeks 22–25)
 
 **Goal**: Enable users to track budgets over time, view trends, and compare periods.
@@ -958,34 +1024,55 @@ Expected behavior should produce:
 
 ## Phase 12 — Financial Calculators (Weeks 24–28)
 
-**Goal**: Implement core financial calculators that users can access independently and integrate into planning workflows.
+**Goal**: Implement core financial calculators that users can access independently and integrate into planning workflows. Align with Goldleaf spreadsheet formulas for consistency.
 
-**Rationale**: Originally Phase 9, moved after retention features. Calculators are valuable but not retention-critical. Users won't return just for calculators they can find elsewhere.
+**Rationale**: Originally Phase 9, moved after retention features. Calculators are valuable but not retention-critical. Users won't return just for calculators they can find elsewhere. However, Goldleaf integration (Phase 9.6) establishes the foundation with budgetCalculator and taxCalculator already implemented.
 
-**Calculators to Implement**:
+**Foundation from Phase 9.6**:
+- `budgetCalculator.ts` — Budget totals, category shares, savings rate, debt metrics
+- `taxCalculator.ts` — Federal/DC tax brackets (2026), FICA, effective rate
+
+**Calculators to Implement** (aligned with Goldleaf):
 - **Debt Payoff Calculator**: Avalanche vs snowball strategies, payoff timelines, interest calculations
 - **Savings Growth Calculator**: Compound interest with contributions, goal timelines
-- **Retirement Calculator**: Retirement readiness, required savings, withdrawal strategies
+- **Retirement Calculator**: FIRE planning, SMILE withdrawal strategy (Go-Go/Slow-Go/No-Go phases), Social Security timing
 - **Mortgage Calculator**: Payment calculations, amortization schedules, refinancing analysis
-- **Net Worth Calculator**: Asset/debt tracking, growth projections
-- **Investment Return Calculator**: Portfolio growth, ROI analysis
-- **Tax Calculator**: Basic tax estimation, bracket analysis
+- **Net Worth Calculator**: Asset/debt tracking, growth projections, "millionaire date" calculation
+- **Investment Return Calculator**: Portfolio growth with glide path (stock allocation changes over time), ROI analysis
+- **Tax Calculator**: Federal + state tax estimation, bracket analysis, 401k optimization
+- **Real Estate Calculator**: Rental property cash flow, cap rate, property management costs (from Goldleaf's rental property inputs)
+- **Financial Health Score**: Composite score based on Goldleaf's methodology (debt ratios, savings rate, emergency fund, etc.)
+
+**Goldleaf-Specific Features**:
+- **SMILE Retirement Strategy**: Go-Go (age 62-75, 1.2x spending), Slow-Go (75-85, 1.0x), No-Go (85+, 1.2x for healthcare)
+- **Glide Path**: Gradual shift from current stock allocation (e.g., 98%) to retirement allocation (e.g., 40%)
+- **401k Optimization**: Employer match maximization, contribution vs Roth IRA tradeoffs
+- **Financial Health Score**: Weighted composite of emergency fund, debt-to-income, savings rate, net worth trajectory
 
 **Implementation**:
 - Build calculators as client-side TypeScript modules (no separate service needed)
 - Each calculator: standalone page + reusable component
 - Reuse formulas from `docs/architecture/projection_service.md` where applicable
+- Extend existing `src/lib/calculators/` with new modules
 - UI: Calculator library page + embedded calculator widgets
 
 **Files to Create/Modify**:
-- `services/ui-web/src/lib/calculators/` — Calculator logic modules
+- `services/ui-web/src/lib/calculators/debtPayoffCalculator.ts` — Debt payoff strategies
+- `services/ui-web/src/lib/calculators/savingsCalculator.ts` — Savings growth projections
+- `services/ui-web/src/lib/calculators/retirementCalculator.ts` — FIRE/SMILE retirement
+- `services/ui-web/src/lib/calculators/mortgageCalculator.ts` — Mortgage amortization
+- `services/ui-web/src/lib/calculators/netWorthCalculator.ts` — Net worth tracking
+- `services/ui-web/src/lib/calculators/investmentCalculator.ts` — Investment returns with glide path
+- `services/ui-web/src/lib/calculators/realEstateCalculator.ts` — Rental property analysis
+- `services/ui-web/src/lib/calculators/financialHealthScore.ts` — Composite health score
 - `services/ui-web/src/app/(app)/calculators/` — Calculator UI pages
 - `services/ui-web/src/components/calculators/` — Reusable calculator components
-- `docs/calculators.md` — Calculator specifications and formulas (already exists)
+- `docs/calculators.md` — Calculator specifications and formulas (update for Goldleaf alignment)
 
 **Deliverables**:
-- 7+ financial calculators accessible via web UI
+- 9+ financial calculators accessible via web UI (including real estate and health score)
 - Reusable calculator components
+- SMILE retirement strategy and glide path support
 - Integration points for use in planning workflows
 
 ---
@@ -1024,38 +1111,74 @@ Expected behavior should produce:
 
 ---
 
-## Phase 14 — Long-Term Projections (Weeks 35–42)
+## Phase 14 — Long-Term Projections & Financial Command Center (Weeks 35–42)
 
-**Goal**: Implement comprehensive multi-year financial projections that provide planning scenarios.
+**Goal**: Implement comprehensive multi-year financial projections that provide planning scenarios. Create a "Financial Command Center" dashboard inspired by Goldleaf's approach.
 
-**Rationale**: Originally Phase 12. Moved after Goals because projections are most valuable when connected to user goals and history.
+**Rationale**: Originally Phase 12. Moved after Goals because projections are most valuable when connected to user goals and history. The Goldleaf spreadsheet's "Financial Command Center" concept provides a compelling model for a unified dashboard.
 
-**Features**:
-- **Retirement Projections**: Full retirement readiness analysis for users in their 20s through retirement age
+**Features** (aligned with Goldleaf):
+- **Retirement Projections (FIRE-focused)**:
+  - Full retirement readiness analysis for users in their 20s through retirement age
+  - SMILE withdrawal strategy projections (Go-Go/Slow-Go/No-Go spending phases)
+  - Social Security claiming age optimization (early vs full retirement age vs delayed)
+  - Multiple FIRE targets: Lean FIRE, Regular FIRE, Fat FIRE
+  - Glide path visualization (stock allocation over time)
 - **Debt Payoff Projections**: Long-term debt elimination with strategy comparison
-- **Savings Growth Projections**: Investment and savings growth over decades
+- **Savings Growth Projections**: Investment and savings growth over decades with contribution escalation
 - **Net Worth Trajectory**: Complete net worth projections with life events
 - **Life Event Modeling**: Job changes, home purchases, marriage, children, etc.
+- **Annual Budgets**: Year-by-year budget projections (like Goldleaf's 2021-2026 sheets)
+- **Financial Command Center Dashboard**:
+  - Financial Health Score with trend
+  - Key metrics at a glance (net worth, savings rate, debt-free date, FIRE date)
+  - Progress toward goals visualization
+  - Monthly cash flow summary
+  - Projected milestones timeline
+
+**Goldleaf-Specific Projection Features**:
+- **SMILE Spending Model**: Variable spending in retirement phases
+  - Go-Go (62-75): Higher spending for travel/activities (1.2x base)
+  - Slow-Go (75-85): Standard spending (1.0x base)
+  - No-Go (85+): Higher healthcare costs (1.2x base for medical)
+- **Social Security Scenarios**: Compare claiming at 62, 67, or 70
+- **Retirement Account Projections**:
+  - 401k with employer match
+  - Roth IRA with contribution limits
+  - TSP (for federal employees)
+  - Brokerage (taxable) with different tax treatment
+- **Real Estate Integration**: Rental income and expense projections
+- **Tax-Aware Projections**: Year-by-year tax estimates
 
 **Implementation**:
-- Build projection engines as client-side TypeScript (leverage calculator modules)
+- Build projection engines as client-side TypeScript (leverage calculator modules from Phase 12)
 - Integrate calculator engines into projection workflows
 - Add life event modeling (see `docs/architecture/projection_service.md` for LifeEvent types)
 - Create projection API endpoints for saving/loading projections
 - Build projection UI with interactive charts
 - Connect projections to user's actual budget data and goals
+- Create Financial Command Center dashboard
 
 **Files to Create/Modify**:
-- `services/ui-web/src/lib/projections/` — Projection engines
+- `services/ui-web/src/lib/projections/retirementProjection.ts` — FIRE/SMILE projections
+- `services/ui-web/src/lib/projections/netWorthProjection.ts` — Net worth trajectory
+- `services/ui-web/src/lib/projections/debtProjection.ts` — Debt payoff projections
+- `services/ui-web/src/lib/projections/savingsProjection.ts` — Savings growth
+- `services/ui-web/src/lib/projections/annualBudget.ts` — Year-by-year budgets
 - `services/ui-web/src/app/api/projections/` — Projection API routes
 - `services/ui-web/src/app/(app)/projections/` — Projection views
+- `services/ui-web/src/app/(app)/command-center/` — Financial Command Center dashboard
 - `services/ui-web/src/components/projections/` — Projection components
+- `services/ui-web/src/components/command-center/` — Dashboard components
 
 **Deliverables**:
-- Retirement readiness calculator with full projections
+- FIRE calculator with SMILE withdrawal strategy
+- Retirement readiness calculator with SS optimization
 - Debt payoff timelines with strategy comparison
 - Net worth trajectory over 30+ years
+- Annual budget projections
 - Life event impact modeling
+- Financial Command Center dashboard with health score
 
 ---
 
@@ -1251,17 +1374,19 @@ These phases consolidate advanced features that build on the core platform.
 | 8.5.4 | AI-First Budget Interpretation | 14–15 | 1–2 weeks | AI reads full budget; meaningful labels |
 | 9 | User Accounts | 16–19 | 4 weeks | User retention capability |
 | 9.1 | AI-Account Context Integration | 19–21 | 2–3 weeks | Layered context model; inquiry elevation |
-| 10 | Budget History | 22–25 | 4 weeks | Persistent value |
-| 11 | UI/UX Polish | 26–29 | 4 weeks | Professional experience |
-| 12 | Calculators | 30–34 | 5 weeks | Utility features |
-| 13 | Goal Tracking | 35–40 | 6 weeks | Engagement driver |
-| 14 | Projections | 41–48 | 8 weeks | Long-term planning |
-| 15 | Scenarios | 49–52 | 4 weeks | "What if" analysis |
-| 16 | Workflow Integration | 53–56 | 4 weeks | Connected experience |
-| 17 | Account Integration | 57–62 | 6 weeks | Real-time data |
-| 18 | Advanced Planning | 63–66 | 4 weeks | Premium features |
-| 19 | Production Hardening | 67–70 | 4 weeks | Scale & security |
-| 20 | Marketing | 71–74 | 4 weeks | Growth preparation |
+| 9.5 | Summary Page Redesign | 21–22 | 1–2 weeks | Decision-support UI |
+| 9.6 | Budget Builder (Goldleaf) | 22–23 | 1–2 weeks | Two entry points; comprehensive inputs |
+| 10 | Budget History | 24–27 | 4 weeks | Persistent value |
+| 11 | UI/UX Polish | 28–31 | 4 weeks | Professional experience |
+| 12 | Calculators (Goldleaf-aligned) | 32–36 | 5 weeks | SMILE, glide path, health score |
+| 13 | Goal Tracking | 37–42 | 6 weeks | Engagement driver |
+| 14 | Projections & Command Center | 43–50 | 8 weeks | FIRE planning, annual budgets |
+| 15 | Scenarios | 51–54 | 4 weeks | "What if" analysis |
+| 16 | Workflow Integration | 55–58 | 4 weeks | Connected experience |
+| 17 | Account Integration | 59–64 | 6 weeks | Real-time data |
+| 18 | Advanced Planning | 65–68 | 4 weeks | Premium features |
+| 19 | Production Hardening | 69–72 | 4 weeks | Scale & security |
+| 20 | Marketing | 73–76 | 4 weeks | Growth preparation |
 
 ---
 
@@ -1276,11 +1401,13 @@ These phases consolidate advanced features that build on the core platform.
 | Phase 8.5.4 (Interpretation) | AI reads all budget columns; no duplicate labels; description column used |
 | Phase 9 (Accounts) | User registration rate, return user rate |
 | Phase 9.1 (Context Integration) | Reduced data entry time; AI question quality; profile enrichment over time |
+| Phase 9.5 (Summary Redesign) | User comprehension of recommendations; action completion rate |
+| Phase 9.6 (Budget Builder) | Build vs Upload ratio; wizard completion rate; Goldleaf input coverage |
 | Phase 10 (History) | Users saving budgets, history view engagement |
 | Phase 11 (UI/UX) | Accessibility score, mobile usage, error rate reduction |
-| Phase 12 (Calculators) | Calculator usage rate |
+| Phase 12 (Calculators) | Calculator usage rate; SMILE/FIRE calculator adoption |
 | Phase 13 (Goals) | Goal creation rate, goal completion rate |
-| Phase 14 (Projections) | Projection usage, retirement planning completion |
+| Phase 14 (Command Center) | Dashboard engagement; FIRE date tracking; projection accuracy |
 | Phase 15 (Scenarios) | Scenario creation, comparison usage |
 | Phase 16 (Integration) | Workflow completion rate |
 | Phase 17 (Accounts) | Account connection rate, transaction import success |
@@ -1307,17 +1434,21 @@ Phase 9 (Accounts) → Required for all persistence features
     ↓
 Phase 9.1 (Context Integration) → Connects account data to AI; enhances all AI interactions
     ↓
+Phase 9.5 (Summary Redesign) → Decision-support UI for all recommendations
+    ↓
+Phase 9.6 (Budget Builder) → Two entry points; Goldleaf-style comprehensive inputs
+    ↓                         Creates foundation for advanced calculators and projections
 Phase 10 (History) → Required for goal tracking; benefits from 9.1 context enrichment
     ↓
 Phase 11 (UI/UX) → Benefits all subsequent phases
     ↓
-Phase 12 (Calculators) → Used by projections
+Phase 12 (Calculators) → Extends 9.6 calculators; adds SMILE/FIRE; used by projections
     ↓
 Phase 13 (Goals) → Enhanced by projections
     ↓
-Phase 14 (Projections) → Used by scenarios
+Phase 14 (Projections & Command Center) → Uses all calculators; creates Financial Command Center
     ↓
-Phase 15 (Scenarios)
+Phase 15 (Scenarios) → Uses projections for "what if" analysis
     ↓
 Phases 16-18 (Platform Expansion)
     ↓
@@ -1442,3 +1573,10 @@ New entities to add progressively:
   - ✅ Phase 9.5.2 — Trust and Transparency (Confidence indicators, ProfileContextBar)
   - ✅ Phase 9.5.3 — Forward-Looking Elements (ProjectedImpactCard, NextActionsCard)
   - ✅ Phase 9.5.4 — Polish and Accessibility (Responsive, ARIA, chart alternatives)
+- ✅ **Phase 9.6** — Budget Builder (Goldleaf Integration) (January 2026)
+  - ✅ Two entry points: Upload existing budget OR Build from scratch
+  - ✅ Multi-step Budget Builder wizard (Income, Expenses, Debts, Savings, Review)
+  - ✅ Goldleaf-style comprehensive inputs (PersonalProfile, EmploymentIncome, AccountBalances, etc.)
+  - ✅ Deterministic calculators (budgetCalculator, taxCalculator)
+  - ✅ Normalization to UnifiedBudgetModel for AI layer compatibility
+  - ✅ FinancialAnalysis interface for AI consumption
