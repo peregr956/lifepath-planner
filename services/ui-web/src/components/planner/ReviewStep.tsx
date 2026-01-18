@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui';
 import type { PlannerStateReturn } from '@/hooks/usePlannerState';
@@ -15,6 +15,8 @@ import {
   PiggyBank,
   CreditCard,
   CheckCircle2,
+  Loader2,
+  AlertCircle,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -26,6 +28,8 @@ export function ReviewStep({ planner }: ReviewStepProps) {
   const router = useRouter();
   const { saveSession } = useBudgetSession();
   const { inputs, goBack, complete } = planner;
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   // Calculate all metrics
   const analysis = useMemo(() => {
@@ -49,26 +53,53 @@ export function ReviewStep({ planner }: ReviewStepProps) {
   const isPositiveCashFlow = budget.monthlySurplus >= 0;
 
   const handleComplete = async () => {
-    // Convert to UnifiedBudgetModel
-    const unifiedModel = convertToUnifiedBudgetModel(inputs, analysis);
-    
-    // Generate a budget ID for the session
-    const budgetId = crypto.randomUUID();
-    
-    // Save to session
-    saveSession({
-      budgetId,
-      clarified: true, // Skip clarification since user built it themselves
-      plannerInputs: inputs,
-    });
+    setIsSubmitting(true);
+    setError(null);
 
-    // Store the model in localStorage for the summary page
-    localStorage.setItem(`budget_model_${budgetId}`, JSON.stringify(unifiedModel));
-    
-    complete();
-    
-    // Navigate to summary
-    router.push('/summarize');
+    try {
+      // Convert to UnifiedBudgetModel
+      const unifiedModel = convertToUnifiedBudgetModel(inputs, analysis);
+      
+      // Call the API to create the budget session in the database
+      const response = await fetch('/api/budget/create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          unifiedModel,
+          plannerInputs: inputs,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.details || 'Failed to save budget');
+      }
+
+      const data = await response.json();
+      const budgetId = data.budget_id;
+      
+      // Save to local session
+      saveSession({
+        budgetId,
+        detectedFormat: 'budget_builder',
+        clarified: true, // Skip clarification since user built it themselves
+        readyForSummary: true,
+        summaryPreview: {
+          detectedIncomeLines: unifiedModel.income.length,
+          detectedExpenseLines: unifiedModel.expenses.length,
+        },
+      });
+      
+      complete();
+      
+      // Navigate to summary
+      router.push('/summarize');
+    } catch (err) {
+      console.error('[ReviewStep] Failed to save budget:', err);
+      setError(err instanceof Error ? err.message : 'Failed to save budget. Please try again.');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -231,13 +262,28 @@ export function ReviewStep({ planner }: ReviewStepProps) {
         </div>
       </div>
 
+      {/* Error Message */}
+      {error && (
+        <div className="flex items-center gap-3 rounded-lg border border-destructive/30 bg-destructive/10 p-4">
+          <AlertCircle className="h-5 w-5 shrink-0 text-destructive" />
+          <p className="text-sm text-destructive">{error}</p>
+        </div>
+      )}
+
       {/* Navigation */}
       <div className="flex justify-between border-t pt-6">
-        <Button variant="outline" onClick={goBack}>
+        <Button variant="outline" onClick={goBack} disabled={isSubmitting}>
           Back
         </Button>
-        <Button onClick={handleComplete} size="lg">
-          Complete & Get Recommendations
+        <Button onClick={handleComplete} size="lg" disabled={isSubmitting}>
+          {isSubmitting ? (
+            <>
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              Saving...
+            </>
+          ) : (
+            'Complete & Get Recommendations'
+          )}
         </Button>
       </div>
     </div>
