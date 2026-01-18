@@ -126,7 +126,7 @@ export const authConfig: NextAuthConfig = {
       const { pathname } = request.nextUrl;
       
       // Protected routes
-      const protectedRoutes = ['/upload', '/clarify', '/summarize', '/settings'];
+      const protectedRoutes = ['/upload', '/build', '/clarify', '/summarize', '/settings'];
       const isProtectedRoute = protectedRoutes.some(route => pathname.startsWith(route));
       
       // Auth routes (login/signup)
